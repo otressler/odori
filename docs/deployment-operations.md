@@ -87,7 +87,9 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 
 - Apply schema migrations as a release step before rolling web and worker containers to a version that requires them.
 - Back up the PostgreSQL volume and uploads volume together daily; encrypt backups and test a restore at least quarterly.
+- Provide an authenticated recipe export (structured JSON plus optionally printable recipes) so a household can retain its approved catalog independently of infrastructure backups.
 - Monitor container health, database free space, failed/retried job counts, upload volume consumption, and Azure API errors/latency.
+- Monitor active WebSocket connections, reconnect rates, event delivery failures, and persistent client version gaps; a reconnect must always recover through REST state reads.
 - Retain provider request metadata and job errors for troubleshooting, but redact credentials, cookies, full authorization headers, and unnecessary source content from logs.
 - Prune source uploads according to a household retention setting only after confirming the extracted recipe has been approved.
 
@@ -101,6 +103,7 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 ## Network policy
 
 - Traefik is the only service connected to `web`; it terminates HTTPS for the tailnet hostname.
+- Configure Traefik to support standard HTTPS WebSocket upgrades on the same `cucina` router; no additional public port or separate socket hostname is needed.
 - `postgres` and `odori-worker` have no Traefik labels and no published ports.
 - Outbound application access is limited to Azure provider endpoints and explicitly permitted URL-import destinations.
 - Tailscale ACLs should allow only the household's devices/users to reach the Pi service.

@@ -28,6 +28,7 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 | `POST /recipe-imports/{id}/retry` | Retry a failed transient import. |
 | `GET/POST /ingredients` | Search canonical tags; create a reviewed tag when permitted. |
 | `GET/PATCH /inventory` | List and batch-update availability statuses. |
+| `POST /inventory/{ingredientId}/change-status` | Request or confirm an availability status change; returns planned-meal conflicts when confirmation is needed. |
 | `GET/PUT /meal-plans/{weekStart}` | Retrieve or replace week metadata. |
 | `POST/PATCH/DELETE /meal-plans/{weekStart}/slots[/{id}]` | Create, move/update, or remove planned meals. |
 | `POST /meal-plans/{weekStart}/shopping-lists` | Generate/refresh a list from the plan. |
@@ -36,6 +37,33 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 | `POST /shopping-lists/{id}/items/{itemId}/purchase` | Mark purchased and update inventory atomically. |
 | `POST /recommendations` | Return ranked catalog suggestions and optional generated drafts. |
 | `POST /meal-slots/{id}/mark-cooked` | Record a cook event. |
+
+## Planned-stock confirmation
+
+An inventory status change that could remove an ingredient from an upcoming plan is a two-step action. The initial request:
+
+```json
+{ "status": "needs_replenishment", "version": 7 }
+```
+
+returns `409` with `error.code: "planned_ingredient_in_use"` and affected meal slots unless it includes `confirmPlannedUse: true`. The confirmation is an explicit user decision and is written to inventory history. `POST /meal-slots/{id}/mark-cooked` performs the linked `cook_recipe` inventory update internally and never requests this confirmation.
+
+## Real-time events
+
+Connect to `wss://cucina.tail-net-name.ts.net/api/v1/realtime` using the authenticated same-origin session. The server assigns household inventory and authorized shopping-list subscriptions; clients do not choose arbitrary channel names.
+
+```json
+{
+  "type": "shopping.item.updated",
+  "resourceId": "shopping_item_uuid",
+  "listId": "shopping_list_uuid",
+  "version": 12,
+  "actor": { "id": "user_uuid", "displayName": "Mara" },
+  "changed": { "state": "purchased" }
+}
+```
+
+Event types include `inventory.item.updated`, `shopping.item.created`, `shopping.item.updated`, `shopping.item.deleted`, and `shopping.list.regenerated`. Events are notifications of committed writes, not commands. On reconnect or a version gap, clients fetch the affected resource through its REST endpoint.
 
 ## Import request
 
