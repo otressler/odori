@@ -71,20 +71,27 @@ h3 { font-size: 22px; }
 .hero-copy .subtext { max-width: 570px; margin-bottom: 30px; }
 .button-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .hero-art {
-  position: relative; min-height: 430px; border-radius: 48% 48% 38% 38% / 43% 42% 50% 52%;
-  background: linear-gradient(135deg, #f4be91, #d9785e 64%, #a94f3c); box-shadow: 18px 20px 0 rgba(112, 130, 56, .15);
+  position: relative; min-height: 430px; border-radius: 24px;
+  background: var(--line); box-shadow: 18px 20px 0 rgba(112, 130, 56, .15);
+  overflow: hidden;
 }
 .hero-art::before {
-  content: ""; position: absolute; inset: 11% 11% auto auto; width: 215px; height: 215px; border: 19px solid #f8e7ca;
-  border-radius: 50%; box-shadow: inset 0 0 0 13px #d95338;
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(44, 33, 30, .08); z-index: 2; pointer-events: none;
 }
 .hero-art::after {
-  content: "BASILIKUM  ·  PASTA  ·  TOMATEN"; position: absolute; left: 5%; bottom: 12%; width: 210px; padding: 14px;
-  transform: rotate(-8deg); background: var(--paper); color: var(--espresso); box-shadow: var(--shadow); font-size: 11px; font-weight: 700; letter-spacing: .12em;
+  content: ""; position: absolute; inset: auto 0 0 0; height: 38%; border-radius: 0 0 24px 24px;
+  background: linear-gradient(to top, rgba(44, 33, 30, .28), transparent); z-index: 1; pointer-events: none;
 }
+.hero-image {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center 35%;
+  transition: transform .6s ease;
+}
+.hero-art:hover .hero-image { transform: scale(1.03); }
 .floating-note {
-  position: absolute; right: -29px; bottom: 28px; width: 188px; padding: 18px; border-radius: 16px 16px 16px 3px;
-  background: var(--paper); box-shadow: var(--shadow); font-size: 13px; transform: rotate(4deg);
+  position: absolute; right: 20px; bottom: 20px; width: 188px; padding: 18px; border-radius: 16px 16px 16px 3px;
+  background: var(--paper); box-shadow: var(--shadow); font-size: 13px; transform: rotate(3deg); z-index: 3;
 }
 .floating-note strong { display: block; margin-bottom: 5px; color: var(--olive); }
 
@@ -189,7 +196,7 @@ h3 { font-size: 22px; }
 }
 @media (max-width: 560px) {
   .container { width: min(100% - 28px, 1180px); } .header-action { padding: 8px 12px; font-size: 12px; }
-  .hero { min-height: auto; padding: 55px 0; } .hero-art { min-height: 330px; } .floating-note { right: -8px; bottom: 4px; }
+  .hero { min-height: auto; padding: 55px 0; } .hero-art { min-height: 330px; } .floating-note { right: 12px; bottom: 12px; padding: 14px; width: 168px; font-size: 12px; }
   .section { padding: 60px 0; } .feature-grid, .recipe-grid, .aside-stack { grid-template-columns: 1fr; }
   .page-shell { padding-top: 28px; } .page-heading { align-items: start; flex-direction: column; } .utility-row { flex-wrap: wrap; }
   .utility-row .search { flex-basis: 100%; } .shopping-section { padding-left: 17px; padding-right: 17px; }
