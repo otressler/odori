@@ -1,0 +1,54 @@
+<article class="shopping-item{% if item.state != 'open' %} shopping-item--done{% endif %}">
+  {% if item.state == "open" %}
+    <form method="post" action="{% url 'shopping-item-purchase' item.id %}">
+      {% csrf_token %}
+      <input type="hidden" name="version" value="{{ item.version }}">
+      <button class="check-button" type="submit" title="Gekauft">
+        <svg aria-hidden="true"><use href="#i-check"></use></svg>
+        <span class="sr-only">{{ item.label }} als gekauft markieren</span>
+      </button>
+    </form>
+  {% endif %}
+
+  <div class="shopping-item__main">
+    <p class="shopping-item__label" style="margin:0">
+      {{ item.label }}
+      {% if item.quantity_components %}<span class="shopping-item__qty"> · {{ item.quantity_text }}</span>{% endif %}
+    </p>
+    {% if item.needs_confirmation %}
+      <span class="flag">Vorrat unbekannt — bitte prüfen</span>
+    {% endif %}
+    {% if item.recipe_titles %}
+      <span class="shopping-item__source">
+        Für {% for title in item.recipe_titles %}{{ title }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      </span>
+    {% elif item.source == "manual" %}
+      <span class="shopping-item__source">Eigener Eintrag</span>
+    {% endif %}
+  </div>
+
+  <div class="button-row">
+    {% if item.state == "open" %}
+      <form method="post" action="{% url 'shopping-item-state' item.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="version" value="{{ item.version }}">
+        <input type="hidden" name="state" value="skipped">
+        <button type="submit">Überspringen</button>
+      </form>
+    {% else %}
+      <span class="status status--{% if item.state == 'purchased' %}in_stock{% else %}unknown{% endif %}">{{ item.get_state_display }}</span>
+      <form method="post" action="{% url 'shopping-item-state' item.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="version" value="{{ item.version }}">
+        <input type="hidden" name="state" value="open">
+        <button type="submit">Wieder öffnen</button>
+      </form>
+    {% endif %}
+    {% if item.source == "manual" %}
+      <form method="post" action="{% url 'shopping-item-delete' item.id %}">
+        {% csrf_token %}
+        <button class="danger" type="submit"><span aria-hidden="true">✕</span><span class="sr-only">{{ item.label }} entfernen</span></button>
+      </form>
+    {% endif %}
+  </div>
+</article>

@@ -1,5 +1,7 @@
 import json
+from io import StringIO
 
+from django.core import management
 from django.test import Client, TestCase
 
 from .models import Household, HouseholdMembership, User
@@ -34,3 +36,15 @@ class IdentityAndIsolationTests(TestCase):
     def test_readiness_is_available(self):
         self.assertEqual(self.client.get("/health/live").status_code, 200)
         self.assertEqual(self.client.get("/health/ready").status_code, 200)
+
+    def test_set_user_password_updates_a_hashed_password(self):
+        output = StringIO()
+
+        management.call_command(
+            "set_user_password", "mara", password="new-secret", stdout=output
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("new-secret"))
+        self.assertFalse(self.user.password == "new-secret")
+        self.assertIn('Password updated for user "mara".', output.getvalue())

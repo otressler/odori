@@ -20,9 +20,9 @@ class RecipeSource(models.Model):
 
 class Recipe(models.Model):
     class Status(models.TextChoices):
-        DRAFT = "draft", "Draft"
-        APPROVED = "approved", "Approved"
-        ARCHIVED = "archived", "Archived"
+        DRAFT = "draft", "Entwurf"
+        APPROVED = "approved", "Veröffentlicht"
+        ARCHIVED = "archived", "Archiviert"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="recipes")

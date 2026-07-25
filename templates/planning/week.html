@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Wochenplan · Odori{% endblock %}
+
+{% block content %}
+<div class="week-head">
+  <div>
+    <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Il menù della settimana</p>
+    <h1 style="margin:0">{{ plan.week_start_date|date:"j. F" }} – {{ week_end|date:"j. F Y" }}</h1>
+  </div>
+  <nav class="button-row" aria-label="Woche wechseln">
+    <a class="button" href="{% url 'plan-week' previous_week|date:'Y-m-d' %}" rel="prev">← Vorige</a>
+    <a class="button" href="{% url 'plan-week' this_week|date:'Y-m-d' %}">Diese Woche</a>
+    <a class="button" href="{% url 'plan-week' next_week|date:'Y-m-d' %}" rel="next">Nächste →</a>
+  </nav>
+</div>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2>Mahlzeit einplanen</h2>
+    <a class="button ghost" href="{% url 'cook-history' %}">Kochhistorie</a>
+  </div>
+  <form class="form-grid" method="post" action="{% url 'slot-create' plan.week_start_date|date:'Y-m-d' %}">
+    {% csrf_token %}
+    <div class="field">
+      <label for="entry-type">Art</label>
+      <select id="entry-type" name="entry_type">
+        {% for value, label in entry_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="entry-recipe">Rezept</label>
+      <select id="entry-recipe" name="recipe_id">
+        <option value="">— bitte wählen —</option>
+        {% for recipe in recipes %}<option value="{{ recipe.id }}">{{ recipe.title }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="entry-date">Tag</label>
+      <input id="entry-date" name="date" type="date" required
+             value="{{ default_date }}"
+             min="{{ plan.week_start_date|date:'Y-m-d' }}" max="{{ week_end|date:'Y-m-d' }}">
+    </div>
+    <div class="field">
+      <label for="entry-slot">Mahlzeit</label>
+      <select id="entry-slot" name="slot">
+        {% for value, label in slot_choices %}<option value="{{ value }}"{% if value == default_slot %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="entry-servings">Portionen</label>
+      <input id="entry-servings" name="servings" type="number" min="1" inputmode="numeric" placeholder="wie im Rezept">
+    </div>
+    <div class="field">
+      <label for="entry-notes">Text für Reste oder Notiz</label>
+      <input id="entry-notes" name="notes" maxlength="300" placeholder="z. B. Reste vom Sonntag">
+    </div>
+    <div class="button-row">
+      <button class="primary" type="submit">Einplanen</button>
+      <span class="muted">Nur veröffentlichte Rezepte lassen sich einplanen.</span>
+    </div>
+  </form>
+</section>
+
+<form class="button-row" method="post" action="{% url 'shopping-generate' %}" style="margin:1.25rem 0">
+  {% csrf_token %}
+  <input type="hidden" name="week_start" value="{{ plan.week_start_date|date:'Y-m-d' }}">
+  <button class="secondary" type="submit">Einkaufsliste aus dieser Woche erzeugen</button>
+</form>
+
+<div class="week-grid">
+  {% for day in days %}
+    <section class="day{% if day.is_today %} day--today{% endif %}" aria-label="{{ day.date|date:'l, j. F' }}">
+      <header class="day__head">
+        <span class="day__weekday">{{ day.date|date:"D" }}</span>
+        <span class="day__date">{{ day.date|date:"j.n." }}{% if day.is_today %} · heute{% endif %}</span>
+      </header>
+
+      {% for cell in day.slots %}
+        <div class="meal-slot">
+          <span class="meal-slot__label">{{ cell.label }}</span>
+          {% for entry in cell.entries %}
+            <article class="meal-entry{% if entry.is_cooked %} meal-entry--cooked{% endif %}{% if entry.entry_type != 'recipe' %} meal-entry--note{% endif %}">
+              {% if entry.entry_type == "recipe" and entry.recipe %}
+                <a class="meal-entry__title" href="{% url 'recipe-detail' entry.recipe.id %}">{{ entry.display_label }}</a>
+                <span class="meal-entry__meta">{{ entry.servings }} Portionen{% if entry.is_cooked %} · gekocht{% endif %}</span>
+              {% else %}
+                <span class="meal-entry__title">{{ entry.display_label }}</span>
+                <span class="meal-entry__meta">{{ entry.get_entry_type_display }}</span>
+              {% endif %}
+
+              {% if entry.is_duplicate or entry.is_recent_repeat %}
+                <p class="meal-entry__flags" style="margin:0">
+                  {% if entry.is_duplicate %}<span class="flag">Diese Woche doppelt</span>{% endif %}
+                  {% if entry.is_recent_repeat %}<span class="flag flag--repeat">Kürzlich gekocht</span>{% endif %}
+                </p>
+              {% endif %}
+
+              <div class="meal-entry__tools">
+                {% if not entry.is_cooked %}
+                  {# Explicit move controls: usable with keyboard, screen reader and touch. #}
+                  <div class="meal-entry__move" role="group" aria-label="{{ entry.display_label }} verschieben">
+                    <form method="post" action="{% url 'slot-move' entry.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="version" value="{{ entry.version }}">
+                      <input type="hidden" name="day_delta" value="-1">
+                      <button type="submit" title="Einen Tag früher"><span aria-hidden="true">←</span><span class="sr-only">{{ entry.display_label }} einen Tag früher</span></button>
+                    </form>
+                    <form method="post" action="{% url 'slot-move' entry.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="version" value="{{ entry.version }}">
+                      <input type="hidden" name="day_delta" value="1">
+                      <button type="submit" title="Einen Tag später"><span aria-hidden="true">→</span><span class="sr-only">{{ entry.display_label }} einen Tag später</span></button>
+                    </form>
+                    <form method="post" action="{% url 'slot-move' entry.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="version" value="{{ entry.version }}">
+                      <input type="hidden" name="slot_delta" value="-1">
+                      <button type="submit" title="Frühere Mahlzeit"><span aria-hidden="true">↑</span><span class="sr-only">{{ entry.display_label }} zur früheren Mahlzeit</span></button>
+                    </form>
+                    <form method="post" action="{% url 'slot-move' entry.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="version" value="{{ entry.version }}">
+                      <input type="hidden" name="slot_delta" value="1">
+                      <button type="submit" title="Spätere Mahlzeit"><span aria-hidden="true">↓</span><span class="sr-only">{{ entry.display_label }} zur späteren Mahlzeit</span></button>
+                    </form>
+                  </div>
+                {% endif %}
+
+                <div class="meal-entry__actions">
+                  {% if entry.entry_type == "recipe" %}
+                    {% if entry.is_cooked %}
+                      <form method="post" action="{% url 'slot-uncook' entry.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Zurücknehmen</button>
+                      </form>
+                    {% else %}
+                      <a class="button primary" href="{% url 'kitchen-mode' entry.id %}">Kochen</a>
+                    {% endif %}
+                  {% endif %}
+
+                  <form method="post" action="{% url 'slot-delete' entry.id %}">
+                    {% csrf_token %}
+                    <button class="danger" type="submit"><span aria-hidden="true">✕</span><span class="sr-only">{{ entry.display_label }} entfernen</span></button>
+                  </form>
+                </div>
+              </div>
+            </article>
+          {% empty %}
+            <a class="slot-empty" href="?date={{ day.date|date:'Y-m-d' }}&amp;slot={{ cell.key }}#entry-type">
+              + {{ cell.label }} planen
+            </a>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

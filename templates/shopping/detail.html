@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ list.name }} · Odori{% endblock %}
+
+{% block content %}
+<div class="split" style="margin-bottom:1rem">
+  <div>
+    <p class="muted" style="margin:0">Einkaufsliste</p>
+    <h1 style="margin:0">{{ list.name }}</h1>
+    {% if list.generated_at %}<p class="muted" style="margin:.25rem 0 0">Zuletzt berechnet am {{ list.generated_at|date:"j.n.Y, H:i" }} Uhr</p>{% endif %}
+  </div>
+  <div class="button-row">
+    <form method="post" action="{% url 'shopping-generate' %}">
+      {% csrf_token %}
+      <input type="hidden" name="week_start" value="{{ week_start }}">
+      <button type="submit">Neu berechnen</button>
+    </form>
+    <form method="post" action="{% url 'shopping-complete' list.id %}">
+      {% csrf_token %}
+      <button class="secondary" type="submit">Einkauf abschließen</button>
+    </form>
+  </div>
+</div>
+
+<p class="message message--warning">
+  Eigene Einträge sowie gekaufte und übersprungene Zeilen bleiben beim Neuberechnen erhalten.
+</p>
+
+<section class="panel">
+  <h2>Eigenen Eintrag hinzufügen</h2>
+  <form class="inline-form" method="post" action="{% url 'shopping-item-create' list.id %}">
+    {% csrf_token %}
+    <div class="field">
+      <label for="manual-label">Was fehlt?</label>
+      <input id="manual-label" name="label" required maxlength="200" placeholder="z. B. Spülmittel">
+    </div>
+    <div class="field">
+      <label for="manual-ingredient">Mit Vorrat verknüpfen</label>
+      <select id="manual-ingredient" name="ingredient_id">
+        <option value="">— optional —</option>
+        {% for ingredient in ingredients %}<option value="{{ ingredient.id }}">{{ ingredient.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="primary" type="submit">Hinzufügen</button>
+  </form>
+  <p class="field__hint">Verknüpfte Einträge setzen den Vorrat beim Abhaken automatisch auf „vorrätig“.</p>
+</section>
+
+<div class="rule-heading"><h2>Offen ({{ open_items|length }})</h2></div>
+
+<div class="shopping-list">
+  {% for item in open_items %}
+    {% include "shopping/_item.html" with item=item %}
+  {% empty %}
+    <div class="empty">
+      <h3>Alles erledigt</h3>
+      <p>Nichts mehr offen auf dieser Liste.</p>
+    </div>
+  {% endfor %}
+</div>
+
+{% if purchased_items %}
+  <div class="rule-heading"><h2>Gekauft ({{ purchased_items|length }})</h2></div>
+  <div class="shopping-list">
+    {% for item in purchased_items %}{% include "shopping/_item.html" with item=item %}{% endfor %}
+  </div>
+{% endif %}
+
+{% if skipped_items %}
+  <div class="rule-heading"><h2>Übersprungen ({{ skipped_items|length }})</h2></div>
+  <div class="shopping-list">
+    {% for item in skipped_items %}{% include "shopping/_item.html" with item=item %}{% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

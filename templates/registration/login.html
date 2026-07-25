@@ -1,3 +1,38 @@
-{% extends "base.html" %}{% block title %}Anmelden · Odori{% endblock %}{% block content %}
-<section class="card narrow"><h1>Willkommen bei Odori</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary">Anmelden</button></form></section>
+{% extends "base.html" %}
+{% block title %}Anmelden · Odori{% endblock %}
+{% block body_class %}auth{% endblock %}
+
+{% block chrome %}{% endblock %}
+{% block tabbar %}{% endblock %}
+
+{% block content %}
+<div class="narrow">
+  <div class="brand" style="justify-content:center;margin-bottom:1.5rem">
+    <svg class="brand__mark" aria-hidden="true"><use href="#i-sprig"></use></svg>
+    Odori<span class="brand__tag">Küche &amp; Vorrat</span>
+  </div>
+
+  <section class="panel">
+    <h1 style="margin-top:0">Willkommen zurück</h1>
+    <p class="muted">Melde dich an, um Plan, Vorrat und Rezepte deines Haushalts zu sehen.</p>
+
+    {% if form.errors %}
+      <p class="message message--error">Benutzername oder Passwort stimmen nicht.</p>
+    {% endif %}
+
+    <form method="post" class="stack">
+      {% csrf_token %}
+      <div class="field">
+        <label for="id_username">Benutzername</label>
+        <input id="id_username" name="username" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="id_password">Passwort</label>
+        <input id="id_password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="primary" type="submit">Anmelden</button>
+    </form>
+  </section>
+</div>
 {% endblock %}

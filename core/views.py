@@ -2,9 +2,13 @@ from django.contrib.auth.decorators import login_required
 from django.db import connection
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 
 from pantry.models import InventoryItem
+from planning.models import MealSlot
+from planning.services import current_week_start, get_or_create_plan
 from recipes.models import Recipe
+from shopping.models import ShoppingItem, ShoppingList
 
 from .services import household_for
 
@@ -24,16 +28,41 @@ def readiness(request):
 @login_required
 def home(request):
     household = household_for(request.user)
+    today = timezone.localdate()
+    plan = get_or_create_plan(user=request.user, week_start=current_week_start())
+    today_slots = (
+        MealSlot.objects.select_related("recipe")
+        .filter(plan=plan, date=today)
+        .order_by("created_at")
+    )
+    active_list = ShoppingList.objects.filter(
+        household=household, state=ShoppingList.State.ACTIVE
+    ).first()
+    open_items = (
+        ShoppingItem.objects.filter(
+            shopping_list=active_list, state=ShoppingItem.State.OPEN
+        ).count()
+        if active_list
+        else 0
+    )
     return render(
         request,
         "home.html",
         {
             "household": household,
+            "today": today,
+            "today_slots": today_slots,
+            "plan": plan,
+            "active_list": active_list,
+            "open_items": open_items,
             "recipe_count": Recipe.objects.filter(
                 household=household, status=Recipe.Status.APPROVED
             ).count(),
             "in_stock_count": InventoryItem.objects.filter(
                 household=household, status=InventoryItem.Status.IN_STOCK
+            ).count(),
+            "replenish_count": InventoryItem.objects.filter(
+                household=household, status=InventoryItem.Status.NEEDS_REPLENISHMENT
             ).count(),
         },
     )

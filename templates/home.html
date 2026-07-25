@@ -1,4 +1,117 @@
-{% extends "base.html" %}{% block content %}
-<section class="hero"><p>Dein Küchenbuch</p><h1>{{ household.name }}</h1><p>{{ recipe_count }} veröffentlichte Rezepte · {{ in_stock_count }} Zutaten vorrätig</p></section>
-<section class="actions"><a class="card" href="/recipes/">Rezepte verwalten</a><a class="card" href="/pantry/">Vorrat aktualisieren</a></section>
+{% extends "base.html" %}
+{% block title %}{{ household.name }} · Odori{% endblock %}
+
+{% block content %}
+<section class="hero">
+  {# Rolling hills, cypresses and a farmhouse. Purely decorative. #}
+  <svg class="hero__scene" viewBox="0 0 1200 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <path d="M0 210c140-46 250-24 360 4s210 44 330 10 300-70 510-24v120H0Z" fill="#c9a86a" opacity=".55"/>
+    <path d="M0 246c170-52 286-16 404 14s232 36 356 4 290-52 440-16v72H0Z" fill="#9aa35f" opacity=".7"/>
+    <g fill="#4d5c2b">
+      <ellipse cx="212" cy="236" rx="11" ry="42"/>
+      <ellipse cx="240" cy="242" rx="9" ry="34"/>
+      <ellipse cx="266" cy="238" rx="10" ry="39"/>
+      <ellipse cx="905" cy="240" rx="10" ry="38"/>
+      <ellipse cx="930" cy="246" rx="8" ry="30"/>
+    </g>
+    <g transform="translate(560 176)">
+      <path d="M0 26h96v46H0z" fill="#f1e0c2"/>
+      <path d="M-8 26 48 0l56 26Z" fill="#b4563a"/>
+      <path d="M36 48h22v24H36z" fill="#8a5a34"/>
+      <path d="M14 38h14v12H14zM68 38h14v12H68z" fill="#8a5a34" opacity=".7"/>
+    </g>
+    <path d="M0 286c190-40 320-10 470 12s262 24 400 2 240-30 330-8v28H0Z" fill="#6a7d3e"/>
+  </svg>
+
+  <div class="hero__body">
+    <p class="hero__eyebrow">La cucina di casa</p>
+    <h1>{{ household.name }}</h1>
+    <p class="hero__lede">
+      {% if today_slots %}
+        Heute steht {% for slot in today_slots %}<strong>{{ slot.display_label }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %} auf dem Tisch.
+      {% else %}
+        Für heute ist noch nichts geplant. Ein guter Moment, die Woche zu ordnen.
+      {% endif %}
+    </p>
+    <div class="hero__actions">
+      <a class="button primary" href="/plan/">Woche planen</a>
+      <a class="button" href="/recipes/new/">Rezept notieren</a>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="stat-row">
+    <div>
+      <span class="stat__value">{{ recipe_count }}</span>
+      <span class="stat__label">Rezepte im Buch</span>
+    </div>
+    <div>
+      <span class="stat__value">{{ in_stock_count }}</span>
+      <span class="stat__label">Zutaten vorrätig</span>
+    </div>
+    <div>
+      <span class="stat__value">{{ replenish_count }}</span>
+      <span class="stat__label">Nachzukaufen</span>
+    </div>
+    <div>
+      <span class="stat__value">{{ open_items }}</span>
+      <span class="stat__label">Offen auf der Liste</span>
+    </div>
+  </div>
+</section>
+
+<div class="rule-heading"><h2>Heute</h2></div>
+
+{% if today_slots %}
+  <div class="stack">
+    {% for slot in today_slots %}
+      <article class="panel split">
+        <div>
+          <p class="muted" style="margin:0">{{ slot.get_slot_display }}</p>
+          <h3 style="margin:0">{{ slot.display_label }}</h3>
+          {% if slot.servings %}<p class="muted" style="margin:0">Für {{ slot.servings }} Portionen</p>{% endif %}
+        </div>
+        <div class="button-row">
+          {% if slot.entry_type == "recipe" %}
+            {% if slot.is_cooked %}
+              <span class="status status--cooked">Gekocht</span>
+            {% else %}
+              <a class="button primary" href="{% url 'kitchen-mode' slot.id %}">Kochen</a>
+            {% endif %}
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="empty">
+    Kein Eintrag für heute. <a href="/plan/">Plane eine Mahlzeit</a>, dann findest du sie hier wieder.
+  </p>
+{% endif %}
+
+<div class="rule-heading"><h2>Küchenwege</h2></div>
+
+<nav class="arch-grid" aria-label="Schnellzugriff">
+  <a class="arch" href="/recipes/">
+    <svg class="arch__icon" aria-hidden="true"><use href="#i-book"></use></svg>
+    <span class="arch__title">Rezeptbuch</span>
+    <span class="arch__meta">Sammeln, überarbeiten, veröffentlichen</span>
+  </a>
+  <a class="arch" href="/plan/">
+    <svg class="arch__icon" aria-hidden="true"><use href="#i-calendar"></use></svg>
+    <span class="arch__title">Wochenplan</span>
+    <span class="arch__meta">Sieben Tage im Blick</span>
+  </a>
+  <a class="arch" href="/shopping/">
+    <svg class="arch__icon" aria-hidden="true"><use href="#i-basket"></use></svg>
+    <span class="arch__title">Einkauf</span>
+    <span class="arch__meta">{% if open_items %}{{ open_items }} offene Einträge{% else %}Liste aus dem Plan erzeugen{% endif %}</span>
+  </a>
+  <a class="arch" href="/pantry/">
+    <svg class="arch__icon" aria-hidden="true"><use href="#i-jar"></use></svg>
+    <span class="arch__title">Vorrat</span>
+    <span class="arch__meta">Verfügbarkeit statt Mengen</span>
+  </a>
+</nav>
 {% endblock %}

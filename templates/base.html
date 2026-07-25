@@ -1,12 +1,71 @@
-<!doctype html>
+{% load static %}<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4d29c" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1d1611" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Odori — das Küchenbuch deines Haushalts.">
   <title>{% block title %}Odori{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{% static 'app.css' %}">
 </head>
-<body>
-<header><a class="brand" href="/">Odori</a>{% if user.is_authenticated %}<nav><a href="/recipes/">Rezepte</a><a href="/pantry/">Vorrat</a><form method="post" action="/accounts/logout/">{% csrf_token %}<button>Abmelden</button></form></nav>{% endif %}</header>
-<main>{% for message in messages %}<p class="message">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</main>
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip-link" href="#main">Zum Inhalt springen</a>
+
+{% include "partials/icons.html" %}
+
+{% block chrome %}
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="brand" href="/">
+      <svg class="brand__mark" aria-hidden="true"><use href="#i-sprig"></use></svg>
+      Odori<span class="brand__tag">Cucina</span>
+    </a>
+    {% if user.is_authenticated %}
+      <nav class="site-nav" aria-label="Hauptnavigation">
+        <a href="/"{% if request.path == "/" %} aria-current="page"{% endif %}>Start</a>
+        <a href="/recipes/"{% if "/recipes/" in request.path %} aria-current="page"{% endif %}>Rezepte</a>
+        <a href="/plan/"{% if "/plan/" in request.path %} aria-current="page"{% endif %}>Wochenplan</a>
+        <a href="/shopping/"{% if "/shopping/" in request.path %} aria-current="page"{% endif %}>Einkauf</a>
+        <a href="/pantry/"{% if "/pantry/" in request.path %} aria-current="page"{% endif %}>Vorrat</a>
+      </nav>
+      <div class="header-actions">
+        <span class="sr-only">Angemeldet als {{ user.name_for_display }}</span>
+        <form method="post" action="/accounts/logout/">{% csrf_token %}
+          <button class="ghost" type="submit">Abmelden</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+</header>
+{% endblock %}
+
+<main id="main">
+  {% if messages %}
+    <div class="messages" role="status" aria-live="polite">
+      {% for message in messages %}
+        <p class="message{% if message.tags == 'error' %} message--error{% elif message.tags == 'warning' %} message--warning{% endif %}">{{ message }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+{% if user.is_authenticated %}{% block tabbar %}
+<nav class="tab-bar" aria-label="Bereiche">
+  <a href="/"{% if request.path == "/" %} aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="#i-home"></use></svg>Start</a>
+  <a href="/recipes/"{% if "/recipes/" in request.path %} aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="#i-book"></use></svg>Rezepte</a>
+  <a href="/plan/"{% if "/plan/" in request.path %} aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="#i-calendar"></use></svg>Plan</a>
+  <a href="/shopping/"{% if "/shopping/" in request.path %} aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="#i-basket"></use></svg>Einkauf</a>
+  <a href="/pantry/"{% if "/pantry/" in request.path %} aria-current="page"{% endif %}>
+    <svg aria-hidden="true"><use href="#i-jar"></use></svg>Vorrat</a>
+</nav>
+{% endblock %}{% endif %}
+
+{% block scripts %}{% endblock %}
 </body>
 </html>

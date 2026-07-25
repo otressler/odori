@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Geplante Mahlzeiten betroffen · Odori{% endblock %}
+
+{% block content %}
+<h1>Moment — das ist eingeplant</h1>
+
+<p class="message message--warning">
+  <strong>{{ ingredient.name }}</strong> wird für {{ slots|length }} kommende Mahlzeit{{ slots|length|pluralize:"en" }}
+  gebraucht, die noch nicht gekocht {{ slots|length|pluralize:"ist,sind" }}.
+</p>
+
+<section class="panel">
+  <h2>Betroffene Mahlzeiten</h2>
+  <ul class="ingredient-list">
+    {% for slot in slots %}
+      <li>
+        <span class="amount">{{ slot.date|date:"D, j.n." }}</span>
+        <span>{{ slot.get_slot_display }} · {{ slot.display_label }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<div class="button-row" style="margin-top:1.25rem">
+  <form method="post" action="{% url 'inventory-status' ingredient.id %}">
+    {% csrf_token %}
+    <input type="hidden" name="version" value="{{ version }}">
+    <input type="hidden" name="status" value="{{ status }}">
+    <input type="hidden" name="confirm_planned_use" value="true">
+    <button class="primary" type="submit">Trotzdem ändern</button>
+  </form>
+  <a class="button" href="{% url 'inventory-page' %}">Abbrechen</a>
+  <a class="button ghost" href="/plan/">Plan ansehen</a>
+</div>
+
+<p class="field__hint">Deine Entscheidung wird im Vorratsverlauf festgehalten.</p>
+{% endblock %}

@@ -20,6 +20,8 @@ INSTALLED_APPS = [
     "core",
     "pantry",
     "recipes",
+    "planning",
+    "shopping",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -67,6 +69,8 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {"staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"}}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "home"
+LOGOUT_REDIRECT_URL = "login"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = not DEBUG

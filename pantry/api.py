@@ -8,7 +8,7 @@ from django.views.decorators.http import require_http_methods
 from core.services import household_for
 
 from .models import CanonicalIngredient, IngredientCategory, InventoryItem
-from .services import change_inventory_status, merge_ingredients
+from .services import PlannedIngredientInUse, change_inventory_status, merge_ingredients
 
 
 def payload(request):
@@ -104,6 +104,30 @@ def inventory_json(item):
     }
 
 
+def planned_slots_json(slots):
+    return [
+        {
+            "slotId": str(slot.id),
+            "date": slot.date.isoformat(),
+            "slot": slot.slot,
+            "recipeId": str(slot.recipe_id) if slot.recipe_id else None,
+            "title": slot.recipe.title if slot.recipe_id else slot.notes,
+        }
+        for slot in slots
+    ]
+
+
+def planned_conflict(conflict):
+    body = {
+        "error": {
+            "code": "planned_ingredient_in_use",
+            "message": "Diese Zutat wird für geplante Mahlzeiten gebraucht.",
+            "plannedSlots": planned_slots_json(conflict.slots),
+        }
+    }
+    return JsonResponse(body, status=409)
+
+
 @login_required
 @require_http_methods(["GET", "PATCH"])
 def inventory(request):
@@ -125,13 +149,44 @@ def inventory(request):
             return error(
                 "validation_failed", "Invalid availability status.", fields={"status": "Invalid."}
             )
-        result = change_inventory_status(
-            user=request.user,
-            ingredient_id=change.get("ingredientId"),
-            status=change["status"],
-            version=change.get("version", 1),
-        )
+        try:
+            result = change_inventory_status(
+                user=request.user,
+                ingredient_id=change.get("ingredientId"),
+                status=change["status"],
+                version=change.get("version", 1),
+                confirm_planned_use=bool(change.get("confirmPlannedUse")),
+            )
+        except PlannedIngredientInUse as conflict:
+            return planned_conflict(conflict)
         if result is None:
             return error("stale_version", "This inventory item changed elsewhere.", 409)
         updated.append(inventory_json(result))
     return JsonResponse({"items": updated})
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_status(request, ingredient_id):
+    """Two-step availability change: `confirmPlannedUse` is an explicit user decision."""
+
+    data = payload(request)
+    if data is None:
+        return error("malformed_input", "Expected a JSON object.", 400)
+    if data.get("status") not in InventoryItem.Status.values:
+        return error(
+            "validation_failed", "Invalid availability status.", fields={"status": "Invalid."}
+        )
+    try:
+        result = change_inventory_status(
+            user=request.user,
+            ingredient_id=ingredient_id,
+            status=data["status"],
+            version=data.get("version", 1),
+            confirm_planned_use=bool(data.get("confirmPlannedUse")),
+        )
+    except PlannedIngredientInUse as conflict:
+        return planned_conflict(conflict)
+    if result is None:
+        return error("stale_version", "This inventory item changed elsewhere.", 409)
+    return JsonResponse(inventory_json(result))

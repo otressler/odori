@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Einkauf · Odori{% endblock %}
+
+{% block content %}
+<h1>Einkauf</h1>
+<p>Die Liste entsteht aus deinem Wochenplan. Vorrätige Zutaten bleiben außen vor.</p>
+
+<form class="panel inline-form" method="post" action="{% url 'shopping-generate' %}">
+  {% csrf_token %}
+  <div class="field">
+    <label for="week-start">Woche</label>
+    <input id="week-start" name="week_start" type="date" value="{{ week_start }}">
+  </div>
+  <button class="primary" type="submit">Liste erzeugen</button>
+</form>
+
+<div class="rule-heading"><h2>Frühere Listen</h2></div>
+
+{% for entry in lists %}
+  <a class="card split" href="{% url 'shopping-detail' entry.id %}">
+    <strong>{{ entry.name }}</strong>
+    <span class="status status--{{ entry.state }}">{{ entry.get_state_display }}</span>
+  </a>
+{% empty %}
+  <div class="empty">
+    <h3>Noch keine Einkaufsliste</h3>
+    <p>Plane zuerst ein paar Mahlzeiten, dann rechnet Odori die Zutaten zusammen.</p>
+    <p><a class="button primary" href="/plan/">Zum Wochenplan</a></p>
+  </div>
+{% endfor %}
+{% endblock %}

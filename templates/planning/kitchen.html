@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Kochen: {{ recipe.title }} · Odori{% endblock %}
+{% block body_class %}kitchen{% endblock %}
+
+{% block content %}
+<div class="split" style="margin-bottom:1rem">
+  <div>
+    <p class="muted" style="margin:0">{{ slot.date|date:"l, j. F" }} · {{ slot.get_slot_display }}</p>
+    <h1 style="margin:0">{{ recipe.title }}</h1>
+    <p class="muted" style="margin:.35rem 0 0">Für {{ slot.servings }} Portionen{% if recipe.servings %} (Rezept: {{ recipe.servings }}){% endif %}</p>
+  </div>
+  <a class="button ghost" href="{% url 'plan-week' slot.plan.week_start_date|date:'Y-m-d' %}">Zurück zum Plan</a>
+</div>
+
+<p class="muted" id="wake-note" data-idle="Der Bildschirm darf sich abschalten. Tippe „Bildschirm wachhalten“, wenn dein Browser das unterstützt.">
+  Der Bildschirm darf sich abschalten. Tippe „Bildschirm wachhalten“, wenn dein Browser das unterstützt.
+</p>
+<p class="button-row">
+  <button type="button" id="wake-toggle" aria-pressed="false">Bildschirm wachhalten</button>
+</p>
+
+<section class="panel">
+  <h2>Zutaten</h2>
+  <ul class="ingredient-list">
+    {% for row in lines %}
+      <li>
+        <span class="amount">{% if row.scaled_amount is not None %}{{ row.scaled_amount|floatformat:"-2" }} {% endif %}{{ row.line.unit }}</span>
+        <span>
+          {{ row.line.source_text }}
+          {% if row.inventory %}<span class="status status--{{ row.inventory.status }}">{{ row.inventory.get_status_display }}</span>{% endif %}
+        </span>
+      </li>
+    {% empty %}
+      <li>Für dieses Rezept sind keine Zutaten hinterlegt.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="panel" id="steps" data-step-count="{{ steps|length }}">
+  <div class="panel__head">
+    <h2>Zubereitung</h2>
+    <span class="muted" id="step-counter">Schritt 1 von {{ steps|length }}</span>
+  </div>
+
+  <div class="kitchen-progress" id="progress" aria-hidden="true">
+    {% for step in steps %}<span data-index="{{ forloop.counter0 }}"{% if forloop.first %} data-done="true"{% endif %}></span>{% endfor %}
+  </div>
+
+  {% for step in steps %}
+    <article class="kitchen-step" data-index="{{ forloop.counter0 }}"{% if not forloop.first %} hidden{% endif %}
+             tabindex="-1" aria-label="Schritt {{ forloop.counter }} von {{ steps|length }}">
+      <span class="kitchen-step__index">Schritt {{ forloop.counter }} von {{ steps|length }}</span>
+      {{ step.body|linebreaksbr }}
+    </article>
+  {% empty %}
+    <p class="muted">Für dieses Rezept sind keine Schritte hinterlegt.</p>
+  {% endfor %}
+
+  {% if steps %}
+    {# Without JavaScript every step is already visible above; these controls are an enhancement. #}
+    <div class="kitchen-controls" id="step-controls" hidden>
+      <button type="button" id="step-previous">Zurück</button>
+      <button type="button" class="primary" id="step-next">Weiter</button>
+    </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Kurzzeitwecker</h2>
+  <div class="timer" id="timer">
+    <span class="timer__display" id="timer-display" role="timer" aria-live="off">00:00</span>
+    <div class="button-row">
+      <button type="button" data-timer-add="60">+1 Min</button>
+      <button type="button" data-timer-add="300">+5 Min</button>
+      <button type="button" data-timer-add="600">+10 Min</button>
+      <button type="button" class="primary" id="timer-start">Start</button>
+      <button type="button" id="timer-reset">Zurücksetzen</button>
+    </div>
+  </div>
+  <p class="field__hint" id="timer-status" aria-live="polite"></p>
+</section>
+
+<form class="panel" method="post" action="{% url 'slot-cook' slot.id %}">
+  {% csrf_token %}
+  <input type="hidden" name="slot_version" value="{{ slot.version }}">
+  <h2>Fertig gekocht</h2>
+  <p class="muted">
+    Odori nimmt nicht an, dass alle Zutaten aufgebraucht sind. Wähle nur aus, was jetzt wirklich
+    nachgekauft werden muss — diese Änderungen brauchen keine zusätzliche Rückfrage.
+  </p>
+  <div class="deplete-list">
+    {% for row in lines %}
+      {% if row.line.canonical_ingredient %}
+        <label>
+          <input type="checkbox" name="deplete" value="{{ row.line.canonical_ingredient.id }}">
+          <span>{{ row.line.canonical_ingredient.name }} nachkaufen</span>
+        </label>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p class="button-row" style="margin-top:1rem">
+    <button class="primary" type="submit">
+      <svg aria-hidden="true" style="width:1.1rem;height:1.1rem"><use href="#i-flame"></use></svg>
+      Als gekocht markieren
+    </button>
+  </p>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+
+  /* ---- Stepper: one large step at a time, with a no-JS fallback above. ---- */
+  var container = document.getElementById("steps");
+  var steps = Array.prototype.slice.call(container.querySelectorAll(".kitchen-step"));
+  var controls = document.getElementById("step-controls");
+  var counter = document.getElementById("step-counter");
+  var marks = Array.prototype.slice.call(document.querySelectorAll("#progress span"));
+  var current = 0;
+
+  function show(index, moveFocus) {
+    current = Math.min(Math.max(index, 0), steps.length - 1);
+    steps.forEach(function (step, i) { step.hidden = i !== current; });
+    marks.forEach(function (mark, i) {
+      if (i <= current) { mark.setAttribute("data-done", "true"); }
+      else { mark.removeAttribute("data-done"); }
+    });
+    counter.textContent = "Schritt " + (current + 1) + " von " + steps.length;
+    document.getElementById("step-previous").disabled = current === 0;
+    document.getElementById("step-next").disabled = current === steps.length - 1;
+    if (moveFocus) { steps[current].focus(); }
+  }
+
+  if (steps.length && controls) {
+    controls.hidden = false;
+    document.getElementById("step-previous").addEventListener("click", function () { show(current - 1, true); });
+    document.getElementById("step-next").addEventListener("click", function () { show(current + 1, true); });
+    document.addEventListener("keydown", function (event) {
+      if (event.target.matches("input, textarea, select")) { return; }
+      if (event.key === "ArrowRight") { show(current + 1, true); }
+      if (event.key === "ArrowLeft") { show(current - 1, true); }
+    });
+    show(0, false);
+  }
+
+  /* ---- Timer ---- */
+  var remaining = 0;
+  var ticking = null;
+  var display = document.getElementById("timer-display");
+  var status = document.getElementById("timer-status");
+  var timerBox = document.getElementById("timer");
+
+  function render() {
+    var minutes = Math.floor(remaining / 60);
+    var seconds = remaining % 60;
+    display.textContent = String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+  }
+
+  function stop() {
+    if (ticking) { clearInterval(ticking); ticking = null; }
+    document.getElementById("timer-start").textContent = "Start";
+  }
+
+  document.querySelectorAll("[data-timer-add]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      remaining += parseInt(button.getAttribute("data-timer-add"), 10);
+      timerBox.classList.remove("timer--ringing");
+      status.textContent = "";
+      render();
+    });
+  });
+
+  document.getElementById("timer-start").addEventListener("click", function () {
+    if (ticking) { stop(); status.textContent = "Wecker pausiert."; return; }
+    if (remaining <= 0) { status.textContent = "Stelle zuerst eine Zeit ein."; return; }
+    this.textContent = "Pause";
+    status.textContent = "Wecker läuft.";
+    ticking = setInterval(function () {
+      remaining = Math.max(0, remaining - 1);
+      render();
+      if (remaining === 0) {
+        stop();
+        timerBox.classList.add("timer--ringing");
+        status.textContent = "Die Zeit ist um.";
+        if (navigator.vibrate) { navigator.vibrate([250, 120, 250]); }
+      }
+    }, 1000);
+  });
+
+  document.getElementById("timer-reset").addEventListener("click", function () {
+    stop();
+    remaining = 0;
+    timerBox.classList.remove("timer--ringing");
+    status.textContent = "";
+    render();
+  });
+
+  /* ---- Wake Lock, with an honest fallback message when unsupported. ---- */
+  var wakeToggle = document.getElementById("wake-toggle");
+  var wakeNote = document.getElementById("wake-note");
+  var sentinel = null;
+
+  if (!("wakeLock" in navigator)) {
+    wakeToggle.disabled = true;
+    wakeNote.textContent = "Dein Browser kann den Bildschirm nicht wachhalten. Stelle die Bildschirmsperre deines Geräts länger ein.";
+    return;
+  }
+
+  function setState(active, note) {
+    wakeToggle.setAttribute("aria-pressed", active ? "true" : "false");
+    wakeToggle.textContent = active ? "Bildschirm wieder freigeben" : "Bildschirm wachhalten";
+    wakeNote.textContent = note;
+  }
+
+  async function acquire() {
+    try {
+      sentinel = await navigator.wakeLock.request("screen");
+      sentinel.addEventListener("release", function () { sentinel = null; });
+      setState(true, "Der Bildschirm bleibt an, solange diese Seite sichtbar ist.");
+    } catch (error) {
+      sentinel = null;
+      setState(false, "Der Bildschirm konnte nicht wachgehalten werden. Prüfe den Energiesparmodus.");
+    }
+  }
+
+  wakeToggle.addEventListener("click", function () {
+    if (sentinel) { sentinel.release(); sentinel = null; setState(false, wakeNote.dataset.idle); }
+    else { acquire(); }
+  });
+
+  /* Browsers drop the lock when the tab is hidden; reacquire on return. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && wakeToggle.getAttribute("aria-pressed") === "true" && !sentinel) {
+      acquire();
+    }
+  });
+})();
+</script>
+{% endblock %}

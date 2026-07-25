@@ -1,33 +1,135 @@
-{% extends "base.html" %}{% block title %}{% if recipe %}Entwurf bearbeiten{% else %}Neues Rezept{% endif %} · Odori{% endblock %}{% block content %}
-<section class="card"><h1>{% if recipe %}Entwurf bearbeiten{% else %}Neues Rezept{% endif %}</h1><form method="post">{% csrf_token %}
-<label>Titel<input name="title" required value="{{ recipe.title|default:'' }}"></label><label>Portionen<input name="servings" type="number" min="1" value="{{ recipe.servings|default:'' }}"></label><label>Tags <small>(durch Komma getrennt)</small><input name="tags" value="{{ tags }}"></label>
-<h2>Zutaten</h2><div class="ingredient-grid" id="ingredient-rows" data-next-index="{{ ingredient_rows|length }}">{% for row in ingredient_rows %}<div class="ingredient-row"><input name="ingredient-source-{{ forloop.counter0 }}" value="{{ row.source_text|default:'' }}" placeholder="Zutat"><input name="ingredient-amount-{{ forloop.counter0 }}" value="{{ row.amount|default:'' }}" inputmode="decimal" placeholder="Menge"><input name="ingredient-unit-{{ forloop.counter0 }}" value="{{ row.unit|default:'' }}" placeholder="Einheit"><select name="ingredient-canonical-{{ forloop.counter0 }}"><option value="">Nicht zugeordnet</option>{% for ingredient in canonical_ingredients %}<option value="{{ ingredient.id }}"{% if ingredient.id == row.canonical_ingredient_id %} selected{% endif %}>{{ ingredient.name }}</option>{% endfor %}</select></div>{% endfor %}</div><template id="ingredient-row-template"><div class="ingredient-row"><input name="ingredient-source-__index__" placeholder="Zutat"><input name="ingredient-amount-__index__" inputmode="decimal" placeholder="Menge"><input name="ingredient-unit-__index__" placeholder="Einheit"><select name="ingredient-canonical-__index__"><option value="">Nicht zugeordnet</option>{% for ingredient in canonical_ingredients %}<option value="{{ ingredient.id }}">{{ ingredient.name }}</option>{% endfor %}</select></div></template><p><button type="button" id="add-ingredient">Zutat hinzufügen</button></p>
-<h2>Zubereitung</h2><div id="step-rows" data-next-index="{{ step_rows|length }}">{% for row in step_rows %}<label>Schritt {{ forloop.counter }}<textarea name="step-{{ forloop.counter0 }}" rows="2">{{ row.body|default:'' }}</textarea></label>{% endfor %}</div><template id="step-row-template"><label>Schritt <span class="step-number"></span><textarea name="step-__index__" rows="2"></textarea></label></template><p><button type="button" id="add-step">Schritt hinzufügen</button></p><p><button class="primary">Entwurf speichern</button></p></form></section>
+{% extends "base.html" %}
+{% block title %}{% if recipe %}{{ recipe.title|default:"Entwurf" }} bearbeiten{% else %}Neues Rezept{% endif %} · Odori{% endblock %}
+
+{% block content %}
+<h1>{% if recipe %}Rezept überarbeiten{% else %}Neues Rezept{% endif %}</h1>
+<p>Schreibe so auf, wie du es sagen würdest. Mengen und Einheiten dürfen leer bleiben.</p>
+
+<form method="post" id="recipe-form">
+  {% csrf_token %}
+
+  <section class="panel">
+    <div class="form-grid">
+      <div class="field">
+        <label for="title">Titel</label>
+        <input id="title" name="title" required maxlength="200" value="{{ recipe.title|default:'' }}"
+               placeholder="z. B. Ribollita der Nonna">
+      </div>
+      <div class="field">
+        <label for="servings">Portionen</label>
+        <input id="servings" name="servings" type="number" min="1" inputmode="numeric"
+               value="{{ recipe.servings|default:'' }}">
+        <span class="field__hint">Grundlage für das Skalieren.</span>
+      </div>
+      <div class="field">
+        <label for="tags">Schlagworte</label>
+        <input id="tags" name="tags" value="{{ tags }}" placeholder="Suppe, Winter, vegetarisch">
+        <span class="field__hint">Mit Komma trennen.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Zutaten</h2>
+      <button type="button" class="ghost" data-add="ingredient">+ Zeile</button>
+    </div>
+    <div class="ingredient-grid" id="ingredient-rows">
+      {% for row in ingredient_rows %}
+        <div class="ingredient-row">
+          <div class="field">
+            <label for="ingredient-amount-{{ forloop.counter0 }}">Menge</label>
+            <input id="ingredient-amount-{{ forloop.counter0 }}" name="ingredient-amount-{{ forloop.counter0 }}"
+                   value="{{ row.amount|default:'' }}" inputmode="decimal" placeholder="500">
+          </div>
+          <div class="field">
+            <label for="ingredient-unit-{{ forloop.counter0 }}">Einheit</label>
+            <input id="ingredient-unit-{{ forloop.counter0 }}" name="ingredient-unit-{{ forloop.counter0 }}"
+                   value="{{ row.unit|default:'' }}" placeholder="g">
+          </div>
+          <div class="field">
+            <label for="ingredient-source-{{ forloop.counter0 }}">Zutat</label>
+            <input id="ingredient-source-{{ forloop.counter0 }}" name="ingredient-source-{{ forloop.counter0 }}"
+                   value="{{ row.source_text|default:'' }}" placeholder="Cannellini-Bohnen">
+          </div>
+          <div class="field">
+            <label for="ingredient-canonical-{{ forloop.counter0 }}">Vorrat</label>
+            <select id="ingredient-canonical-{{ forloop.counter0 }}" name="ingredient-canonical-{{ forloop.counter0 }}">
+              <option value="">— nicht zugeordnet —</option>
+              {% for ingredient in canonical_ingredients %}
+                <option value="{{ ingredient.id }}"{% if ingredient.id == row.canonical_ingredient_id %} selected{% endif %}>{{ ingredient.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <p class="field__hint">Leere Zeilen werden verworfen. Ohne Zuordnung zählt die Zutat nicht für Vorrat und Einkauf.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Zubereitung</h2>
+      <button type="button" class="ghost" data-add="step">+ Schritt</button>
+    </div>
+    <div class="stack" id="step-rows">
+      {% for row in step_rows %}
+        <div class="field">
+          <label for="step-{{ forloop.counter0 }}">Schritt {{ forloop.counter }}</label>
+          <textarea id="step-{{ forloop.counter0 }}" name="step-{{ forloop.counter0 }}" rows="3"
+                    placeholder="Zwiebeln in Olivenöl glasig dünsten.">{{ row.body|default:'' }}</textarea>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="button-row">
+    <button class="primary" type="submit">Speichern</button>
+    {% if recipe %}<a class="button" href="{% url 'recipe-detail' recipe.id %}">Abbrechen</a>
+    {% else %}<a class="button" href="/recipes/">Abbrechen</a>{% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
 <script>
-	const ingredientRows = document.querySelector("#ingredient-rows");
-	const ingredientTemplate = document.querySelector("#ingredient-row-template");
-	const stepRows = document.querySelector("#step-rows");
-	const stepTemplate = document.querySelector("#step-row-template");
-	const addIngredient = () => {
-		const index = ingredientRows.dataset.nextIndex;
-		ingredientRows.insertAdjacentHTML("beforeend", ingredientTemplate.innerHTML.replaceAll("__index__", index));
-		ingredientRows.dataset.nextIndex = String(Number(index) + 1);
-	};
-	document.querySelector("#add-ingredient").addEventListener("click", addIngredient);
-	ingredientRows.addEventListener("input", (event) => {
-		const rows = ingredientRows.querySelectorAll(".ingredient-row");
-		if (event.target.name.startsWith("ingredient-source-") && event.target.value && event.target.closest(".ingredient-row") === rows[rows.length - 1]) addIngredient();
-	});
-	const addStep = () => {
-		const index = stepRows.dataset.nextIndex;
-		stepRows.insertAdjacentHTML("beforeend", stepTemplate.innerHTML.replaceAll("__index__", index));
-		stepRows.lastElementChild.querySelector(".step-number").textContent = String(Number(index) + 1);
-		stepRows.dataset.nextIndex = String(Number(index) + 1);
-	};
-	document.querySelector("#add-step").addEventListener("click", addStep);
-	stepRows.addEventListener("input", (event) => {
-		const rows = stepRows.querySelectorAll("textarea");
-		if (event.target.name.startsWith("step-") && event.target.value && event.target === rows[rows.length - 1]) addStep();
-	});
+(function () {
+  "use strict";
+  /* Rows are server-rendered; JavaScript only appends more of the same markup. */
+  var ingredients = document.getElementById("ingredient-rows");
+  var steps = document.getElementById("step-rows");
+
+  function nextIndex(container, selector) {
+    return container.querySelectorAll(selector).length;
+  }
+
+  document.querySelectorAll("[data-add]").forEach(function (button) {
+    button.hidden = false;
+    button.addEventListener("click", function () {
+      if (button.dataset.add === "ingredient") {
+        var i = nextIndex(ingredients, ".ingredient-row");
+        var template = ingredients.querySelector(".ingredient-row");
+        var clone = template.cloneNode(true);
+        clone.querySelectorAll("input, select, label").forEach(function (node) {
+          ["id", "name", "for"].forEach(function (attribute) {
+            var value = node.getAttribute(attribute);
+            if (value) { node.setAttribute(attribute, value.replace(/-\d+$/, "-" + i)); }
+          });
+          if (node.tagName !== "LABEL") { node.value = ""; }
+        });
+        ingredients.appendChild(clone);
+        clone.querySelector("input").focus();
+      } else {
+        var index = nextIndex(steps, "textarea");
+        var field = document.createElement("div");
+        field.className = "field";
+        field.innerHTML = '<label for="step-' + index + '">Schritt ' + (index + 1) + '</label>' +
+          '<textarea id="step-' + index + '" name="step-' + index + '" rows="3"></textarea>';
+        steps.appendChild(field);
+        field.querySelector("textarea").focus();
+      }
+    });
+  });
+})();
 </script>
 {% endblock %}

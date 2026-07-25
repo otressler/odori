@@ -1,6 +1,77 @@
-{% extends "base.html" %}{% block title %}{{ recipe.title }} · Odori{% endblock %}{% block content %}
-<article class="card"><h1>{{ recipe.title }}</h1><p>{{ recipe.get_status_display }}{% if recipe.servings %} · Für {{ requested_servings }} Portionen{% endif %}</p>
-{% if recipe.servings %}<form class="inline-form" method="get"><label for="servings">Portionen</label><input id="servings" name="servings" type="number" min="1" value="{{ requested_servings }}"><button>Skalieren</button></form>{% endif %}
-<div class="actions compact-actions">{% if recipe.status == "draft" %}<a class="button" href="{% url 'recipe-edit' recipe.id %}">Entwurf bearbeiten</a><form method="post" action="{% url 'recipe-approve' recipe.id %}">{% csrf_token %}<button class="primary">Veröffentlichen</button></form>{% else %}<form method="post" action="{% url 'recipe-revision' recipe.id %}">{% csrf_token %}<button class="primary">Als Entwurf überarbeiten</button></form>{% endif %}<form method="post" action="{% url 'recipe-favorite' recipe.id %}">{% csrf_token %}<button>{% if is_favorite %}Favorit entfernen{% else %}Favorisieren{% endif %}</button></form><form method="post" action="{% url 'recipe-archive' recipe.id %}">{% csrf_token %}<button>Archivieren</button></form></div>
-{% if recipe.tag_assignments.exists %}<p>Tags: {% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</p>{% endif %}<h2>Zutaten</h2><ul>{% for ingredient in recipe.ingredients.all %}<li>{% if ingredient.scaled_amount is not None %}{{ ingredient.scaled_amount }} {% endif %}{{ ingredient.unit }} {{ ingredient.source_text }}{% if ingredient.canonical_ingredient %} <small>({{ ingredient.canonical_ingredient.name }})</small>{% endif %}</li>{% endfor %}</ul><h2>Zubereitung</h2><ol>{% for step in recipe.steps.all %}<li>{{ step.body }}</li>{% endfor %}</ol></article>
+{% extends "base.html" %}
+{% block title %}{{ recipe.title|default:"Entwurf" }} · Odori{% endblock %}
+
+{% block content %}
+<div class="split" style="margin-bottom:1.25rem">
+  <div>
+    <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Ricetta</p>
+    <h1 style="margin:0">{{ recipe.title|default:"Unbenannter Entwurf" }}</h1>
+    <p class="recipe-card__meta" style="margin-top:.5rem">
+      <span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>
+      {% if recipe.servings %}<span>Für {{ requested_servings }} Portionen</span>{% endif %}
+      {% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}
+    </p>
+  </div>
+  {% if recipe.servings %}
+    <form class="inline-form" method="get">
+      <div class="field">
+        <label for="servings">Portionen anpassen</label>
+        <input id="servings" name="servings" type="number" min="1" inputmode="numeric" value="{{ requested_servings }}">
+      </div>
+      <button type="submit">Skalieren</button>
+    </form>
+  {% endif %}
+</div>
+
+<div class="button-row" style="margin-bottom:1.5rem">
+  {% if recipe.status == "draft" %}
+    <a class="button" href="{% url 'recipe-edit' recipe.id %}">Entwurf bearbeiten</a>
+    <form method="post" action="{% url 'recipe-approve' recipe.id %}">{% csrf_token %}
+      <button class="primary" type="submit">Veröffentlichen</button>
+    </form>
+  {% else %}
+    <form method="post" action="{% url 'recipe-revision' recipe.id %}">{% csrf_token %}
+      <button class="primary" type="submit">Als Entwurf überarbeiten</button>
+    </form>
+  {% endif %}
+  <form method="post" action="{% url 'recipe-favorite' recipe.id %}">{% csrf_token %}
+    <button type="submit">{% if is_favorite %}★ Favorit entfernen{% else %}☆ Favorisieren{% endif %}</button>
+  </form>
+  <form method="post" action="{% url 'recipe-archive' recipe.id %}">{% csrf_token %}
+    <button class="danger" type="submit">Archivieren</button>
+  </form>
+</div>
+
+<div class="recipe-body">
+  <section class="panel">
+    <h2>Zutaten</h2>
+    <ul class="ingredient-list">
+      {% for ingredient in recipe.ingredients.all %}
+        <li>
+          <span class="amount">{% if ingredient.scaled_amount is not None %}{{ ingredient.scaled_amount|floatformat:"-2" }} {% endif %}{{ ingredient.unit }}</span>
+          <span>
+            {{ ingredient.source_text }}
+            {% if not ingredient.canonical_ingredient %}<span class="flag">nicht zugeordnet</span>{% endif %}
+          </span>
+        </li>
+      {% empty %}
+        <li class="muted">Noch keine Zutaten erfasst.</li>
+      {% endfor %}
+    </ul>
+    {% if recipe.servings %}
+      <p class="field__hint">Skalierung ändert nur die Anzeige, nie den erfassten Originaltext.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Zubereitung</h2>
+    <ol class="step-list">
+      {% for step in recipe.steps.all %}
+        <li>{{ step.body|linebreaksbr }}</li>
+      {% empty %}
+        <li class="muted">Noch keine Schritte erfasst.</li>
+      {% endfor %}
+    </ol>
+  </section>
+</div>
 {% endblock %}

@@ -42,9 +42,9 @@ class CanonicalIngredient(models.Model):
 
 class InventoryItem(models.Model):
     class Status(models.TextChoices):
-        IN_STOCK = "in_stock", "In stock"
-        NEEDS_REPLENISHMENT = "needs_replenishment", "Needs replenishment"
-        UNKNOWN = "unknown", "Unknown"
+        IN_STOCK = "in_stock", "Vorrätig"
+        NEEDS_REPLENISHMENT = "needs_replenishment", "Nachkaufen"
+        UNKNOWN = "unknown", "Unbekannt"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(
@@ -75,4 +75,11 @@ class InventoryEvent(models.Model):
     new_status = models.CharField(max_length=24, choices=InventoryItem.Status.choices)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     origin = models.CharField(max_length=20, choices=Origin.choices, default=Origin.MANUAL)
+    meal_slot = models.ForeignKey(
+        "planning.MealSlot",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="inventory_events",
+    )
     created_at = models.DateTimeField(auto_now_add=True)

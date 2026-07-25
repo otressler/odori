@@ -1,6 +1,64 @@
-{% extends "base.html" %}{% block title %}Vorrat · Odori{% endblock %}{% block content %}
-<h1>Vorrat</h1><p>Verfügbarkeit statt Mengen: aktualisiere nur, was du sicher weißt.</p>
-<form class="search-form" method="get"><label for="inventory-search">Vorrat durchsuchen</label><input id="inventory-search" name="q" value="{{ query }}" type="search"><label for="inventory-status-filter">Status</label><select id="inventory-status-filter" name="status"><option value="">Alle Status</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select><button>Filtern</button></form>
-<section class="card"><h2>Zutat hinzufügen</h2><form class="inline-form" method="post" action="{% url 'inventory-create' %}">{% csrf_token %}<label for="ingredient-name">Name</label><input id="ingredient-name" name="name" required><label for="ingredient-status">Status</label><select id="ingredient-status" name="status">{% for value, label in status_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select><button class="primary">Hinzufügen</button></form></section>
-{% for item in items %}<article class="card list-row"><strong>{{ item.ingredient.name }}</strong><form class="inline-form" method="post" action="{% url 'inventory-status' item.ingredient.id %}">{% csrf_token %}<input type="hidden" name="version" value="{{ item.version }}"><label for="status-{{ item.id }}">Status</label><select id="status-{{ item.id }}" name="status">{% for value, label in status_choices %}<option value="{{ value }}"{% if value == item.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select><button>Aktualisieren</button></form></article>{% empty %}<p class="card">Noch keine Zutaten im Vorrat. Füge die erste Zutat oben hinzu.</p>{% endfor %}
+{% extends "base.html" %}
+{% block title %}Vorrat · Odori{% endblock %}
+
+{% block content %}
+<h1>Vorrat</h1>
+<p>Verfügbarkeit statt Mengen. Aktualisiere nur, was du sicher weißt — „unbekannt“ ist eine ehrliche Antwort.</p>
+
+<section class="panel">
+  <h2>Zutat aufnehmen</h2>
+  <form class="inline-form" method="post" action="{% url 'inventory-create' %}">
+    {% csrf_token %}
+    <div class="field">
+      <label for="ingredient-name">Name</label>
+      <input id="ingredient-name" name="name" required maxlength="120" placeholder="z. B. Basilikum">
+    </div>
+    <div class="field">
+      <label for="ingredient-status">Verfügbarkeit</label>
+      <select id="ingredient-status" name="status">
+        {% for value, label in status_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="primary" type="submit">Hinzufügen</button>
+  </form>
+</section>
+
+<form class="search-bar" method="get" role="search">
+  <div class="field">
+    <label for="inventory-search">Vorrat durchsuchen</label>
+    <input id="inventory-search" name="q" value="{{ query }}" type="search" placeholder="Zutat suchen">
+  </div>
+  <button type="submit">Suchen</button>
+</form>
+
+<nav class="chip-row" aria-label="Nach Verfügbarkeit filtern" style="margin-bottom:1.25rem">
+  <a class="chip{% if not selected_status %} chip--active{% endif %}" href="?{% if query %}q={{ query }}{% endif %}">Alle</a>
+  {% for filter in status_filters %}
+    <a class="chip{% if filter.value == selected_status %} chip--active{% endif %}"
+       href="?status={{ filter.value }}{% if query %}&amp;q={{ query }}{% endif %}">{{ filter.label }} ({{ filter.count }})</a>
+  {% endfor %}
+</nav>
+
+<div class="inventory-list">
+  {% for item in items %}
+    <article class="inventory-row" data-status="{{ item.status }}">
+      <span class="inventory-row__name">{{ item.ingredient.name }}</span>
+      {# The segmented control already announces the current state, so no separate badge. #}
+      <form class="segmented" method="post" action="{% url 'inventory-status' item.ingredient.id %}" style="margin-left:auto">
+        {% csrf_token %}
+        <input type="hidden" name="version" value="{{ item.version }}">
+        {% for value, label in status_choices %}
+          <button type="submit" name="status" value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
+            {{ label }}<span class="sr-only"> für {{ item.ingredient.name }}</span>
+          </button>
+        {% endfor %}
+      </form>
+    </article>
+  {% empty %}
+    <div class="empty">
+      <h3>Der Vorrat ist noch leer</h3>
+      <p>Nimm oben die erste Zutat auf. Rezepte und Einkaufslisten greifen danach darauf zu.</p>
+    </div>
+  {% endfor %}
+</div>
 {% endblock %}

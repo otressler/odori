@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Kochhistorie · Odori{% endblock %}
+
+{% block content %}
+<h1>Kochhistorie</h1>
+<p>Was zuletzt auf dem Tisch stand. Diese Einträge fließen später in die Empfehlungen ein.</p>
+
+<div class="stack">
+  {% for event in events %}
+    <article class="panel split">
+      <div>
+        <h3 style="margin:0"><a href="{% url 'recipe-detail' event.recipe.id %}">{{ event.recipe.title }}</a></h3>
+        <p class="muted" style="margin:0">{{ event.cooked_at|date:"l, j. F Y, H:i" }} Uhr{% if event.actor %} · {{ event.actor.name_for_display }}{% endif %}</p>
+      </div>
+    </article>
+  {% empty %}
+    <div class="empty">
+      <h3>Noch nichts gekocht</h3>
+      <p>Markiere eine geplante Mahlzeit als gekocht, dann erscheint sie hier.</p>
+      <p><a class="button primary" href="/plan/">Zum Wochenplan</a></p>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

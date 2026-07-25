@@ -6,31 +6,90 @@ from core.services import household_for
 from .models import CanonicalIngredient, InventoryEvent, InventoryItem
 
 
-@transaction.atomic
-def change_inventory_status(*, user, ingredient_id, status, version):
-    household = household_for(user)
-    ingredient = CanonicalIngredient.objects.filter(id=ingredient_id, household=household).first()
-    if not ingredient:
-        raise Http404
-    item, created = InventoryItem.objects.select_for_update().get_or_create(
+class PlannedIngredientInUse(Exception):
+    """A manual transition away from `in_stock` would affect upcoming planned meals."""
+
+    def __init__(self, slots):
+        self.slots = list(slots)
+        super().__init__("planned_ingredient_in_use")
+
+
+def locked_item(household, ingredient):
+    return InventoryItem.objects.select_for_update().get_or_create(
         household=household,
         ingredient=ingredient,
         defaults={"status": InventoryItem.Status.UNKNOWN},
     )
-    if not created and item.version != version:
-        return None
+
+
+def write_status(*, item, status, actor, origin, meal_slot=None):
     previous_status = item.status
     item.status = status
     item.version += 1
-    item.save()
+    item.save(update_fields=["status", "version", "updated_at"])
     InventoryEvent.objects.create(
         item=item,
         previous_status=previous_status,
         new_status=status,
-        actor=user,
-        origin=InventoryEvent.Origin.MANUAL,
+        actor=actor,
+        origin=origin,
+        meal_slot=meal_slot,
     )
     return item
+
+
+def removes_planned_stock(previous_status, new_status):
+    return (
+        previous_status == InventoryItem.Status.IN_STOCK
+        and new_status != InventoryItem.Status.IN_STOCK
+    )
+
+
+@transaction.atomic
+def change_inventory_status(*, user, ingredient_id, status, version, confirm_planned_use=False):
+    """Manual availability change. Returns `None` when the supplied version is stale."""
+
+    household = household_for(user)
+    ingredient = CanonicalIngredient.objects.filter(id=ingredient_id, household=household).first()
+    if not ingredient:
+        raise Http404
+    item, created = locked_item(household, ingredient)
+    if not created and item.version != version:
+        return None
+    if not confirm_planned_use and removes_planned_stock(item.status, status):
+        from planning.services import upcoming_slots_using_ingredient
+
+        slots = upcoming_slots_using_ingredient(household=household, ingredient=ingredient)
+        if slots:
+            raise PlannedIngredientInUse(slots)
+    return write_status(item=item, status=status, actor=user, origin=InventoryEvent.Origin.MANUAL)
+
+
+def record_purchase(*, user, household, ingredient):
+    """Runs inside the shopping purchase transaction; never asks for confirmation."""
+
+    item, _ = locked_item(household, ingredient)
+    return write_status(
+        item=item,
+        status=InventoryItem.Status.IN_STOCK,
+        actor=user,
+        origin=InventoryEvent.Origin.PURCHASE,
+    )
+
+
+def record_cooking_change(*, user, household, ingredient, status, version, meal_slot):
+    """Runs inside the mark-cooked transaction. Returns `None` on a stale version."""
+
+    item, created = locked_item(household, ingredient)
+    if version is not None and not created and item.version != version:
+        return None
+    return write_status(
+        item=item,
+        status=status,
+        actor=user,
+        origin=InventoryEvent.Origin.COOK_RECIPE,
+        meal_slot=meal_slot,
+    )
 
 
 @transaction.atomic
