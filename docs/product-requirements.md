@@ -14,6 +14,7 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 - Plan meals in a weekly calendar and generate a consolidated shopping list.
 - Move checked-off purchases into inventory without duplicate entry.
 - Keep a recipe page awake while cooking.
+- Collaborate on inventory and shopping lists without conflicting silent updates.
 
 **Out of scope for the initial release**
 
@@ -50,6 +51,38 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 5. Opening a planned recipe starts Kitchen Mode, which can request a screen wake lock.
 6. Marking a meal cooked records history; this reduces the score of recently cooked recipes in future suggestions.
 
+### Protect planned ingredients
+
+1. The plan derives a current set of inventory ingredients required by upcoming meals.
+2. When a user manually changes a required `in_stock` item to `needs_replenishment`, the app warns that one or more upcoming meals need it and names those meals.
+3. The user may cancel or explicitly confirm the change; the confirmed change is recorded in history.
+4. When the change originates from cooking its linked planned recipe, the app updates inventory without a warning because that consumption is expected.
+
+### Collaborate while shopping
+
+1. Household members open the same inventory or shopping list.
+2. Each connected client joins the list or household real-time channel after authenticated authorization.
+3. A member's item edit, purchase, status change, or list regeneration is immediately reflected for every viewer.
+4. Conflicting stale edits are rejected with the current state rather than overwriting another member's change.
+
+## Derived user stories
+
+1. **As a cook**, I want to review and correct imported recipes before publishing them, so incorrect AI extraction never pollutes my catalog.
+2. **As a cook**, I want recipes to retain their original ingredient wording while mapping to shared ingredient tags, so recipes stay readable and shopping stays consolidated.
+3. **As a planner**, I want to adjust servings per planned meal, so the shopping list matches the household meal.
+4. **As a planner**, I want planned meals to flag recent repeats, so the weekly menu has more variety.
+5. **As a shopper**, I want to add and check off manual items, so one list works for both meal ingredients and household necessities.
+6. **As a shopper**, I want each calculated shopping entry to show the recipes that need it, so I can decide whether to skip it.
+7. **As a cook**, I want to mark an item as unknown rather than out of stock, so I can avoid maintaining precise pantry quantities.
+8. **As a cook**, I want Kitchen Mode to preserve my screen state and provide timers, so I can follow recipes hands-free and without screen dimming.
+9. **As a user**, I want recommendations to explain their inventory match and missing ingredients, so I can trust and compare them.
+10. **As a user**, I want generated recipe ideas saved as drafts, so I control what enters my permanent catalog.
+11. **As a household user**, I want inventory and shopping updates to avoid overwriting another device's changes, so shared use remains reliable.
+12. **As an operator**, I want backups covering both database and original recipe uploads, so the household cookbook can be recovered after device failure.
+13. **As a planner**, I want a warning before I remove an ingredient required by upcoming meals, so I do not accidentally invalidate my plan.
+14. **As a cook**, I want the inventory change caused by cooking a planned recipe to happen without a warning, so expected consumption does not interrupt cooking.
+15. **As a household member**, I want shared lists and inventory to update live while we view them together, so we do not buy or change the same item twice.
+
 ## Functional requirements
 
 | ID | Requirement | Acceptance criteria |
@@ -65,6 +98,13 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 | FR-09 | Update inventory from purchases. | Checking off a list item records the purchase and changes its linked inventory item to `in_stock`. |
 | FR-10 | Provide Kitchen Mode. | A cooking view has large readable steps, progress controls, timers, and requests a Wake Lock when browser support and user permission allow it. |
 | FR-11 | Deploy privately. | The app is containerized, routed through Traefik, and not exposed by host ports to the public internet. |
+| FR-12 | Warn about removal of planned stock. | A manual status change away from `in_stock` warns when an upcoming meal requires the item; explicit ingredient changes selected while cooking that planned recipe do not produce this warning. Marking cooked alone does not infer depletion. |
+| FR-13 | Support household collaboration. | Authorized users can share inventory and lists, and active viewers receive authenticated real-time item/list updates. |
+| FR-14 | Support recipe curation. | Users can edit extraction results, tag, favorite, archive, search, and scale recipes while preserving their source and original ingredient lines. |
+| FR-15 | Preserve shopping-list intent. | Users can add manual household items, see recipe provenance for calculated items, skip entries, and retain manual/purchased/skipped entries through regeneration. |
+| FR-16 | Support inclusive meal planning. | Users can use meal slots, serving changes, leftovers/notes, and touch-accessible controls; repeat meals are visibly identified. |
+| FR-17 | Make recommendations explainable. | Suggestions identify matched and missing ingredients, account for recent meals and planned duplicates, and label generated recipes as drafts. |
+| FR-18 | Support data portability and recovery. | The household can export its approved recipes and operational backups include database and uploaded source files. |
 
 ## Non-functional requirements
 
@@ -76,6 +116,7 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 | Privacy | Tailscale-only ingress, authenticated app access, encrypted provider API transport, and no telemetry containing recipe sources or household data. |
 | Accessibility | Keyboard-operable primary flows, labelled controls, sufficient contrast, focus states, and semantic reading order. |
 | Data integrity | Canonical ingredient tags use stable IDs; changing a display name must not disconnect recipes, inventory, or list items. |
+| Collaboration | Real-time events must be authorized by household and resource, ordered/versioned per entity, and safely recoverable through REST refresh after reconnect. |
 | Localization | Initial language is German; data model and UI strings must support additional locales. |
 
 ## Design direction: Tuscan Vintage
@@ -84,10 +125,15 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 - **Type:** Playfair Display for headings and Lora for body copy, with resilient system-serif fallbacks.
 - **Surfaces:** rounded cards and buttons, subtle paper-grain treatment, low-contrast soft shadows, and ample spacing.
 - **Usability constraint:** texture must remain decorative only; it cannot lower text contrast or obscure interactive state.
+- **Collaboration constraint:** visible list updates must announce who made a relevant change without relying only on color or transient animation.
 
 ## Delivery phases
 
-1. **Foundation:** private deployment, authentication, recipe catalog, manual recipe entry, ingredient taxonomy, and status inventory.
-2. **Planning:** weekly plan, aggregated shopping list, purchase-to-inventory flow, Kitchen Mode, and cook history.
-3. **AI import:** URL/import jobs, Document Intelligence extraction, LLM normalization, review workflow, retries, and audit data.
-4. **AI recommendations:** explainable ranking and optional generated recipes that always require review before catalog publication.
+1. **Engineering foundation:** private Pi deployment, authentication, household isolation, migrations, diagnostics, CI, and ARM64 release path.
+2. **Cookbook and pantry:** manual recipe curation, ingredient taxonomy, and status inventory. This is the first useful product and has no Azure dependency.
+3. **Plan, shop, and cook:** weekly plan, aggregated shopping list, purchase-to-inventory flow, planned-stock warnings, Kitchen Mode, and cook history.
+4. **Assisted import:** durable URL/file jobs, Document Intelligence extraction, LLM normalization, review workflow, retries, quotas, and audit data.
+5. **Recommendations:** deterministic explainable ranking first, followed by optional generated recipe drafts that always require review.
+6. **Collaboration and recovery:** membership/roles, WebSocket-backed shared inventory and shopping, stale-write handling, export, and tested restore.
+
+The detailed dependencies, implementation-agent work packets, and release gates are defined in the [implementation plan](implementation-plan.md). Milestones through plan/shop/cook must operate without Azure; cloud-assisted features are optional and independently disableable.
