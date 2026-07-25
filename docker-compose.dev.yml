@@ -1,0 +1,17 @@
+services:
+  odori-web:
+    build: .
+    environment:
+      DEBUG: "true"
+      DATABASE_URL: postgresql://odori:odori@postgres:5432/odori
+      SESSION_SECRET: local-development-only
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    ports: ["8000:8000"]
+    networks: [internal]
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: odori
+    ports: ["5432:5432"]
+    networks: [internal]
+networks:
+  internal: {}

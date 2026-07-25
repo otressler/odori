@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<section class="hero"><p>Dein Küchenbuch</p><h1>{{ household.name }}</h1><p>{{ recipe_count }} veröffentlichte Rezepte · {{ in_stock_count }} Zutaten vorrätig</p></section>
+<section class="actions"><a class="card" href="/recipes/">Rezepte verwalten</a><a class="card" href="/pantry/">Vorrat aktualisieren</a></section>
+{% endblock %}

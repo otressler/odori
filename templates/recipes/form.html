@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}{% if recipe %}Entwurf bearbeiten{% else %}Neues Rezept{% endif %} · Odori{% endblock %}{% block content %}
+<section class="card"><h1>{% if recipe %}Entwurf bearbeiten{% else %}Neues Rezept{% endif %}</h1><form method="post">{% csrf_token %}
+<label>Titel<input name="title" required value="{{ recipe.title|default:'' }}"></label><label>Portionen<input name="servings" type="number" min="1" value="{{ recipe.servings|default:'' }}"></label><label>Tags <small>(durch Komma getrennt)</small><input name="tags" value="{{ tags }}"></label>
+<h2>Zutaten</h2><div class="ingredient-grid" id="ingredient-rows" data-next-index="{{ ingredient_rows|length }}">{% for row in ingredient_rows %}<div class="ingredient-row"><input name="ingredient-source-{{ forloop.counter0 }}" value="{{ row.source_text|default:'' }}" placeholder="Zutat"><input name="ingredient-amount-{{ forloop.counter0 }}" value="{{ row.amount|default:'' }}" inputmode="decimal" placeholder="Menge"><input name="ingredient-unit-{{ forloop.counter0 }}" value="{{ row.unit|default:'' }}" placeholder="Einheit"><select name="ingredient-canonical-{{ forloop.counter0 }}"><option value="">Nicht zugeordnet</option>{% for ingredient in canonical_ingredients %}<option value="{{ ingredient.id }}"{% if ingredient.id == row.canonical_ingredient_id %} selected{% endif %}>{{ ingredient.name }}</option>{% endfor %}</select></div>{% endfor %}</div><template id="ingredient-row-template"><div class="ingredient-row"><input name="ingredient-source-__index__" placeholder="Zutat"><input name="ingredient-amount-__index__" inputmode="decimal" placeholder="Menge"><input name="ingredient-unit-__index__" placeholder="Einheit"><select name="ingredient-canonical-__index__"><option value="">Nicht zugeordnet</option>{% for ingredient in canonical_ingredients %}<option value="{{ ingredient.id }}">{{ ingredient.name }}</option>{% endfor %}</select></div></template><p><button type="button" id="add-ingredient">Zutat hinzufügen</button></p>
+<h2>Zubereitung</h2><div id="step-rows" data-next-index="{{ step_rows|length }}">{% for row in step_rows %}<label>Schritt {{ forloop.counter }}<textarea name="step-{{ forloop.counter0 }}" rows="2">{{ row.body|default:'' }}</textarea></label>{% endfor %}</div><template id="step-row-template"><label>Schritt <span class="step-number"></span><textarea name="step-__index__" rows="2"></textarea></label></template><p><button type="button" id="add-step">Schritt hinzufügen</button></p><p><button class="primary">Entwurf speichern</button></p></form></section>
+<script>
+	const ingredientRows = document.querySelector("#ingredient-rows");
+	const ingredientTemplate = document.querySelector("#ingredient-row-template");
+	const stepRows = document.querySelector("#step-rows");
+	const stepTemplate = document.querySelector("#step-row-template");
+	const addIngredient = () => {
+		const index = ingredientRows.dataset.nextIndex;
+		ingredientRows.insertAdjacentHTML("beforeend", ingredientTemplate.innerHTML.replaceAll("__index__", index));
+		ingredientRows.dataset.nextIndex = String(Number(index) + 1);
+	};
+	document.querySelector("#add-ingredient").addEventListener("click", addIngredient);
+	ingredientRows.addEventListener("input", (event) => {
+		const rows = ingredientRows.querySelectorAll(".ingredient-row");
+		if (event.target.name.startsWith("ingredient-source-") && event.target.value && event.target.closest(".ingredient-row") === rows[rows.length - 1]) addIngredient();
+	});
+	const addStep = () => {
+		const index = stepRows.dataset.nextIndex;
+		stepRows.insertAdjacentHTML("beforeend", stepTemplate.innerHTML.replaceAll("__index__", index));
+		stepRows.lastElementChild.querySelector(".step-number").textContent = String(Number(index) + 1);
+		stepRows.dataset.nextIndex = String(Number(index) + 1);
+	};
+	document.querySelector("#add-step").addEventListener("click", addStep);
+	stepRows.addEventListener("input", (event) => {
+		const rows = stepRows.querySelectorAll("textarea");
+		if (event.target.name.startsWith("step-") && event.target.value && event.target === rows[rows.length - 1]) addStep();
+	});
+</script>
+{% endblock %}

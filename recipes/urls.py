@@ -1,0 +1,31 @@
+from django.contrib.auth.decorators import login_required
+from django.urls import path
+
+from . import views
+
+urlpatterns = [
+    path("", login_required(views.recipe_list), name="recipe-list"),
+    path("new/", login_required(views.recipe_create_page), name="recipe-create"),
+    path("<uuid:recipe_id>/edit/", login_required(views.recipe_edit_page), name="recipe-edit"),
+    path(
+        "<uuid:recipe_id>/approve/",
+        login_required(views.recipe_approve_page),
+        name="recipe-approve",
+    ),
+    path(
+        "<uuid:recipe_id>/archive/",
+        login_required(views.recipe_archive_page),
+        name="recipe-archive",
+    ),
+    path(
+        "<uuid:recipe_id>/favorite/",
+        login_required(views.recipe_favorite_page),
+        name="recipe-favorite",
+    ),
+    path(
+        "<uuid:recipe_id>/revise/",
+        login_required(views.recipe_revision_page),
+        name="recipe-revision",
+    ),
+    path("<uuid:recipe_id>/", login_required(views.recipe_detail_page), name="recipe-detail"),
+]

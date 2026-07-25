@@ -1,0 +1,154 @@
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
+from django.utils import timezone
+
+from pantry.models import CanonicalIngredient
+
+from .models import (
+    Recipe,
+    RecipeFavorite,
+    RecipeIngredient,
+    RecipeSource,
+    RecipeStep,
+    RecipeTag,
+    RecipeTagAssignment,
+)
+
+
+def as_decimal(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        raise ValueError("amount must be numeric")
+
+
+@transaction.atomic
+def create_or_update_recipe(*, user, data, recipe=None):
+    household = user.memberships.select_related("household").first().household
+    if recipe is None:
+        source = RecipeSource.objects.create(household=household)
+        recipe = Recipe.objects.create(household=household, source=source, created_by=user)
+    if recipe.status == Recipe.Status.ARCHIVED:
+        raise ValueError("Archived recipes cannot be edited.")
+    for key in ("title", "servings"):
+        if key in data:
+            value = data[key] or None
+            if key == "servings" and value is not None:
+                try:
+                    value = int(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("servings must be a positive whole number") from exc
+                if value < 1:
+                    raise ValueError("servings must be a positive whole number")
+            setattr(recipe, key, value)
+    recipe.version += 1
+    recipe.save()
+    if "ingredients" in data:
+        RecipeIngredient.objects.filter(recipe=recipe).delete()
+        for index, line in enumerate(data["ingredients"]):
+            ingredient = None
+            if line.get("canonicalIngredientId"):
+                ingredient = CanonicalIngredient.objects.filter(
+                    id=line["canonicalIngredientId"], household=household
+                ).first()
+                if not ingredient:
+                    raise ValueError("Ingredient does not belong to this household.")
+            RecipeIngredient.objects.create(
+                recipe=recipe,
+                canonical_ingredient=ingredient,
+                source_text=line.get("sourceText", "").strip(),
+                amount=as_decimal(line.get("amount")),
+                unit=line.get("unit", "").strip(),
+                optional=bool(line.get("optional", False)),
+                sort_order=index,
+                match_state=RecipeIngredient.MatchState.MATCHED
+                if ingredient
+                else RecipeIngredient.MatchState.UNRESOLVED,
+            )
+    if "steps" in data:
+        RecipeStep.objects.filter(recipe=recipe).delete()
+        for index, step in enumerate(data["steps"]):
+            body = step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
+            if body:
+                RecipeStep.objects.create(recipe=recipe, body=body, sort_order=index)
+    if "tags" in data:
+        RecipeTagAssignment.objects.filter(recipe=recipe).delete()
+        for name in data["tags"]:
+            tag, _ = RecipeTag.objects.get_or_create(household=household, name=name.strip().lower())
+            RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
+    return recipe
+
+
+@transaction.atomic
+def approve_recipe(recipe):
+    if not recipe.title.strip() or not recipe.steps.exists():
+        raise ValueError("A title and at least one instruction are required before approval.")
+    recipe.status = Recipe.Status.APPROVED
+    recipe.version += 1
+    recipe.save(update_fields=["status", "version", "updated_at"])
+    return recipe
+
+
+@transaction.atomic
+def create_recipe_revision(recipe, user):
+    if recipe.status != Recipe.Status.APPROVED:
+        raise ValueError("Only approved recipes can be revised.")
+    revision = Recipe.objects.create(
+        household=recipe.household,
+        source=recipe.source,
+        created_by=user,
+        title=recipe.title,
+        servings=recipe.servings,
+    )
+    RecipeIngredient.objects.bulk_create(
+        [
+            RecipeIngredient(
+                recipe=revision,
+                canonical_ingredient=line.canonical_ingredient,
+                source_text=line.source_text,
+                amount=line.amount,
+                unit=line.unit,
+                optional=line.optional,
+                sort_order=line.sort_order,
+                match_state=line.match_state,
+            )
+            for line in recipe.ingredients.all()
+        ]
+    )
+    RecipeStep.objects.bulk_create(
+        [
+            RecipeStep(
+                recipe=revision,
+                body=step.body,
+                sort_order=step.sort_order,
+                timer_seconds=step.timer_seconds,
+            )
+            for step in recipe.steps.all()
+        ]
+    )
+    RecipeTagAssignment.objects.bulk_create(
+        [
+            RecipeTagAssignment(recipe=revision, tag=assignment.tag)
+            for assignment in recipe.tag_assignments.all()
+        ]
+    )
+    return revision
+
+
+@transaction.atomic
+def archive_recipe(recipe):
+    recipe.status = Recipe.Status.ARCHIVED
+    recipe.archived_at = timezone.now()
+    recipe.version += 1
+    recipe.save(update_fields=["status", "archived_at", "version", "updated_at"])
+
+
+@transaction.atomic
+def toggle_favorite(recipe, user):
+    favorite, created = RecipeFavorite.objects.get_or_create(recipe=recipe, user=user)
+    if not created:
+        favorite.delete()
+    return created

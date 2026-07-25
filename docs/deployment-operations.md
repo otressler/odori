@@ -23,7 +23,7 @@ services:
       - traefik.http.routers.cucina.rule=Host(`cucina.tail-net-name.ts.net`)
       - traefik.http.routers.cucina.entrypoints=websecure
       - traefik.http.routers.cucina.tls=true
-      - traefik.http.services.cucina.loadbalancer.server.port=3000
+      - traefik.http.services.cucina.loadbalancer.server.port=8000
     networks: [web, internal]
 
   odori-worker:

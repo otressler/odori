@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block title %}Anmelden · Odori{% endblock %}{% block content %}
+<section class="card narrow"><h1>Willkommen bei Odori</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary">Anmelden</button></form></section>
+{% endblock %}

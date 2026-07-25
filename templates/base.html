@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Odori{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header><a class="brand" href="/">Odori</a>{% if user.is_authenticated %}<nav><a href="/recipes/">Rezepte</a><a href="/pantry/">Vorrat</a><form method="post" action="/accounts/logout/">{% csrf_token %}<button>Abmelden</button></form></nav>{% endif %}</header>
+<main>{% for message in messages %}<p class="message">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+services:
+  odori-web:
+    build: .
+    image: ghcr.io/otressler/odori:${ODORI_VERSION:-dev}
+    env_file: .env
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 odori.wsgi:application
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/data/uploads
+    networks: [web, internal]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.cucina.rule=Host(`${ALLOWED_TAILNET_HOST}`)
+      - traefik.http.routers.cucina.entrypoints=websecure
+      - traefik.http.routers.cucina.tls=true
+      - traefik.http.services.cucina.loadbalancer.server.port=8000
+    mem_limit: 750m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  odori-worker:
+    image: ghcr.io/otressler/odori:${ODORI_VERSION:-dev}
+    env_file: .env
+    command: python manage.py worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/data/uploads
+    networks: [internal, egress]
+    mem_limit: 1g
+  postgres:
+    image: postgres:16.9-alpine
+    environment:
+      POSTGRES_DB: odori
+      POSTGRES_USER: odori
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odori -d odori"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+    mem_limit: 1500m
+networks:
+  web:
+    external: true
+  internal:
+    internal: true
+  egress: {}
+volumes:
+  postgres:
+  uploads:
