@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Rezepte · Odori{% endblock %}
 
 {% block content %}
@@ -16,26 +17,60 @@
 <form class="search-bar" method="get" role="search">
   <div class="field">
     <label for="recipe-search">Rezepte suchen</label>
-    <input id="recipe-search" name="q" value="{{ query }}" type="search" placeholder="Nach Titel suchen">
+    <input id="recipe-search" name="q" value="{{ query }}" type="search" placeholder="Rezept, Zutat oder Schlagwort">
   </div>
   <button type="submit">Suchen</button>
 </form>
 
-<div class="recipe-grid">
-  {% for recipe in recipes %}
-    <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
-      <span class="recipe-card__title">{{ recipe.title|default:"Unbenannter Entwurf" }}</span>
-      <span class="recipe-card__meta">
-        <span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>
-        {% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}
-      </span>
-    </a>
-  {% empty %}
+{% if published_recipes or draft_recipes %}
+  {% if published_recipes %}
+    <div class="rule-heading"><h2>Veröffentlicht</h2></div>
+    <div class="recipe-grid">
+      {% for recipe in published_recipes %}
+        <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
+          <span class="recipe-card__image-wrap">
+            {% if recipe.image_status == "ready" and recipe.image %}
+              <img class="recipe-card__image" src="{{ recipe.image.url }}" alt="{{ recipe.title }}">
+            {% else %}
+              <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
+              <span class="recipe-card__image-status">Bild wird zubereitet</span>
+            {% endif %}
+          </span>
+          <span class="recipe-card__content">
+            <span class="recipe-card__title">{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
+            <span class="recipe-card__flavour">{{ recipe.card_flavour }}</span>
+            {% if recipe.tag_assignments.all %}<span class="tag-row">{% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</span>{% endif %}
+            <span class="recipe-card__meta"><span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>{% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if draft_recipes %}
+    <div class="rule-heading"><h2>Entwürfe</h2></div>
+    <div class="recipe-grid">
+      {% for recipe in draft_recipes %}
+        <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
+          <span class="recipe-card__image-wrap">
+            <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
+            <span class="recipe-card__image-status">Bild wird zubereitet</span>
+          </span>
+          <span class="recipe-card__content">
+            <span class="recipe-card__title">{{ recipe.title|default:"Unbenannter Entwurf" }}</span>
+            <span class="recipe-card__flavour">{{ recipe.card_flavour }}</span>
+            {% if recipe.tag_assignments.all %}<span class="tag-row">{% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</span>{% endif %}
+            <span class="recipe-card__meta"><span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>{% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% else %}
     <div class="empty" style="grid-column:1/-1">
       <h3>{% if query %}Keine Treffer{% else %}Das Buch ist noch leer{% endif %}</h3>
       <p>{% if query %}Für „{{ query }}“ wurde nichts gefunden. Versuche einen kürzeren Suchbegriff.{% else %}Schreibe das erste Familienrezept auf — Titel und ein Schritt genügen zum Start.{% endif %}</p>
       <p><a class="button primary" href="/recipes/new/">Rezept anlegen</a></p>
     </div>
-  {% endfor %}
-</div>
+{% endif %}
 {% endblock %}

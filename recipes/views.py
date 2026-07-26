@@ -10,11 +10,13 @@ from pantry.models import CanonicalIngredient, InventoryItem
 from pantry.services import change_inventory_status
 
 from .models import Recipe, RecipeIngredient
+from .semantic import rank_recipes
 from .services import (
     approve_recipe,
     archive_recipe,
     create_or_update_recipe,
     create_recipe_revision,
+    regenerate_recipe_image,
     toggle_favorite,
 )
 
@@ -22,14 +24,32 @@ from .services import (
 def recipe_list(request):
     household = household_for(request.user)
     query = request.GET.get("q", "").strip()
-    recipes = (
+    recipes = list(
         Recipe.objects.filter(household=household)
         .exclude(status=Recipe.Status.ARCHIVED)
+        .prefetch_related("ingredients", "tag_assignments__tag")
         .order_by("title")
     )
     if query:
-        recipes = recipes.filter(title__icontains=query)
-    return render(request, "recipes/list.html", {"recipes": recipes, "query": query})
+        recipes = rank_recipes(recipes, query)
+    for recipe in recipes:
+        first_ingredient = next(iter(recipe.ingredients.all()), None)
+        recipe.card_flavour = recipe.description or (
+            f"Mit {first_ingredient.source_text} und allem, was es gemütlich macht."
+            if first_ingredient
+            else "Ein Rezept, das noch seinen letzten Schliff bekommt."
+        )
+    published_recipes = [recipe for recipe in recipes if recipe.status == Recipe.Status.APPROVED]
+    draft_recipes = [recipe for recipe in recipes if recipe.status == Recipe.Status.DRAFT]
+    return render(
+        request,
+        "recipes/list.html",
+        {
+            "published_recipes": published_recipes,
+            "draft_recipes": draft_recipes,
+            "query": query,
+        },
+    )
 
 
 def recipe_form_context(user, recipe=None):
@@ -53,6 +73,7 @@ def recipe_form_context(user, recipe=None):
     step_rows.append({})
     return {
         "recipe": recipe,
+        "description": recipe.description if recipe else "",
         "ingredient_rows": ingredient_rows,
         "step_rows": step_rows,
         "canonical_ingredients": CanonicalIngredient.objects.filter(
@@ -94,6 +115,7 @@ def recipe_form_data(request):
     ]
     return {
         "title": request.POST.get("title", "").strip(),
+        "description": request.POST.get("description", "").strip(),
         "servings": request.POST.get("servings", "").strip() or None,
         "ingredients": ingredients,
         "steps": steps,
@@ -239,6 +261,13 @@ def recipe_revision_page(request, recipe_id):
         return redirect("recipe-detail", recipe_id=recipe.id)
     messages.success(request, "Ein neuer Entwurf wurde erstellt.")
     return redirect("recipe-edit", recipe_id=revision.id)
+
+
+def recipe_image_regenerate_page(request, recipe_id):
+    recipe = recipe_for_user(request.user, recipe_id)
+    regenerate_recipe_image(recipe)
+    messages.success(request, "Ein neues Rezeptbild wird zubereitet.")
+    return redirect("recipe-detail", recipe_id=recipe.id)
 
 
 def recipe_for_user(user, recipe_id):

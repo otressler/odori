@@ -37,10 +37,19 @@
   <form method="post" action="{% url 'recipe-favorite' recipe.id %}">{% csrf_token %}
     <button type="submit">{% if is_favorite %}★ Favorit entfernen{% else %}☆ Favorisieren{% endif %}</button>
   </form>
+  <form method="post" action="{% url 'recipe-image-regenerate' recipe.id %}">{% csrf_token %}
+    <button type="submit">Rezeptbild neu erstellen</button>
+  </form>
   <form method="post" action="{% url 'recipe-archive' recipe.id %}">{% csrf_token %}
     <button class="danger" type="submit">Archivieren</button>
   </form>
 </div>
+
+{% if recipe.image_status == "pending" %}
+  <p class="message message--warning">Das Rezeptbild wird im Hintergrund erstellt.</p>
+{% elif recipe.image_status == "failed" %}
+  <p class="message message--error">Das Rezeptbild konnte nicht erstellt werden. Bitte erneut versuchen.</p>
+{% endif %}
 
 <div class="recipe-body">
   <section class="panel">

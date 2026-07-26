@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from django.db import models
 
@@ -84,6 +85,24 @@ class ShoppingItem(models.Model):
             if title and title not in titles:
                 titles.append(title)
         return titles
+
+    @property
+    def recipe_requirements(self):
+        """Planned recipe references in chronological order, with parsed dates for templates."""
+
+        requirements = []
+        for reference in self.recipe_refs:
+            try:
+                required_on = date.fromisoformat(reference["date"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            requirements.append({"date": required_on, "title": reference.get("title")})
+        return sorted(requirements, key=lambda requirement: requirement["date"])
+
+    @property
+    def earliest_recipe_requirement(self):
+        requirements = self.recipe_requirements
+        return requirements[0] if requirements else None
 
 
 def component_text(component):

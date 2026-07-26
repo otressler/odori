@@ -48,6 +48,26 @@
   </div>
 </section>
 
+{% if shopping_reminders %}
+<section class="panel home-reminder" aria-labelledby="shopping-reminder-title">
+  <div class="split">
+    <div>
+      <p class="hero__eyebrow">Einkauf erinnern</p>
+      <h2 id="shopping-reminder-title">Bald benötigt</h2>
+    </div>
+    <a class="button" href="{% url 'shopping-detail' active_list.id %}">Zur Einkaufsliste</a>
+  </div>
+  <ul class="home-reminder__list">
+    {% for reminder in shopping_reminders %}
+      <li>
+        <strong>{{ reminder.item.label }}</strong>
+        <span>{{ reminder.when }}, {{ reminder.requirement.date|date:"j.n." }} für {{ reminder.requirement.title }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <div class="rule-heading"><h2>Heute</h2></div>
 
 {% if today_slots %}

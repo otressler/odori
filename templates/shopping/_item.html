@@ -1,4 +1,8 @@
-<article class="shopping-item{% if item.state != 'open' %} shopping-item--done{% endif %}">
+{% load static %}
+<article class="shopping-card{% if item.state != 'open' %} shopping-card--done{% endif %}">
+  <div class="list-card__art" aria-hidden="true">
+    <img src="{% static 'images/shopping-outline.svg' %}" alt="">
+  </div>
   {% if item.state == "open" %}
     <form method="post" action="{% url 'shopping-item-purchase' item.id %}">
       {% csrf_token %}
@@ -10,8 +14,8 @@
     </form>
   {% endif %}
 
-  <div class="shopping-item__main">
-    <p class="shopping-item__label" style="margin:0">
+  <div class="shopping-card__main">
+    <p class="shopping-card__label" style="margin:0">
       {{ item.label }}
       {% if item.quantity_components %}<span class="shopping-item__qty"> · {{ item.quantity_text }}</span>{% endif %}
     </p>
@@ -19,11 +23,16 @@
       <span class="flag">Vorrat unbekannt — bitte prüfen</span>
     {% endif %}
     {% if item.recipe_titles %}
-      <span class="shopping-item__source">
+      <span class="shopping-card__source">
         Für {% for title in item.recipe_titles %}{{ title }}{% if not forloop.last %}, {% endif %}{% endfor %}
       </span>
+      {% with requirement=item.earliest_recipe_requirement %}
+        {% if requirement %}
+          <span class="shopping-card__source">Benötigt am {{ requirement.date|date:"j.n." }} für {{ requirement.title }}</span>
+        {% endif %}
+      {% endwith %}
     {% elif item.source == "manual" %}
-      <span class="shopping-item__source">Eigener Eintrag</span>
+      <span class="shopping-card__source">Eigener Eintrag für deinen nächsten Einkauf</span>
     {% endif %}
   </div>
 

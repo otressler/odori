@@ -66,6 +66,8 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 STORAGES = {"staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"}}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
@@ -87,6 +89,13 @@ AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "")
 AZURE_OPENAI_EMBEDDING_TIMEOUT_SECONDS = float(
     os.environ.get("AZURE_OPENAI_EMBEDDING_TIMEOUT_SECONDS", "5")
+)
+AZURE_OPENAI_IMAGE_DEPLOYMENT = os.environ.get("AZURE_OPENAI_IMAGE_DEPLOYMENT", "gpt-image-2")
+AZURE_OPENAI_IMAGE_API_VERSION = os.environ.get(
+    "AZURE_OPENAI_IMAGE_API_VERSION", "2025-04-01-preview"
+)
+AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS = float(
+    os.environ.get("AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS", "60")
 )
 LOGGING = {
     "version": 1,

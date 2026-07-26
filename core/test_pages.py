@@ -10,6 +10,7 @@ from pantry.models import CanonicalIngredient, InventoryItem
 from planning.models import MealSlot
 from planning.services import add_slot, current_week_start
 from recipes.models import Recipe, RecipeIngredient, RecipeSource, RecipeStep
+from shopping.models import ShoppingItem, ShoppingList
 from shopping.services import add_manual_item, generate_from_plan
 
 
@@ -112,6 +113,45 @@ class PageRenderTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, "Offen auf der Liste")
         self.assertEqual(response.context["open_items"], 1)
+
+    def test_home_page_reminds_about_open_item_needed_today(self):
+        week_start = current_week_start()
+        add_slot(
+            user=self.user,
+            week_start=week_start,
+            date=timezone.localdate(),
+            slot="dinner",
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe_id=self.recipe.id,
+        )
+        generate_from_plan(user=self.user, week_start=week_start)
+
+        response = self.client.get("/")
+
+        self.assertContains(response, "Bald benötigt")
+        self.assertContains(response, "Heute")
+        self.assertContains(response, "Tomate")
+
+    def test_home_page_reminds_about_open_item_needed_tomorrow(self):
+        shopping_list = ShoppingList.objects.create(household=self.household, name="Erledigungen")
+        ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            canonical_ingredient=self.tomato,
+            label="Tomate",
+            grouping_key="ingredient:tomate",
+            recipe_refs=[
+                {
+                    "title": "Ribollita",
+                    "date": (timezone.localdate() + timedelta(days=1)).isoformat(),
+                }
+            ],
+        )
+
+        response = self.client.get("/")
+
+        self.assertContains(response, "Bald benötigt")
+        self.assertContains(response, "Morgen")
+        self.assertContains(response, "Ribollita")
 
     def test_todays_meal_shows_a_cook_button(self):
         add_slot(

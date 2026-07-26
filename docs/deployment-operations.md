@@ -74,6 +74,9 @@ The example uses `.env` for readability. Compose variable substitution for `${PO
 | Variable | Purpose |
 | `INGREDIENT_EMBEDDINGS_ENABLED` | Enables Azure OpenAI semantic ingredient matching; disable to use local fuzzy matching only. |
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Azure OpenAI embedding deployment name used for ingredient vectors. |
+| `AZURE_OPENAI_IMAGE_DEPLOYMENT` | Microsoft Foundry `gpt-image-2` deployment name used by the worker for recipe-card images. Defaults to `gpt-image-2` and may be overridden for a differently named deployment. |
+| `AZURE_OPENAI_IMAGE_API_VERSION` | Image generation API version; defaults to `2025-04-01-preview`. |
+| `AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS` | Maximum image-generation request duration; defaults to `60`. |
 | --- | --- |
 | `ODORI_VERSION` | Immutable application release tag. |
 | `DATABASE_URL` | PostgreSQL connection string on the internal Docker network. |
@@ -102,6 +105,7 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 - Target less than USD 15/month in normal Azure usage. Set per-household page, job, input-token, output-token, and retry limits; review regional provider prices before enabling production deployments.
 - Do not provision always-on Azure compute. If Flex Consumption is later justified by measurements, configure zero always-ready instances and retain local feature fallbacks.
 - Cache provider work by source content hash and processing version. Report cache hits, pages/characters/tokens submitted, retries, and estimated cost by provider without logging recipe content.
+- Recipe creation and manual regeneration enqueue a durable image job. The `odori-worker` service is the only component that calls the Microsoft Foundry image deployment; a queued card continues to show its placeholder until the worker persists a generated image.
 - Keep ordinary recipe, pantry, plan, shopping, and cooking traffic local. An exhausted cloud budget must disable only assisted features.
 
 ## Operations

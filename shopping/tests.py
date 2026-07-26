@@ -283,6 +283,15 @@ class ShoppingPageTests(ShoppingTestCase):
         self.assertContains(response, "Mehl")
         self.assertContains(response, "500")
 
+    def test_generated_list_renders_the_earliest_required_date(self):
+        self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
+        shopping_list = self.generate()
+
+        response = self.client.get(f"/shopping/{shopping_list.id}/")
+
+        self.assertContains(response, "Benötigt am")
+        self.assertContains(response, "Brot")
+
     def test_decimal_amounts_are_not_mangled(self):
         self.plan_recipe(self.recipe_with("Sugo", [("Olivenöl", Decimal("2.5"), "EL", self.oil)]))
         item = self.generate().items.get(canonical_ingredient=self.oil)

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Vorrat · Odori{% endblock %}
 
 {% block content %}
@@ -47,15 +48,18 @@
   {% endfor %}
 </nav>
 
-<div class="inventory-list">
+<div class="inventory-card-grid">
   {% regroup items by ingredient.category as category_groups %}
   {% for category_group in category_groups %}
     <section class="inventory-group">
       <h2>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h2>
       {% for item in category_group.list %}
-      <article class="inventory-row" data-status="{{ item.status }}">
-        <div class="inventory-row__identity">
-          <span class="inventory-row__name">{{ item.ingredient.name }}</span>
+      <article class="inventory-card" data-status="{{ item.status }}">
+        <div class="list-card__art" aria-hidden="true">
+          <img src="{% static 'images/pantry-outline.svg' %}" alt="">
+        </div>
+        <div class="inventory-card__identity">
+          <span class="inventory-card__name">{{ item.ingredient.name }}</span>
           <span class="inventory-status inventory-status--{{ item.status }}">{{ item.get_status_display }}</span>
           {% if item.upcoming_requirements %}
             {% with first_requirement=item.upcoming_requirements.0 %}
@@ -66,7 +70,7 @@
           {% endif %}
         </div>
       {# The segmented control already announces the current state, so no separate badge. #}
-      <form class="segmented" method="post" action="{% url 'inventory-status' item.ingredient.id %}" style="margin-left:auto">
+      <form class="segmented inventory-card__control" method="post" action="{% url 'inventory-status' item.ingredient.id %}">
         {% csrf_token %}
         <input type="hidden" name="version" value="{{ item.version }}">
         {% for value, label in status_choices %}

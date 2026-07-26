@@ -6,6 +6,7 @@ from django.utils import timezone
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
+from .images import queue_recipe_image
 from .models import (
     Recipe,
     RecipeFavorite,
@@ -15,6 +16,7 @@ from .models import (
     RecipeTag,
     RecipeTagAssignment,
 )
+from .semantic import update_search_embedding
 
 
 def as_decimal(value):
@@ -34,9 +36,9 @@ def create_or_update_recipe(*, user, data, recipe=None):
         recipe = Recipe.objects.create(household=household, source=source, created_by=user)
     if recipe.status == Recipe.Status.ARCHIVED:
         raise ValueError("Archived recipes cannot be edited.")
-    for key in ("title", "servings"):
+    for key in ("title", "description", "servings"):
         if key in data:
-            value = data[key] or None
+            value = data[key] or ("" if key == "description" else None)
             if key == "servings" and value is not None:
                 try:
                     value = int(value)
@@ -83,7 +85,14 @@ def create_or_update_recipe(*, user, data, recipe=None):
         for name in data["tags"]:
             tag, _ = RecipeTag.objects.get_or_create(household=household, name=name.strip().lower())
             RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
+    queue_recipe_image(recipe)
+    update_search_embedding(recipe)
     return recipe
+
+
+@transaction.atomic
+def regenerate_recipe_image(recipe):
+    return queue_recipe_image(recipe)
 
 
 @transaction.atomic

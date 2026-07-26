@@ -926,8 +926,8 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-height: 10.5rem;
-  padding: 2.2rem 1.15rem 1.1rem;
+  min-height: 100%;
+  padding: 0;
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--surface);
@@ -945,7 +945,7 @@ textarea:focus {
   content: "";
   position: absolute;
   inset: 0 0 auto;
-  height: 1.35rem;
+  height: 0.35rem;
   background:
     radial-gradient(circle at 0.55rem 50%, var(--terracotta-soft) 0.2rem, transparent 0.21rem)
       0 0 / 1.1rem 100% repeat-x,
@@ -963,6 +963,65 @@ textarea:focus {
   font-family: var(--font-display);
   font-size: 1.45rem;
   line-height: 1.15;
+}
+
+.recipe-card__image-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--surface-sunk);
+}
+
+.recipe-card__image,
+.recipe-card__placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recipe-card__placeholder {
+  padding: 1.5rem;
+  object-fit: contain;
+}
+
+.recipe-card__image-status {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.55rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.recipe-card__content {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 1.15rem 1.1rem;
+}
+
+.recipe-card__flavour {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tag {
+  padding: 0.08rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+  font-size: 0.74rem;
 }
 
 .recipe-card__meta {
@@ -1062,9 +1121,11 @@ textarea:focus {
 
 /* ---------- 11. Pantry ---------- */
 
-.inventory-list {
+.inventory-card-grid,
+.shopping-card-grid {
   display: grid;
-  gap: 1.25rem;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
 }
 
 .inventory-group,
@@ -1080,40 +1141,41 @@ textarea:focus {
   font-size: 1.2rem;
 }
 
-.inventory-row {
+.inventory-card,
+.shopping-card {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
-  padding: 0.8rem 1rem;
+  padding: 1rem;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow-soft);
 }
 
-.inventory-row[data-status="in_stock"] {
-  border-left-color: var(--olive);
-  background: color-mix(in srgb, var(--olive-soft) 34%, var(--surface));
+.list-card__art {
+  display: grid;
+  flex: none;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
 }
 
-.inventory-row[data-status="needs_replenishment"] {
-  border-left-color: var(--saffron);
-  background: color-mix(in srgb, var(--saffron-soft) 42%, var(--surface));
+.list-card__art img {
+  width: 2rem;
+  height: 2rem;
 }
 
-.inventory-row[data-status="unknown"] {
-  border-left-color: var(--terracotta);
-  background: color-mix(in srgb, var(--terracotta-soft) 38%, var(--surface));
-}
-
-.inventory-row__identity {
+.inventory-card__identity {
   display: grid;
   flex: 1 1 14rem;
   gap: 0.15rem;
 }
 
-.inventory-row__name {
+.inventory-card__name {
   font-family: var(--font-display);
   font-size: 1.25rem;
 }
@@ -1124,11 +1186,10 @@ textarea:focus {
   border-radius: 0.35rem;
   font-size: 0.78rem;
   font-weight: 700;
+  background: var(--surface-sunk);
+  color: var(--text-muted);
+  border: 1px solid var(--line);
 }
-
-.inventory-status--in_stock { background: var(--olive); color: #fff; }
-.inventory-status--needs_replenishment { background: var(--saffron); color: #33210b; }
-.inventory-status--unknown { background: var(--terracotta); color: #fff; }
 
 .inventory-requirement {
   overflow: hidden;
@@ -1136,6 +1197,30 @@ textarea:focus {
   font-size: 0.84rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.home-reminder {
+  margin-top: 1.25rem;
+  border-left: 4px solid var(--saffron);
+}
+
+.home-reminder__list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-reminder__list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  align-items: baseline;
+}
+
+.home-reminder__list span {
+  color: var(--text-muted);
 }
 
 .segmented {
@@ -1162,6 +1247,21 @@ textarea:focus {
   color: var(--text);
   font-weight: 600;
   box-shadow: var(--shadow-soft);
+}
+
+.inventory-card[data-status="in_stock"] .segmented button[aria-pressed="true"] {
+  background: var(--olive);
+  color: #fff;
+}
+
+.inventory-card[data-status="needs_replenishment"] .segmented button[aria-pressed="true"] {
+  background: var(--saffron);
+  color: #33210b;
+}
+
+.inventory-card[data-status="unknown"] .segmented button[aria-pressed="true"] {
+  background: var(--terracotta);
+  color: #fff;
 }
 
 /* ---------- 12. Week planner ---------- */
@@ -1365,38 +1465,22 @@ textarea:focus {
 
 /* ---------- 13. Shopping list ---------- */
 
-.shopping-list {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.shopping-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.shopping-item--done {
+.shopping-card--done {
   background: transparent;
   border-style: dashed;
   color: var(--text-muted);
 }
 
-.shopping-item--done .shopping-item__label {
+.shopping-card--done .shopping-card__label {
   text-decoration: line-through;
 }
 
-.shopping-item__main {
+.shopping-card__main {
   flex: 1 1 12rem;
   min-width: 0;
 }
 
-.shopping-item__label {
+.shopping-card__label {
   font-family: var(--font-display);
   font-size: 1.25rem;
   line-height: 1.2;
@@ -1408,7 +1492,7 @@ textarea:focus {
   color: var(--terracotta-deep);
 }
 
-.shopping-item__source {
+.shopping-card__source {
   display: block;
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -1433,6 +1517,22 @@ textarea:focus {
 .check-button svg {
   width: 1.2rem;
   height: 1.2rem;
+}
+
+.inventory-card__control {
+  margin-left: auto;
+}
+
+@media (max-width: 32rem) {
+  .inventory-card__control {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .segmented button {
+    flex: 1;
+    padding-inline: 0.4rem;
+  }
 }
 
 /* ---------- 14. Kitchen Mode ---------- */

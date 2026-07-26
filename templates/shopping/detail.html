@@ -47,7 +47,7 @@
 
 <div class="rule-heading"><h2>Offen ({{ open_items|length }})</h2></div>
 
-<div class="shopping-list">
+<div class="shopping-card-grid">
   {% regroup open_items by canonical_ingredient.category as category_groups %}
   {% for category_group in category_groups %}
     <section class="shopping-group">
@@ -64,14 +64,14 @@
 
 {% if purchased_items %}
   <div class="rule-heading"><h2>Gekauft ({{ purchased_items|length }})</h2></div>
-  <div class="shopping-list">
+  <div class="shopping-card-grid">
     {% for item in purchased_items %}{% include "shopping/_item.html" with item=item %}{% endfor %}
   </div>
 {% endif %}
 
 {% if skipped_items %}
   <div class="rule-heading"><h2>Übersprungen ({{ skipped_items|length }})</h2></div>
-  <div class="shopping-list">
+  <div class="shopping-card-grid">
     {% for item in skipped_items %}{% include "shopping/_item.html" with item=item %}{% endfor %}
   </div>
 {% endif %}

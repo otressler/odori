@@ -8,6 +8,7 @@ from django.views.decorators.http import require_http_methods
 from core.services import household_for
 
 from .models import Recipe
+from .semantic import rank_recipes
 from .services import approve_recipe, archive_recipe, create_or_update_recipe, toggle_favorite
 
 
@@ -44,6 +45,7 @@ def recipe_json(recipe, user, servings=None):
     return {
         "id": str(recipe.id),
         "title": recipe.title,
+        "description": recipe.description,
         "status": recipe.status,
         "servings": recipe.servings,
         "version": recipe.version,
@@ -56,6 +58,7 @@ def recipe_json(recipe, user, servings=None):
             assignment.tag.name for assignment in recipe.tag_assignments.select_related("tag")
         ],
         "favorite": recipe.favorites.filter(user=user).exists(),
+        "imageStatus": recipe.image_status,
     }
 
 
@@ -79,11 +82,14 @@ def recipe_collection(request):
         include_archived = request.GET.get("includeArchived") == "true"
         recipes = Recipe.objects.prefetch_related(
             "ingredients", "steps", "tag_assignments__tag", "favorites"
-        ).filter(household=household, title__icontains=query)
+        ).filter(household=household)
         if not include_archived:
             recipes = recipes.exclude(status=Recipe.Status.ARCHIVED)
+        recipes = list(recipes.order_by("title"))
+        if query:
+            recipes = rank_recipes(recipes, query)
         return JsonResponse(
-            {"recipes": [recipe_json(recipe, request.user) for recipe in recipes.order_by("title")]}
+            {"recipes": [recipe_json(recipe, request.user) for recipe in recipes]}
         )
     data = read_json(request)
     if data is None:

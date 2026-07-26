@@ -45,6 +45,22 @@ def home(request):
         if active_list
         else 0
     )
+    shopping_reminders = []
+    if active_list:
+        tomorrow = today + timezone.timedelta(days=1)
+        due_items = ShoppingItem.objects.filter(
+            shopping_list=active_list, state=ShoppingItem.State.OPEN
+        ).order_by("label")
+        for item in due_items:
+            requirement = item.earliest_recipe_requirement
+            if requirement and requirement["date"] in (today, tomorrow):
+                shopping_reminders.append(
+                    {
+                        "item": item,
+                        "requirement": requirement,
+                        "when": "Heute" if requirement["date"] == today else "Morgen",
+                    }
+                )
     return render(
         request,
         "home.html",
@@ -55,6 +71,7 @@ def home(request):
             "plan": plan,
             "active_list": active_list,
             "open_items": open_items,
+            "shopping_reminders": shopping_reminders,
             "recipe_count": Recipe.objects.filter(
                 household=household, status=Recipe.Status.APPROVED
             ).count(),

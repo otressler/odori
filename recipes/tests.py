@@ -5,7 +5,7 @@ from django.test import TestCase
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient
 
-from .models import Recipe, RecipeIngredient, RecipeSource
+from .models import Recipe, RecipeImageJob, RecipeIngredient, RecipeSource
 from .services import create_recipe_revision
 
 
@@ -94,6 +94,58 @@ class RecipeLifecycleTests(TestCase):
         self.assertContains(response, "Veröffentlichen")
         self.assertContains(response, "Favorisieren")
         self.assertContains(response, "Archivieren")
+
+    def test_recipe_catalogue_separates_statuses_and_searches_ingredients_and_tags(self):
+        response = self.create_recipe(
+            title="Sommertopf",
+            ingredients=[{"sourceText": "Basilikum"}],
+            tags=["feierabend"],
+        )
+        recipe_id = response.json()["id"]
+        self.client.post(f"/api/v1/recipes/{recipe_id}/approve")
+        self.create_recipe(title="Unfertig", tags=["notiz"])
+
+        ingredient_search = self.client.get("/recipes/?q=Basilikum")
+        tag_search = self.client.get("/api/v1/recipes?q=feierabend")
+        catalogue = self.client.get("/recipes/")
+
+        self.assertContains(ingredient_search, "Sommertopf")
+        self.assertEqual(
+            [recipe["title"] for recipe in tag_search.json()["recipes"]], ["Sommertopf"]
+        )
+        self.assertContains(catalogue, "Veröffentlicht")
+        self.assertContains(catalogue, "Entwürfe")
+
+    def test_recipe_creation_queues_a_foundry_image_with_the_app_visual_style(self):
+        response = self.create_recipe(
+            title="Pasta al Limone",
+            ingredients=[{"sourceText": "Zitrone"}],
+            tags=["sommer"],
+        )
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        job = RecipeImageJob.objects.get(recipe=recipe)
+
+        self.assertEqual(recipe.image_status, "pending")
+        self.assertEqual(job.state, RecipeImageJob.State.QUEUED)
+        self.assertIn("Zitrone", job.prompt)
+        self.assertIn("terracotta, olive and saffron", job.prompt)
+
+    def test_recipe_image_can_be_regenerated_from_the_detail_page(self):
+        response = self.create_recipe()
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        original_job = RecipeImageJob.objects.get(recipe=recipe)
+
+        response = self.client.post(f"/recipes/{recipe.id}/image/regenerate/")
+
+        self.assertRedirects(response, f"/recipes/{recipe.id}/")
+        original_job.refresh_from_db()
+        self.assertEqual(original_job.state, RecipeImageJob.State.SUPERSEDED)
+        self.assertEqual(
+            RecipeImageJob.objects.filter(
+                recipe=recipe, state=RecipeImageJob.State.QUEUED
+            ).count(),
+            1,
+        )
 
     def test_recipe_form_accepts_more_than_twelve_ingredients(self):
         form_data = {"title": "Viele Zutaten", "servings": "2", "step-0": "Kochen."}
