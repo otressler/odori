@@ -1,27 +1,14 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ household.name }} · Odori{% endblock %}
 
 {% block content %}
 <section class="hero">
-  {# Rolling hills, cypresses and a farmhouse. Purely decorative. #}
-  <svg class="hero__scene" viewBox="0 0 1200 320" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-    <path d="M0 210c140-46 250-24 360 4s210 44 330 10 300-70 510-24v120H0Z" fill="#c9a86a" opacity=".55"/>
-    <path d="M0 246c170-52 286-16 404 14s232 36 356 4 290-52 440-16v72H0Z" fill="#9aa35f" opacity=".7"/>
-    <g fill="#4d5c2b">
-      <ellipse cx="212" cy="236" rx="11" ry="42"/>
-      <ellipse cx="240" cy="242" rx="9" ry="34"/>
-      <ellipse cx="266" cy="238" rx="10" ry="39"/>
-      <ellipse cx="905" cy="240" rx="10" ry="38"/>
-      <ellipse cx="930" cy="246" rx="8" ry="30"/>
-    </g>
-    <g transform="translate(560 176)">
-      <path d="M0 26h96v46H0z" fill="#f1e0c2"/>
-      <path d="M-8 26 48 0l56 26Z" fill="#b4563a"/>
-      <path d="M36 48h22v24H36z" fill="#8a5a34"/>
-      <path d="M14 38h14v12H14zM68 38h14v12H68z" fill="#8a5a34" opacity=".7"/>
-    </g>
-    <path d="M0 286c190-40 320-10 470 12s262 24 400 2 240-30 330-8v28H0Z" fill="#6a7d3e"/>
-  </svg>
+  <img
+    class="hero__image"
+    src="{% static 'tuscany-kitchen-window.png' %}"
+    alt="Blick aus einer toskanischen Küche auf Olivenhaine in der Abendsonne"
+  >
 
   <div class="hero__body">
     <p class="hero__eyebrow">La cucina di casa</p>
