@@ -8,6 +8,7 @@ from django.views.decorators.http import require_http_methods
 from core.services import household_for
 
 from .models import CanonicalIngredient, IngredientCategory, InventoryItem
+from .semantic import rank_ingredients, update_embedding
 from .services import PlannedIngredientInUse, change_inventory_status, merge_ingredients
 
 
@@ -40,11 +41,21 @@ def ingredient_json(ingredient):
 def ingredients(request):
     household = household_for(request.user)
     if request.method == "GET":
-        search = request.GET.get("q", "")
-        values = CanonicalIngredient.objects.filter(
-            household=household, active=True, name__icontains=search
-        )[:50]
-        return JsonResponse({"ingredients": [ingredient_json(item) for item in values]})
+        search = request.GET.get("q", "").strip()
+        values = CanonicalIngredient.objects.filter(household=household, active=True)
+        ranked = (
+            rank_ingredients(values, search)[:50]
+            if search
+            else [(item, 0, False) for item in values[:50]]
+        )
+        return JsonResponse(
+            {
+                "ingredients": [
+                    {**ingredient_json(item), "matchScore": round(score, 3), "semantic": semantic}
+                    for item, score, semantic in ranked
+                ]
+            }
+        )
     data = payload(request)
     if not data or not isinstance(data.get("name"), str) or not data["name"].strip():
         return error("validation_failed", "A name is required.", fields={"name": "Required."})
@@ -68,6 +79,7 @@ def ingredients(request):
             "This ingredient already exists.",
             fields={"name": "Already exists."},
         )
+    update_embedding(ingredient)
     return JsonResponse(ingredient_json(ingredient), status=201)
 
 
@@ -90,6 +102,8 @@ def ingredient_detail(request, ingredient_id):
         if key in data:
             setattr(ingredient, key, data[key])
     ingredient.save()
+    if "name" in data or "aliases" in data:
+        update_embedding(ingredient)
     return JsonResponse(ingredient_json(ingredient))
 
 

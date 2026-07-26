@@ -27,5 +27,10 @@ urlpatterns = [
         login_required(views.recipe_revision_page),
         name="recipe-revision",
     ),
+    path(
+        "<uuid:recipe_id>/ingredients/<uuid:ingredient_id>/add-to-pantry/",
+        login_required(views.recipe_ingredient_to_pantry_page),
+        name="recipe-ingredient-to-pantry",
+    ),
     path("<uuid:recipe_id>/", login_required(views.recipe_detail_page), name="recipe-detail"),
 ]

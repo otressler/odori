@@ -62,7 +62,11 @@ def shopping_detail(request, list_id):
     items = (
         ShoppingItem.objects.select_related("canonical_ingredient")
         .filter(shopping_list=shopping_list)
-        .order_by("label")
+        .order_by(
+            "canonical_ingredient__category__sort_order",
+            "canonical_ingredient__category__name",
+            "label",
+        )
     )
     buckets = {"open": [], "purchased": [], "skipped": []}
     for item in items:

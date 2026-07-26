@@ -5,7 +5,7 @@ from django.test import TestCase
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient
 
-from .models import Recipe, RecipeSource
+from .models import Recipe, RecipeIngredient, RecipeSource
 from .services import create_recipe_revision
 
 
@@ -146,3 +146,25 @@ class RecipeLifecycleTests(TestCase):
         )
         response = self.client.get(f"/api/v1/recipes/{other_recipe.id}")
         self.assertEqual(response.status_code, 404)
+
+    def test_recipe_auto_matches_a_fuzzy_ingredient_name(self):
+        tomato = CanonicalIngredient.objects.create(household=self.household, name="Tomate")
+
+        response = self.create_recipe(
+            ingredients=[{"sourceText": "Rispentomaten", "amount": "4", "unit": "Stück"}]
+        )
+
+        line = Recipe.objects.get(id=response.json()["id"]).ingredients.get()
+        self.assertEqual(line.canonical_ingredient_id, tomato.id)
+        self.assertEqual(line.match_state, RecipeIngredient.MatchState.MATCHED)
+
+    def test_recipe_detail_quick_inserts_unresolved_ingredient_into_pantry(self):
+        response = self.create_recipe(ingredients=[{"sourceText": "Basilikum"}])
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        line = recipe.ingredients.get()
+
+        response = self.client.post(f"/recipes/{recipe.id}/ingredients/{line.id}/add-to-pantry/")
+
+        self.assertRedirects(response, f"/recipes/{recipe.id}/")
+        line.refresh_from_db()
+        self.assertEqual(line.canonical_ingredient.name, "Basilikum")

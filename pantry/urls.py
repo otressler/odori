@@ -7,6 +7,17 @@ urlpatterns = [
     path("", login_required(views.inventory_page), name="inventory-page"),
     path("add/", login_required(views.inventory_create_page), name="inventory-create"),
     path(
+        "categories/suggest/",
+        login_required(views.inventory_category_suggestions_page),
+        name="inventory-category-suggestions",
+    ),
+    path("condense/", login_required(views.inventory_condense_page), name="inventory-condense"),
+    path(
+        "condense/confirm/",
+        login_required(views.inventory_confirm_merge_page),
+        name="inventory-confirm-merge",
+    ),
+    path(
         "<uuid:ingredient_id>/status/",
         login_required(views.inventory_status_page),
         name="inventory-status",

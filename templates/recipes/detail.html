@@ -51,7 +51,14 @@
           <span class="amount">{% if ingredient.scaled_amount is not None %}{{ ingredient.scaled_amount|floatformat:"-2" }} {% endif %}{{ ingredient.unit }}</span>
           <span>
             {{ ingredient.source_text }}
-            {% if not ingredient.canonical_ingredient %}<span class="flag">nicht zugeordnet</span>{% endif %}
+            {% if not ingredient.canonical_ingredient %}
+              <span class="flag">nicht zugeordnet</span>
+              <form method="post" action="{% url 'recipe-ingredient-to-pantry' recipe.id ingredient.id %}" style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="unknown">
+                <button type="submit">Zum Vorrat</button>
+              </form>
+            {% endif %}
           </span>
         </li>
       {% empty %}

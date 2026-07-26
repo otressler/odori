@@ -6,9 +6,10 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 
 from core.services import household_for
-from pantry.models import CanonicalIngredient
+from pantry.models import CanonicalIngredient, InventoryItem
+from pantry.services import change_inventory_status
 
-from .models import Recipe
+from .models import Recipe, RecipeIngredient
 from .services import (
     approve_recipe,
     archive_recipe,
@@ -174,6 +175,34 @@ def recipe_detail_page(request, recipe_id):
             "is_favorite": recipe.favorites.filter(user=request.user).exists(),
         },
     )
+
+
+def recipe_ingredient_to_pantry_page(request, recipe_id, ingredient_id):
+    recipe = recipe_for_user(request.user, recipe_id)
+    line = RecipeIngredient.objects.filter(id=ingredient_id, recipe=recipe).first()
+    if not line:
+        raise Http404
+    household = household_for(request.user)
+    ingredient, created = CanonicalIngredient.objects.get_or_create(
+        household=household, name=line.source_text
+    )
+    if created:
+        from pantry.semantic import update_embedding
+
+        update_embedding(ingredient)
+    line.canonical_ingredient = ingredient
+    line.match_state = RecipeIngredient.MatchState.MATCHED
+    line.save(update_fields=["canonical_ingredient", "match_state"])
+    item = InventoryItem.objects.filter(household=household, ingredient=ingredient).first()
+    if not item:
+        change_inventory_status(
+            user=request.user,
+            ingredient_id=ingredient.id,
+            status=request.POST.get("status", InventoryItem.Status.UNKNOWN),
+            version=1,
+        )
+    messages.success(request, "Zutat dem Vorrat hinzugefügt und zugeordnet.")
+    return redirect("recipe-detail", recipe_id=recipe.id)
 
 
 def recipe_approve_page(request, recipe_id):

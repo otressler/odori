@@ -13,6 +13,8 @@ class IngredientCategory(models.Model):
     )
     name = models.CharField(max_length=80)
     sort_order = models.PositiveIntegerField(default=0)
+    embedding = models.JSONField(default=list, blank=True)
+    embedding_model = models.CharField(max_length=120, blank=True)
 
     class Meta:
         constraints = [
@@ -29,6 +31,8 @@ class CanonicalIngredient(models.Model):
         IngredientCategory, null=True, blank=True, on_delete=models.SET_NULL
     )
     aliases = models.JSONField(default=list, blank=True)
+    embedding = models.JSONField(default=list, blank=True)
+    embedding_model = models.CharField(max_length=120, blank=True)
     active = models.BooleanField(default=True)
     merged_into = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -23,6 +23,14 @@
   </form>
 </section>
 
+<div class="button-row" style="margin-bottom:1.25rem">
+  <a class="button" href="{% url 'inventory-condense' %}">Ähnliche Zutaten prüfen</a>
+  <form method="post" action="{% url 'inventory-category-suggestions' %}">
+    {% csrf_token %}
+    <button type="submit">Warengruppen vorschlagen</button>
+  </form>
+</div>
+
 <form class="search-bar" method="get" role="search">
   <div class="field">
     <label for="inventory-search">Vorrat durchsuchen</label>
@@ -40,9 +48,23 @@
 </nav>
 
 <div class="inventory-list">
-  {% for item in items %}
-    <article class="inventory-row" data-status="{{ item.status }}">
-      <span class="inventory-row__name">{{ item.ingredient.name }}</span>
+  {% regroup items by ingredient.category as category_groups %}
+  {% for category_group in category_groups %}
+    <section class="inventory-group">
+      <h2>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h2>
+      {% for item in category_group.list %}
+      <article class="inventory-row" data-status="{{ item.status }}">
+        <div class="inventory-row__identity">
+          <span class="inventory-row__name">{{ item.ingredient.name }}</span>
+          <span class="inventory-status inventory-status--{{ item.status }}">{{ item.get_status_display }}</span>
+          {% if item.upcoming_requirements %}
+            {% with first_requirement=item.upcoming_requirements.0 %}
+              <span class="inventory-requirement" title="{% for requirement in item.upcoming_requirements %}{{ requirement.title }}: {{ requirement.date|date:'j.n.' }}{% if not forloop.last %} · {% endif %}{% endfor %}">
+                Spätestens {{ first_requirement.date|date:"j.n." }}: {{ first_requirement.title }}{% if item.upcoming_requirements|length > 1 %} +{{ item.upcoming_requirements|length|add:"-1" }}{% endif %}
+              </span>
+            {% endwith %}
+          {% endif %}
+        </div>
       {# The segmented control already announces the current state, so no separate badge. #}
       <form class="segmented" method="post" action="{% url 'inventory-status' item.ingredient.id %}" style="margin-left:auto">
         {% csrf_token %}
@@ -53,7 +75,9 @@
           </button>
         {% endfor %}
       </form>
-    </article>
+      </article>
+      {% endfor %}
+    </section>
   {% empty %}
     <div class="empty">
       <h3>Der Vorrat ist noch leer</h3>

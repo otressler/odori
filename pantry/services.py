@@ -1,9 +1,33 @@
+from django.conf import settings
 from django.db import transaction
 from django.http import Http404
 
 from core.services import household_for
 
-from .models import CanonicalIngredient, InventoryEvent, InventoryItem
+from .models import (
+    CanonicalIngredient,
+    IngredientCategory,
+    InventoryEvent,
+    InventoryItem,
+)
+from .semantic import (
+    cosine_similarity,
+    embed,
+    fuzzy_similarity,
+    rank_ingredients,
+    update_embedding,
+)
+
+CATEGORY_SUGGESTIONS = (
+    ("Obst & Gemüse", 10, ("tomate", "gemüse", "obst", "salat", "kartoffel", "zwiebel")),
+    ("Bäckerei", 20, ("brot", "brötchen", "mehl", "kuchen", "backen")),
+    ("Kühlregal", 30, ("milch", "joghurt", "käse", "butter", "sahne", "tofu")),
+    ("Fleisch & Fisch", 40, ("fleisch", "huhn", "rind", "fisch", "lachs", "wurst")),
+    ("Trockenwaren", 50, ("pasta", "reis", "linsen", "bohnen", "mehl", "konserve")),
+    ("Gewürze & Öl", 60, ("salz", "pfeffer", "gewürz", "öl", "essig", "kräuter")),
+    ("Getränke", 70, ("wasser", "saft", "kaffee", "tee", "wein", "bier")),
+    ("Haushalt & Hygiene", 80, ("seife", "shampoo", "toilettenpapier", "spülmittel", "reiniger")),
+)
 
 
 class PlannedIngredientInUse(Exception):
@@ -122,3 +146,82 @@ def merge_ingredients(*, user, source_id, target_id):
     source.merged_into = target
     source.save(update_fields=["active", "merged_into"])
     return target
+
+
+def similar_ingredient_recommendations(*, user, minimum_score=0.96):
+    """Return high-confidence pairs for a user to review; never merge automatically."""
+
+    household = household_for(user)
+    ingredients = list(CanonicalIngredient.objects.filter(household=household, active=True))
+    retained = []
+    recommendations = []
+    for ingredient in ingredients:
+        candidates = rank_ingredients(retained, ingredient.name)
+        if candidates and candidates[0][1] >= minimum_score:
+            target, score, semantic = candidates[0]
+            recommendations.append(
+                {
+                    "source": ingredient,
+                    "target": target,
+                    "score_percent": round(score * 100),
+                    "semantic": semantic,
+                }
+            )
+        retained.append(ingredient)
+    return recommendations
+
+
+def _category_text(name):
+    for category_name, _, keywords in CATEGORY_SUGGESTIONS:
+        if category_name == name:
+            return " ".join((category_name, *keywords))
+    return name
+
+
+def ensure_suggested_categories(household):
+    categories = []
+    for name, sort_order, _ in CATEGORY_SUGGESTIONS:
+        category, _ = IngredientCategory.objects.get_or_create(
+            household=household, name=name, defaults={"sort_order": sort_order}
+        )
+        if category.sort_order != sort_order:
+            category.sort_order = sort_order
+            category.save(update_fields=["sort_order"])
+        if not category.embedding:
+            vector = embed(_category_text(category.name))
+            if vector is not None:
+                category.embedding = vector
+                category.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+                category.save(update_fields=["embedding", "embedding_model"])
+        categories.append(category)
+    return categories
+
+
+def category_suggestions(*, user, minimum_score=0.72):
+    """Seed store categories and assign only high-confidence ingredient suggestions."""
+
+    household = household_for(user)
+    categories = ensure_suggested_categories(household)
+    updated = 0
+    for ingredient in CanonicalIngredient.objects.filter(
+        household=household, active=True, category__isnull=True
+    ):
+        if not ingredient.embedding:
+            update_embedding(ingredient)
+        candidates = []
+        for category in categories:
+            score = cosine_similarity(ingredient.embedding, category.embedding)
+            if score is None:
+                _, _, keywords = next(
+                    item for item in CATEGORY_SUGGESTIONS if item[0] == category.name
+                )
+                score = max([fuzzy_similarity(ingredient.name, category.name)] + [
+                    fuzzy_similarity(ingredient.name, keyword) for keyword in keywords
+                ])
+            candidates.append((score, category))
+        score, category = max(candidates, key=lambda result: result[0])
+        if score >= minimum_score:
+            ingredient.category = category
+            ingredient.save(update_fields=["category"])
+            updated += 1
+    return updated

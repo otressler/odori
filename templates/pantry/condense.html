@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Ähnliche Zutaten prüfen · Odori{% endblock %}
+
+{% block content %}
+<div class="split" style="margin-bottom:1.25rem">
+  <div>
+    <h1>Ähnliche Zutaten prüfen</h1>
+    <p>Jeder Vorschlag wird erst nach deiner Bestätigung zusammengeführt. Rezept- und Vorratsverweise bleiben dabei erhalten.</p>
+  </div>
+  <a class="button" href="{% url 'inventory-page' %}">Zurück zum Vorrat</a>
+</div>
+
+<div class="inventory-list">
+  {% for recommendation in recommendations %}
+    <article class="inventory-row">
+      <div>
+        <strong>{{ recommendation.source.name }}</strong>
+        <span class="muted">wird zusammengeführt mit</span>
+        <strong>{{ recommendation.target.name }}</strong>
+        <span class="field__hint">Übereinstimmung: {{ recommendation.score_percent }}%</span>
+      </div>
+      <form method="post" action="{% url 'inventory-confirm-merge' %}" style="margin-left:auto">
+        {% csrf_token %}
+        <input type="hidden" name="source_id" value="{{ recommendation.source.id }}">
+        <input type="hidden" name="target_id" value="{{ recommendation.target.id }}">
+        <button class="primary" type="submit">Zusammenführen</button>
+      </form>
+    </article>
+  {% empty %}
+    <div class="empty">
+      <h2>Keine Vorschläge</h2>
+      <p>Im Moment gibt es keine ausreichend ähnlichen Zutaten.</p>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

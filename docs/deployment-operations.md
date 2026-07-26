@@ -72,6 +72,8 @@ The example uses `.env` for readability. Compose variable substitution for `${PO
 ## Required configuration
 
 | Variable | Purpose |
+| `INGREDIENT_EMBEDDINGS_ENABLED` | Enables Azure OpenAI semantic ingredient matching; disable to use local fuzzy matching only. |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Azure OpenAI embedding deployment name used for ingredient vectors. |
 | --- | --- |
 | `ODORI_VERSION` | Immutable application release tag. |
 | `DATABASE_URL` | PostgreSQL connection string on the internal Docker network. |

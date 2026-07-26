@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from pantry.models import CanonicalIngredient
+from pantry.semantic import best_match
 
 from .models import (
     Recipe,
@@ -48,6 +49,7 @@ def create_or_update_recipe(*, user, data, recipe=None):
     recipe.save()
     if "ingredients" in data:
         RecipeIngredient.objects.filter(recipe=recipe).delete()
+        active_ingredients = CanonicalIngredient.objects.filter(household=household, active=True)
         for index, line in enumerate(data["ingredients"]):
             ingredient = None
             if line.get("canonicalIngredientId"):
@@ -56,6 +58,8 @@ def create_or_update_recipe(*, user, data, recipe=None):
                 ).first()
                 if not ingredient:
                     raise ValueError("Ingredient does not belong to this household.")
+            elif line.get("sourceText"):
+                ingredient = best_match(active_ingredients, line["sourceText"])
             RecipeIngredient.objects.create(
                 recipe=recipe,
                 canonical_ingredient=ingredient,
