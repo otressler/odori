@@ -191,3 +191,62 @@ class PantryApiTests(TestCase):
 
         self.assertContains(response, "Spätestens")
         self.assertContains(response, "Tomatensuppe")
+
+    def test_inventory_next_week_filter_excludes_requirements_from_day_eight(self):
+        source = RecipeSource.objects.create(household=self.household)
+        recipe = Recipe.objects.create(
+            household=self.household,
+            created_by=self.user,
+            source=source,
+            title="Tomatensuppe",
+            status=Recipe.Status.APPROVED,
+        )
+        late_recipe = Recipe.objects.create(
+            household=self.household,
+            created_by=self.user,
+            source=source,
+            title="Basilikum-Pasta",
+            status=Recipe.Status.APPROVED,
+        )
+        basil = CanonicalIngredient.objects.create(
+            household=self.household, name="Basilikum"
+        )
+        RecipeIngredient.objects.create(
+            recipe=recipe,
+            canonical_ingredient=self.ingredient,
+            source_text="Tomate",
+            sort_order=0,
+        )
+        RecipeIngredient.objects.create(
+            recipe=late_recipe,
+            canonical_ingredient=basil,
+            source_text="Basilikum",
+            sort_order=1,
+        )
+        week_start = current_week_start()
+        get_or_create_plan(user=self.user, week_start=week_start)
+        add_slot(
+            user=self.user,
+            week_start=week_start,
+            date=timezone.localdate() + timedelta(days=6),
+            slot=MealSlot.Slot.DINNER,
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe_id=recipe.id,
+        )
+        add_slot(
+            user=self.user,
+            week_start=week_start + timedelta(days=7),
+            date=timezone.localdate() + timedelta(days=7),
+            slot=MealSlot.Slot.DINNER,
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe_id=late_recipe.id,
+        )
+        InventoryItem.objects.create(household=self.household, ingredient=self.ingredient)
+        InventoryItem.objects.create(household=self.household, ingredient=basil)
+
+        response = self.client.get("/pantry/?filter=next_week")
+
+        self.assertEqual(
+            [item.ingredient.name for item in response.context["items"]],
+            ["Tomate"],
+        )

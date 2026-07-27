@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import redirect, render
@@ -46,6 +48,7 @@ def inventory_page(request):
     household = household_for(request.user)
     query = request.GET.get("q", "").strip()
     selected_status = request.GET.get("status", "")
+    selected_filter = request.GET.get("filter", "")
     items = list(
         InventoryItem.objects.select_related("ingredient")
         .filter(household=household)
@@ -60,6 +63,21 @@ def inventory_page(request):
     if selected_status in InventoryItem.Status.values:
         items = [item for item in items if item.status == selected_status]
     attach_upcoming_requirements(items, household)
+    today = timezone.localdate()
+    next_week = today + timedelta(days=7)
+    next_week_count = sum(
+        any(today <= requirement["date"] < next_week for requirement in item.upcoming_requirements)
+        for item in items
+    )
+    if selected_filter == "next_week":
+        items = [
+            item
+            for item in items
+            if any(
+                today <= requirement["date"] < next_week
+                for requirement in item.upcoming_requirements
+            )
+        ]
     category_job = (
         PantryCategorizationJob.objects.filter(household=household)
         .order_by("-created_at")
@@ -73,6 +91,13 @@ def inventory_page(request):
         }
         for value, label in InventoryItem.Status.choices
     ]
+    category_filters = [
+        {
+            "value": "next_week",
+            "label": "Nächste Woche",
+            "count": next_week_count,
+        }
+    ]
     return render(
         request,
         "pantry/inventory.html",
@@ -80,8 +105,10 @@ def inventory_page(request):
             "items": items,
             "query": query,
             "selected_status": selected_status,
+            "selected_filter": selected_filter,
             "status_choices": InventoryItem.Status.choices,
             "status_filters": status_filters,
+            "category_filters": category_filters,
             "category_job": category_job,
         },
     )

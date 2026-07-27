@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -9,6 +10,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import RecipeImageJob
+
+logger = logging.getLogger(__name__)
 
 
 class RecipeImageGenerationError(Exception):
@@ -84,6 +87,7 @@ def run_next_recipe_image_job():
         job.state = RecipeImageJob.State.RUNNING
         job.started_at = timezone.now()
         job.save(update_fields=["state", "started_at"])
+        logger.info("Started recipe image job %s for recipe %s", job.id, job.recipe_id)
 
     try:
         image_bytes = _generate_image_bytes(job.prompt)
@@ -97,6 +101,7 @@ def run_next_recipe_image_job():
             if job.recipe.image_prompt == job.prompt:
                 job.recipe.image_status = "failed"
                 job.recipe.save(update_fields=["image_status"])
+        logger.exception("Recipe image job %s failed", job.id)
         return True
 
     with transaction.atomic():
@@ -105,6 +110,7 @@ def run_next_recipe_image_job():
             job.state = RecipeImageJob.State.SUPERSEDED
             job.finished_at = timezone.now()
             job.save(update_fields=["state", "finished_at"])
+            logger.info("Superseded recipe image job %s for recipe %s", job.id, job.recipe_id)
             return True
         job.recipe.image.save(f"{job.recipe.id}.png", ContentFile(image_bytes), save=False)
         job.recipe.image_status = "ready"
@@ -112,4 +118,5 @@ def run_next_recipe_image_job():
         job.state = RecipeImageJob.State.SUCCEEDED
         job.finished_at = timezone.now()
         job.save(update_fields=["state", "finished_at"])
+    logger.info("Completed recipe image job %s for recipe %s", job.id, job.recipe_id)
     return True

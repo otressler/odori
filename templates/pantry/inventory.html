@@ -43,10 +43,14 @@
 </form>
 
 <nav class="chip-row" aria-label="Nach Verfügbarkeit filtern" style="margin-bottom:1.25rem">
-  <a class="chip{% if not selected_status %} chip--active{% endif %}" href="?{% if query %}q={{ query }}{% endif %}">Alle</a>
+  <a class="chip{% if not selected_status and not selected_filter %} chip--active{% endif %}" href="?{% if query %}q={{ query }}{% endif %}">Alle</a>
   {% for filter in status_filters %}
-    <a class="chip{% if filter.value == selected_status %} chip--active{% endif %}"
+    <a class="chip{% if filter.value == selected_status and not selected_filter %} chip--active{% endif %}"
        href="?status={{ filter.value }}{% if query %}&amp;q={{ query }}{% endif %}">{{ filter.label }} ({{ filter.count }})</a>
+  {% endfor %}
+  {% for filter in category_filters %}
+    <a class="chip{% if filter.value == selected_filter %} chip--active{% endif %}"
+       href="?filter={{ filter.value }}{% if selected_status %}&amp;status={{ selected_status }}{% endif %}{% if query %}&amp;q={{ query }}{% endif %}">{{ filter.label }} ({{ filter.count }})</a>
   {% endfor %}
 </nav>
 
@@ -78,7 +82,8 @@
           <input type="hidden" name="version" value="{{ item.version }}">
           {% for value, label in status_choices %}
             <button type="submit" name="status" value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
-              {{ label }}<span class="sr-only"> für {{ item.ingredient.name }}</span>
+              <svg aria-hidden="true"><use href="#i-{% if value == 'in_stock' %}check{% elif value == 'needs_replenishment' %}basket{% else %}question{% endif %}"></use></svg>
+              <span class="sr-only">{{ label }} für {{ item.ingredient.name }}</span>
             </button>
           {% endfor %}
         </form>

@@ -1164,6 +1164,11 @@ textarea:focus {
   box-shadow: var(--shadow-soft);
 }
 
+.inventory-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .list-card__art {
   display: grid;
   flex: none;
@@ -1181,7 +1186,7 @@ textarea:focus {
 
 .inventory-card__identity {
   display: grid;
-  flex: 1 1 14rem;
+  min-width: 0;
   gap: 0.15rem;
 }
 
@@ -1207,6 +1212,24 @@ textarea:focus {
   font-size: 0.84rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.inventory-card__control {
+  grid-column: 1 / -1;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.inventory-card__control button {
+  display: grid;
+  flex: 1;
+  padding: 0.3rem 0.8rem;
+  place-items: center;
+}
+
+.inventory-card__control svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .home-reminder {
