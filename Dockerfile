@@ -10,4 +10,4 @@ RUN mkdir -p /app/data/uploads /app/staticfiles && chown -R odori:odori /app
 USER odori
 RUN python manage.py collectstatic --noinput
 EXPOSE 8000
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--access-logfile", "-", "odori.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "odori.wsgi:application"]

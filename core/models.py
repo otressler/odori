@@ -43,3 +43,17 @@ class AuditContext(models.Model):
     actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     action = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WorkerHeartbeat(models.Model):
+    class State(models.TextChoices):
+        IDLE = "idle", "Idle"
+        WORKING = "working", "Working"
+        DEGRADED = "degraded", "Degraded"
+
+    name = models.CharField(max_length=80, unique=True, default="default")
+    state = models.CharField(max_length=12, choices=State.choices, default=State.IDLE)
+    started_at = models.DateTimeField(null=True, blank=True)
+    last_heartbeat_at = models.DateTimeField()
+    last_job_completed_at = models.DateTimeField(null=True, blank=True)
+    last_error_message = models.CharField(max_length=500, blank=True)

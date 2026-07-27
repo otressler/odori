@@ -105,6 +105,17 @@ AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS = float(
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "loggers": {"odori.request": {"handlers": ["console"], "level": "INFO"}},
+    "formatters": {"json": {"()": "core.observability.JsonFormatter"}},
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+        }
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "django.server": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "odori": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
 }
