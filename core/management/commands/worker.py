@@ -24,7 +24,17 @@ class Command(BaseCommand):
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted pantry categorization job(s).")
             logger.info("Requeued %s interrupted pantry categorization job(s)", recovered)
+        
         while True:
-            connection.ensure_connection()
+            try:
+                connection.ensure_connection()
+            except Exception as exc:
+                self.stderr.write(f"Database connection error: {exc}. Retrying in 5 seconds...")
+                logger.exception("Database connection error: %s", exc)
+                time.sleep(5)
+                continue
+            logger.info("Checking for jobs...")
+            self.stdout.write("Checking for jobs...")
+
             if not run_next_category_job() and not run_next_recipe_image_job():
                 time.sleep(5)
