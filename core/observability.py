@@ -55,6 +55,48 @@ def log_event(logger, event, *, level=logging.INFO, **fields):
     )
 
 
+def current_context():
+    return _context.get().copy()
+
+
+def record_provider_diagnostic(
+    *,
+    household_id,
+    correlation_id,
+    job_id,
+    operation,
+    state,
+    error_code="",
+    http_status=None,
+    deployment="",
+    vector_dimensions=None,
+    duration_ms=0,
+):
+    from .models import ProviderDiagnostic
+
+    diagnostic = ProviderDiagnostic.objects.create(
+        household_id=household_id,
+        correlation_id=correlation_id,
+        job_id=job_id,
+        operation=operation,
+        state=state,
+        error_code=error_code,
+        http_status=http_status,
+        deployment=deployment,
+        vector_dimensions=vector_dimensions,
+        duration_ms=duration_ms,
+    )
+    if household_id:
+        stale_ids = list(
+            ProviderDiagnostic.objects.filter(household_id=household_id)
+            .order_by("-created_at")
+            .values_list("id", flat=True)[200:]
+        )
+        if stale_ids:
+            ProviderDiagnostic.objects.filter(id__in=stale_ids).delete()
+    return diagnostic
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         payload = {

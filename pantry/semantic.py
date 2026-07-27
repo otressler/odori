@@ -1,11 +1,28 @@
 import json
+import logging
 import math
 import re
+import time
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+
+from core.observability import bind_context, current_context, log_event, record_provider_diagnostic
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    vector: list | None
+    state: str
+    error_code: str = ""
+    http_status: int | None = None
+    duration_ms: int = 0
+
 
 
 def normalized_text(value):
@@ -54,14 +71,64 @@ def fuzzy_similarity(query, candidate):
     return _fuzzy_score(query, candidate)
 
 
-def embed(text):
-    """Return a Foundry embedding when configured, otherwise leave matching offline."""
+def embed_with_diagnostics(text, *, household_id=None, job_id=None, operation="embedding"):
+    """Return an embedding outcome without making provider failure a product-flow failure."""
 
+    started = time.monotonic()
     endpoint = settings.AZURE_OPENAI_ENDPOINT
     deployment = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
     api_key = settings.AZURE_OPENAI_API_KEY
-    if not settings.INGREDIENT_EMBEDDINGS_ENABLED or not all((endpoint, deployment, api_key)):
-        return None
+    correlation_id = current_context().get("request_id")
+    if not settings.INGREDIENT_EMBEDDINGS_ENABLED:
+        result = EmbeddingResult(vector=None, state="skipped", error_code="disabled")
+    elif not all((endpoint, deployment, api_key)):
+        result = EmbeddingResult(vector=None, state="skipped", error_code="missing_configuration")
+    else:
+        result = _request_embedding(
+            text,
+            endpoint=endpoint,
+            deployment=deployment,
+            api_key=api_key,
+        )
+    duration_ms = round((time.monotonic() - started) * 1000)
+    result = EmbeddingResult(
+        vector=result.vector,
+        state=result.state,
+        error_code=result.error_code,
+        http_status=result.http_status,
+        duration_ms=duration_ms,
+    )
+    log_event(
+        logger,
+        "provider.embedding_completed",
+        level=logging.WARNING if result.state != "succeeded" else logging.INFO,
+        operation=operation,
+        household_id=household_id,
+        job_id=job_id,
+        provider_state=result.state,
+        error_code=result.error_code,
+        http_status=result.http_status,
+        deployment=deployment,
+        vector_dimensions=len(result.vector) if result.vector else None,
+        duration_ms=result.duration_ms,
+    )
+    if household_id:
+        record_provider_diagnostic(
+            household_id=household_id,
+            correlation_id=correlation_id,
+            job_id=job_id,
+            operation=operation,
+            state=result.state,
+            error_code=result.error_code,
+            http_status=result.http_status,
+            deployment=deployment,
+            vector_dimensions=len(result.vector) if result.vector else None,
+            duration_ms=result.duration_ms,
+        )
+    return result
+
+
+def _request_embedding(text, *, endpoint, deployment, api_key):
     request = Request(
         f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/embeddings?api-version=2024-10-21",
         data=json.dumps({"input": text}).encode(),
@@ -70,17 +137,43 @@ def embed(text):
     )
     try:
         with urlopen(request, timeout=settings.AZURE_OPENAI_EMBEDDING_TIMEOUT_SECONDS) as response:
-            return json.loads(response.read())["data"][0]["embedding"]
-    except (HTTPError, URLError, KeyError, ValueError, TimeoutError):
-        return None
+            vector = json.loads(response.read())["data"][0]["embedding"]
+        if not isinstance(vector, list) or not vector:
+            return EmbeddingResult(vector=None, state="failed", error_code="invalid_response")
+        return EmbeddingResult(vector=vector, state="succeeded")
+    except TimeoutError:
+        return EmbeddingResult(vector=None, state="failed", error_code="timeout")
+    except HTTPError as exc:
+        return EmbeddingResult(
+            vector=None,
+            state="failed",
+            error_code="http_error",
+            http_status=exc.code,
+        )
+    except URLError:
+        return EmbeddingResult(vector=None, state="failed", error_code="network_error")
+    except (KeyError, ValueError, TypeError):
+        return EmbeddingResult(vector=None, state="failed", error_code="invalid_response")
+
+
+def embed(text):
+    return embed_with_diagnostics(text).vector
 
 
 def ingredient_embedding_text(ingredient):
     return " ".join([ingredient.name, *ingredient.aliases])
 
 
-def update_embedding(ingredient):
-    vector = embed(ingredient_embedding_text(ingredient))
+def update_embedding(ingredient, *, job_id=None, correlation_id=None):
+    with_context = {"request_id": correlation_id} if correlation_id else {}
+    with bind_context(**with_context):
+        result = embed_with_diagnostics(
+            ingredient_embedding_text(ingredient),
+            household_id=ingredient.household_id,
+            job_id=job_id,
+            operation="ingredient_embedding",
+        )
+    vector = result.vector
     if vector is not None:
         ingredient.embedding = vector
         ingredient.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT

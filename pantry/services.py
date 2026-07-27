@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import transaction
 from django.http import Http404
 
+from core.observability import current_context
 from core.services import household_for
 
 from .models import (
@@ -13,7 +14,7 @@ from .models import (
 )
 from .semantic import (
     cosine_similarity,
-    embed,
+    embed_with_diagnostics,
     fuzzy_similarity,
     rank_ingredients,
     update_embedding,
@@ -187,7 +188,7 @@ def category_embedding_text(category):
     )
 
 
-def ensure_suggested_categories(household):
+def ensure_suggested_categories(household, *, job_id=None, correlation_id=None):
     categories = []
     for name, sort_order, _ in CATEGORY_SUGGESTIONS:
         category, _ = IngredientCategory.objects.get_or_create(
@@ -197,7 +198,12 @@ def ensure_suggested_categories(household):
             category.sort_order = sort_order
             category.save(update_fields=["sort_order"])
         if not category.embedding:
-            vector = embed(category_embedding_text(category))
+            vector = embed_with_diagnostics(
+                category_embedding_text(category),
+                household_id=household.id,
+                job_id=job_id,
+                operation="category_embedding",
+            ).vector
             if vector is not None:
                 category.embedding = vector
                 category.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
@@ -221,13 +227,15 @@ def category_score_details(*, name, ingredient_embedding, category):
     }
 
 
-def categorize_household(*, household, minimum_score=0.72):
-    categories = ensure_suggested_categories(household)
+def categorize_household(*, household, minimum_score=0.72, job_id=None, correlation_id=None):
+    categories = ensure_suggested_categories(
+        household, job_id=job_id, correlation_id=correlation_id
+    )
     updated = 0
     ingredients = list(CanonicalIngredient.objects.filter(household=household, active=True))
     for ingredient in ingredients:
         if not ingredient.embedding:
-            update_embedding(ingredient)
+            update_embedding(ingredient, job_id=job_id, correlation_id=correlation_id)
     for ingredient in (ingredient for ingredient in ingredients if ingredient.category_id is None):
         candidates = []
         for category in categories:
@@ -261,7 +269,13 @@ def queue_category_suggestions(*, user):
     )
     if active_job:
         return active_job, False
-    return PantryCategorizationJob.objects.create(household=household), True
+    return (
+        PantryCategorizationJob.objects.create(
+            household=household,
+            correlation_id=current_context().get("request_id"),
+        ),
+        True,
+    )
 
 
 def category_suggestions(*, user, minimum_score=0.72):

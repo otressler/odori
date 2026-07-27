@@ -57,3 +57,25 @@ class WorkerHeartbeat(models.Model):
     last_heartbeat_at = models.DateTimeField()
     last_job_completed_at = models.DateTimeField(null=True, blank=True)
     last_error_message = models.CharField(max_length=500, blank=True)
+
+
+class ProviderDiagnostic(models.Model):
+    class State(models.TextChoices):
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        SKIPPED = "skipped", "Skipped"
+
+    household = models.ForeignKey(Household, on_delete=models.SET_NULL, null=True, blank=True)
+    correlation_id = models.UUIDField(null=True, blank=True)
+    job_id = models.UUIDField(null=True, blank=True)
+    operation = models.CharField(max_length=80)
+    state = models.CharField(max_length=12, choices=State.choices)
+    error_code = models.CharField(max_length=80, blank=True)
+    http_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    deployment = models.CharField(max_length=120, blank=True)
+    vector_dimensions = models.PositiveIntegerField(null=True, blank=True)
+    duration_ms = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
