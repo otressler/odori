@@ -50,7 +50,7 @@ returns `409` with `error.code: "planned_ingredient_in_use"` and affected meal s
 
 ## Real-time events
 
-Connect to `wss://cucina.tail-net-name.ts.net/api/v1/realtime` using the authenticated same-origin session. The server assigns household inventory and authorized shopping-list subscriptions; clients do not choose arbitrary channel names.
+Connect to `wss://odori.tail-net-name.ts.net/api/v1/realtime` using the authenticated same-origin session. The server assigns household inventory and authorized shopping-list subscriptions; clients do not choose arbitrary channel names.
 
 ```json
 {

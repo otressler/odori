@@ -20,10 +20,10 @@ services:
       - uploads:/app/data/uploads
     labels:
       - traefik.enable=true
-      - traefik.http.routers.cucina.rule=Host(`cucina.tail-net-name.ts.net`)
-      - traefik.http.routers.cucina.entrypoints=websecure
-      - traefik.http.routers.cucina.tls=true
-      - traefik.http.services.cucina.loadbalancer.server.port=8000
+      - traefik.http.routers.odori.rule=Host(`odori.tail-net-name.ts.net`)
+      - traefik.http.routers.odori.entrypoints=websecure
+      - traefik.http.routers.odori.tls=true
+      - traefik.http.services.odori.loadbalancer.server.port=8000
     networks: [web, internal]
 
   odori-worker:
