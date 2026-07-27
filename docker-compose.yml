@@ -1,30 +1,52 @@
 services:
   odori-web:
-    build: .
-    image: ghcr.io/otressler/odori:${ODORI_VERSION:-dev}
-    env_file: .env
+    image: ghcr.io/otressler/odori:latest
+    environment:
+      INGREDIENT_EMBEDDINGS_ENABLED: "${INGREDIENT_EMBEDDINGS_ENABLED}"
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY}"
+      AZURE_OPENAI_EMBEDDING_DEPLOYMENT: "${AZURE_OPENAI_EMBEDDING_DEPLOYMENT}"
+      DEBUG: "${DEBUG}"
+      DATABASE_URL: "${DATABASE_URL}"
+      SESSION_SECRET: "${SESSION_SECRET}"
+      ALLOWED_TAILNET_HOST: "${ALLOWED_TAILNET_HOST}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS}"
     command: gunicorn --bind 0.0.0.0:8000 --workers 1 odori.wsgi:application
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - uploads:/app/data/uploads
-    networks: [web, internal]
+    networks: [proxy, internal]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.cucina.rule=Host(`${ALLOWED_TAILNET_HOST}`)
-      - traefik.http.routers.cucina.entrypoints=websecure
-      - traefik.http.routers.cucina.tls=true
-      - traefik.http.services.cucina.loadbalancer.server.port=8000
-    mem_limit: 750m
+      - traefik.docker.network=proxy
+      - traefik.http.routers.odori.rule=Host(`${ALLOWED_TAILNET_HOST}`)
+      - traefik.http.routers.odori.entrypoints=websecure
+      - traefik.http.routers.odori.tls=true
+      - traefik.http.routers.odori.tls.certresolver=inwx
+      - traefik.http.services.odori.loadbalancer.server.port=8000
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, urllib.request; request = urllib.request.Request('http://localhost:8000/health/live', headers={'Host': os.environ['ALLOWED_TAILNET_HOST']}); urllib.request.urlopen(request)"
+        ]
       interval: 15s
       timeout: 5s
       retries: 3
   odori-worker:
-    image: ghcr.io/otressler/odori:${ODORI_VERSION:-dev}
-    env_file: .env
+    image: ghcr.io/otressler/odori:latest
+    environment:
+      INGREDIENT_EMBEDDINGS_ENABLED: "${INGREDIENT_EMBEDDINGS_ENABLED}"
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY}"
+      AZURE_OPENAI_EMBEDDING_DEPLOYMENT: "${AZURE_OPENAI_EMBEDDING_DEPLOYMENT}"
+      DEBUG: "${DEBUG}"
+      DATABASE_URL: "${DATABASE_URL}"
+      SESSION_SECRET: "${SESSION_SECRET}"
     command: python manage.py worker
     depends_on:
       postgres:
@@ -32,24 +54,23 @@ services:
     volumes:
       - uploads:/app/data/uploads
     networks: [internal, egress]
-    mem_limit: 1g
   postgres:
-    image: postgres:16.9-alpine
+    image: postgres:18.4-alpine
     environment:
       POSTGRES_DB: odori
       POSTGRES_USER: odori
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U odori -d odori"]
-      interval: 10s
+      interval: 20s
       timeout: 5s
       retries: 5
     networks: [internal]
     mem_limit: 1500m
 networks:
-  web:
+  proxy:
     external: true
   internal:
     internal: true
