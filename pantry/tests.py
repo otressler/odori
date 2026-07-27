@@ -128,12 +128,12 @@ class PantryApiTests(TestCase):
 
         self.assertRedirects(response, "/accounts/login/?next=/admin/categories")
 
-    def test_category_admin_saves_descriptions_and_refreshes_embedding(self):
+    def test_category_admin_saves_descriptions_and_queues_embedding_refresh(self):
         category = IngredientCategory.objects.create(
             household=self.household, name="Trockenwaren", embedding=[1.0, 0.0]
         )
 
-        with patch("pantry.views.embed", return_value=[0.0, 1.0]) as embed_mock:
+        with patch("pantry.views.embed") as embed_mock:
             response = self.client.post(
                 "/admin/categories",
                 {
@@ -142,13 +142,18 @@ class PantryApiTests(TestCase):
                 },
             )
 
-        self.assertRedirects(response, "/admin/categories")
+        self.assertRedirects(
+            response, "/admin/categories", fetch_redirect_response=False
+        )
+        embed_mock.assert_not_called()
         category.refresh_from_db()
         self.assertEqual(
             category.description, "Nudeln, Reis und haltbare Grundnahrungsmittel"
         )
-        self.assertEqual(category.embedding, [0.0, 1.0])
-        embed_mock.assert_called_once()
+        self.assertEqual(category.embedding, [])
+        self.assertEqual(category.embedding_model, "")
+        job = PantryCategorizationJob.objects.get(household=self.household)
+        self.assertEqual(job.state, PantryCategorizationJob.State.QUEUED)
 
     def test_category_admin_ranks_similarity_results_and_is_household_scoped(self):
         first = IngredientCategory.objects.create(

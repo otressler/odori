@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib import messages
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -17,7 +17,6 @@ from .models import (
 from .semantic import cosine_similarity, embed
 from .services import (
     PlannedIngredientInUse,
-    category_embedding_text,
     change_inventory_status,
     merge_ingredients,
     queue_category_suggestions,
@@ -132,31 +131,31 @@ def category_admin_page(request):
         action = request.POST.get("action")
         if action == "save":
             changed = 0
-            failed = 0
-            for category in categories:
-                description = request.POST.get(f"description-{category.id}", "").strip()
-                if description == category.description:
-                    continue
-                category.description = description
-                category.embedding = []
-                category.embedding_model = ""
-                category.save(
-                    update_fields=["description", "embedding", "embedding_model"]
-                )
-                changed += 1
-                vector = embed(category_embedding_text(category))
-                if vector is not None:
-                    category.embedding = vector
-                    category.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
-                    category.save(update_fields=["embedding", "embedding_model"])
-                else:
-                    failed += 1
+            with transaction.atomic():
+                for category in categories:
+                    description = request.POST.get(
+                        f"description-{category.id}", ""
+                    ).strip()
+                    if description == category.description:
+                        continue
+                    category.description = description
+                    category.embedding = []
+                    category.embedding_model = ""
+                    category.save(
+                        update_fields=["description", "embedding", "embedding_model"]
+                    )
+                    changed += 1
+                if changed:
+                    _, queued = queue_category_suggestions(user=request.user)
             if changed:
-                messages.success(request, f"{changed} Beschreibung(en) gespeichert.")
-            if failed:
-                messages.warning(
+                messages.success(
                     request,
-                    f"{failed} Kategorie-Vektor(en) konnten nicht aktualisiert werden.",
+                    f"{changed} Beschreibung(en) gespeichert. "
+                    + (
+                        "Die Kategoriezuordnung wird im Hintergrund aktualisiert."
+                        if queued
+                        else "Die Kategoriezuordnung wird bereits aktualisiert."
+                    ),
                 )
             return redirect("admin-categories")
         if action == "test":
