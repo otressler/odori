@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
 from django.http import Http404
@@ -14,9 +15,10 @@ from .models import (
     InventoryItem,
     PantryCategorizationJob,
 )
-from .semantic import cosine_similarity, embed
+from .semantic import embed_with_diagnostics
 from .services import (
     PlannedIngredientInUse,
+    category_score_details,
     change_inventory_status,
     merge_ingredients,
     queue_category_suggestions,
@@ -126,6 +128,7 @@ def category_admin_page(request):
     categories = list(IngredientCategory.objects.filter(household=household))
     test_text = ""
     similarity_results = []
+    embedding_test = None
 
     if request.method == "POST":
         action = request.POST.get("action")
@@ -161,25 +164,53 @@ def category_admin_page(request):
         if action == "test":
             test_text = request.POST.get("ingredient", "").strip()
             if test_text:
-                vector = embed(test_text)
-                if vector is None:
+                embedding_test = embed_with_diagnostics(
+                    test_text,
+                    household_id=household.id,
+                    operation="category_test",
+                )
+                if embedding_test.vector is None:
+                    reason_messages = {
+                        "disabled": "Embeddings sind deaktiviert.",
+                        "missing_configuration": "Die Embedding-Konfiguration ist unvollständig.",
+                        "timeout": "Der Embedding-Aufruf hat das Zeitlimit überschritten.",
+                        "network_error": "Der Embedding-Dienst ist nicht erreichbar.",
+                        "http_error": "Der Embedding-Dienst hat einen HTTP-Fehler gemeldet.",
+                        "invalid_response": (
+                            "Der Embedding-Dienst hat eine ungültige Antwort gesendet."
+                        ),
+                    }
                     messages.error(
                         request,
                         "Der Test konnte nicht ausgeführt werden: "
-                        "kein Embedding vom Modell erhalten.",
+                        + reason_messages.get(
+                            embedding_test.error_code,
+                            "kein Embedding vom Modell erhalten.",
+                        ),
                     )
                 else:
-                    similarity_results = [
-                        {
-                            "category": category,
-                            "similarity": cosine_similarity(vector, category.embedding),
-                        }
-                        for category in categories
-                    ]
+                    similarity_results = []
+                    for category in categories:
+                        details = category_score_details(
+                            name=test_text,
+                            ingredient_embedding=embedding_test.vector,
+                            category=category,
+                        )
+                        similarity_results.append(
+                            {
+                                "category": category,
+                                "text_score": details["text_score"],
+                                "similarity": details["embedding_score"],
+                                "final_score": details["score"],
+                                "embedding_available": bool(category.embedding),
+                                "embedding_dimensions": len(category.embedding),
+                                "embedding_model": category.embedding_model,
+                            }
+                        )
                     similarity_results.sort(
                         key=lambda result: (
+                            result["final_score"],
                             result["similarity"] is not None,
-                            result["similarity"] or 0,
                         ),
                         reverse=True,
                     )
@@ -191,6 +222,9 @@ def category_admin_page(request):
             "categories": categories,
             "test_text": test_text,
             "similarity_results": similarity_results,
+            "embedding_test": embedding_test,
+            "embedding_deployment": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
+            "request_id": getattr(request, "request_id", ""),
         },
     )
 

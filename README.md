@@ -16,6 +16,10 @@ Production uses `docker-compose.yml` behind Traefik. Copy `.env.example` to `.en
 secrets, run migrations, bootstrap the initial owner exactly once, and use `python scripts/smoke.py`
 with `ODORI_SMOKE_URL` after deployment.
 
+Household owners can inspect worker, queue, provider, and embedding diagnostics at
+`/admin/operations`. See [deployment operations](docs/deployment-operations.md#observability-and-troubleshooting)
+for correlation IDs, health endpoints, and Docker log commands.
+
 ## Container releases
 
 GitHub Actions publishes multi-architecture (`linux/amd64` and `linux/arm64`) images to

@@ -77,6 +77,7 @@ The example uses `.env` for readability. Compose variable substitution for `${PO
 | `AZURE_OPENAI_IMAGE_DEPLOYMENT` | Microsoft Foundry `gpt-image-2` deployment name used by the worker for recipe-card images. Defaults to `gpt-image-2` and may be overridden for a differently named deployment. |
 | `AZURE_OPENAI_IMAGE_API_VERSION` | Image generation API version; defaults to `2025-04-01-preview`. |
 | `AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS` | Maximum image-generation request duration; defaults to `60`. |
+| `WORKER_HEARTBEAT_MAX_AGE_SECONDS` | Maximum age of a worker heartbeat before `/health/worker` and the owner operations page report it as unavailable. Defaults to `30`. |
 | --- | --- |
 | `ODORI_VERSION` | Immutable application release tag. |
 | `DATABASE_URL` | PostgreSQL connection string on the internal Docker network. |
@@ -116,6 +117,7 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 - Monitor container health, database free space, failed/retried job counts, upload volume consumption, and Azure API errors/latency.
 - Monitor active WebSocket connections, reconnect rates, event delivery failures, and persistent client version gaps; a reconnect must always recover through REST state reads.
 - Retain provider request metadata and job errors for troubleshooting, but redact credentials, cookies, full authorization headers, and unnecessary source content from logs.
+- The application retains at most 200 sanitized provider diagnostic records per household. These records contain outcome codes, deployment names, HTTP status, vector dimensions, durations, and correlation IDs; they never contain prompts, embeddings, provider payloads, cookies, or credentials.
 - Prune source uploads according to a household retention setting only after confirming the extracted recipe has been approved.
 
 ## Recovery and updates
@@ -124,6 +126,31 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 2. Pull the release image, run migrations, and deploy web/worker through Portainer or Compose.
 3. Verify authenticated access through the Tailscale hostname, a recipe read, and a database health check.
 4. Roll back the image only if its migrations are backward-compatible; otherwise restore the paired database and uploads backup.
+
+## Observability and troubleshooting
+
+Every web and worker record is emitted as JSON to container stdout/stderr. Each web response returns
+an `X-Request-ID`; use it to correlate a browser failure with logs and any queued job:
+
+```bash
+docker compose logs --tail=200 odori-web odori-worker
+docker compose logs --tail=500 odori-web odori-worker | grep '<request-id-or-job-id>'
+```
+
+The authenticated **Betrieb** page at `/admin/operations` is available only to household owners. It
+shows database/worker freshness, queue counts and recent job attempts, sanitized provider outcomes,
+and ingredient/category embedding coverage. Failed category and image jobs can be explicitly
+requeued there; retries retain their attempt count and receive a new correlation ID.
+
+For automated checks, use:
+
+- `/health/live` for process liveness;
+- `/health/ready` for database readiness; and
+- `/health/worker` for worker-heartbeat readiness.
+
+The category test at `/admin/categories` reports its embedding outcome, model deployment,
+dimensions, text similarity, cosine similarity, and final score. The final score is the greater of
+the text and cosine scores; no hidden weights are applied.
 
 ## Network policy
 

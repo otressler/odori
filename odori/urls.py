@@ -5,18 +5,35 @@ from django.contrib.auth.decorators import login_required
 from django.urls import include, path
 
 from core import views as core_views
+from core.services import household_owner_required
 from pantry import views as pantry_views
 
 urlpatterns = [
     path(
         "admin/categories",
-        login_required(pantry_views.category_admin_page),
+        login_required(household_owner_required(pantry_views.category_admin_page)),
         name="admin-categories",
+    ),
+    path(
+        "admin/operations",
+        login_required(core_views.operations_page),
+        name="operations",
+    ),
+    path(
+        "admin/operations/jobs/categories/<uuid:job_id>/retry",
+        login_required(core_views.retry_category_job),
+        name="retry-category-job",
+    ),
+    path(
+        "admin/operations/jobs/images/<uuid:job_id>/retry",
+        login_required(core_views.retry_image_job),
+        name="retry-image-job",
     ),
     path("admin/", admin.site.urls),
     path("", core_views.home, name="home"),
     path("health/live", core_views.liveness, name="liveness"),
     path("health/ready", core_views.readiness, name="readiness"),
+    path("health/worker", core_views.worker_readiness, name="worker-readiness"),
     path("accounts/", include("django.contrib.auth.urls")),
     path("recipes/", include("recipes.urls")),
     path("pantry/", include("pantry.urls")),

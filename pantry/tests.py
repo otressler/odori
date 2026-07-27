@@ -133,7 +133,7 @@ class PantryApiTests(TestCase):
             household=self.household, name="Trockenwaren", embedding=[1.0, 0.0]
         )
 
-        with patch("pantry.views.embed") as embed_mock:
+        with patch("pantry.views.embed_with_diagnostics") as embed_mock:
             response = self.client.post(
                 "/admin/categories",
                 {
@@ -167,7 +167,12 @@ class PantryApiTests(TestCase):
             household=other_household, name="Geheim", embedding=[1.0, 0.0]
         )
 
-        with patch("pantry.views.embed", return_value=[1.0, 0.0]):
+        from .semantic import EmbeddingResult
+
+        with patch(
+            "pantry.views.embed_with_diagnostics",
+            return_value=EmbeddingResult(vector=[1.0, 0.0], state="succeeded"),
+        ):
             response = self.client.post(
                 "/admin/categories", {"action": "test", "ingredient": "Spaghetti"}
             )

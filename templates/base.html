@@ -28,6 +28,7 @@
         <a href="/plan/"{% if "/plan/" in request.path %} aria-current="page"{% endif %}>Wochenplan</a>
         <a href="/shopping/"{% if "/shopping/" in request.path %} aria-current="page"{% endif %}>Einkauf</a>
         <a href="/pantry/"{% if "/pantry/" in request.path %} aria-current="page"{% endif %}>Vorrat</a>
+        {% if is_household_owner %}<a href="{% url 'operations' %}"{% if "/admin/operations" in request.path %} aria-current="page"{% endif %}>Betrieb</a>{% endif %}
       </nav>
       <div class="header-actions">
         <span class="sr-only">Angemeldet als {{ user.name_for_display }}</span>

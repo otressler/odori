@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Betrieb · Odori{% endblock %}
+
+{% block content %}
+<h1>Betriebsübersicht</h1>
+<p>Diagnosen für {{ household.name }}. Diese Informationen sind nur für Haushaltsinhaber sichtbar.</p>
+
+<section class="panel">
+  <h2>Dienste</h2>
+  <table>
+    <thead><tr><th>Komponente</th><th>Status</th><th>Zuletzt gesehen</th><th>Details</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Datenbank</td><td>Bereit</td><td>Diese Anfrage</td><td>Readiness: <code>/health/ready</code></td>
+      </tr>
+      <tr>
+        <td>Worker</td>
+        <td>{% if worker_is_fresh %}{{ heartbeat.get_state_display }}{% else %}Nicht verfügbar{% endif %}</td>
+        <td>{% if heartbeat %}{{ heartbeat.last_heartbeat_at|date:"d.m.Y H:i:s" }}{% else %}Noch nie{% endif %}</td>
+        <td>
+          {% if heartbeat and heartbeat.last_error_message %}{{ heartbeat.last_error_message }}{% else %}
+            Frischegrenze: {{ worker_max_age_seconds }} Sekunden
+          {% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Embedding-Abdeckung</h2>
+  <table>
+    <thead><tr><th>Objekt</th><th>Mit Vektor</th><th>Gesamt</th><th>Weitere Information</th></tr></thead>
+    <tbody>
+      <tr><td>Warengruppen</td><td>{{ category_embedding_count }}</td><td>{{ category_count }}</td><td>Modell und Dimensionen stehen in den Provider-Aufrufen.</td></tr>
+      <tr><td>Aktive Zutaten</td><td>{{ ingredient_embedding_count }}</td><td>{{ ingredient_count }}</td><td>{{ assigned_ingredient_count }} einer Warengruppe zugeordnet.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Warteschlangen</h2>
+  <p>Warengruppen: {% for state, count in category_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+  <p>Rezeptbilder: {% for state, count in image_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+
+  <h3>Letzte Warengruppen-Jobs</h3>
+  <table>
+    <thead><tr><th>Erstellt</th><th>Status</th><th>Versuche</th><th>Zugeordnet</th><th>Fehler</th><th>Aktion</th></tr></thead>
+    <tbody>
+      {% for job in category_jobs %}
+      <tr>
+        <td>{{ job.created_at|date:"d.m.Y H:i:s" }}</td><td>{{ job.get_state_display }}</td>
+        <td>{{ job.attempt_count }}</td><td>{{ job.assigned_count }}</td>
+        <td>{% if job.error_code %}<code>{{ job.error_code }}</code>: {{ job.error_message }}{% else %}—{% endif %}</td>
+        <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-category-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td colspan="6">Noch keine Warengruppen-Jobs.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Letzte Bild-Jobs</h3>
+  <table>
+    <thead><tr><th>Rezept</th><th>Status</th><th>Versuche</th><th>Fehler</th><th>Aktion</th></tr></thead>
+    <tbody>
+      {% for job in image_jobs %}
+      <tr>
+        <td>{{ job.recipe.title }}</td><td>{{ job.get_state_display }}</td><td>{{ job.attempt_count }}</td>
+        <td>{% if job.error_code %}<code>{{ job.error_code }}</code>: {{ job.error_message }}{% else %}—{% endif %}</td>
+        <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-image-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td colspan="5">Noch keine Bild-Jobs.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Letzte Provider-Aufrufe</h2>
+  <table>
+    <thead><tr><th>Zeit</th><th>Vorgang</th><th>Status</th><th>Code</th><th>HTTP</th><th>Deployment</th><th>Dimension</th><th>Dauer</th></tr></thead>
+    <tbody>
+      {% for diagnostic in provider_diagnostics %}
+      <tr>
+        <td>{{ diagnostic.created_at|date:"d.m.Y H:i:s" }}</td><td>{{ diagnostic.operation }}</td><td>{{ diagnostic.get_state_display }}</td>
+        <td>{{ diagnostic.error_code|default:"—" }}</td><td>{{ diagnostic.http_status|default:"—" }}</td>
+        <td>{{ diagnostic.deployment|default:"—" }}</td><td>{{ diagnostic.vector_dimensions|default:"—" }}</td><td>{{ diagnostic.duration_ms }} ms</td>
+      </tr>
+      {% empty %}<tr><td colspan="8">Noch keine Provider-Aufrufe für diesen Haushalt.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

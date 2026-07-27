@@ -52,6 +52,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.owner_navigation",
             ]
         },
     }
@@ -101,6 +102,9 @@ AZURE_OPENAI_IMAGE_API_VERSION = os.environ.get(
 )
 AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS = float(
     os.environ.get("AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS", "60")
+)
+WORKER_HEARTBEAT_MAX_AGE_SECONDS = int(
+    os.environ.get("WORKER_HEARTBEAT_MAX_AGE_SECONDS", "30")
 )
 LOGGING = {
     "version": 1,

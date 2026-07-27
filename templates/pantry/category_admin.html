@@ -23,6 +23,7 @@
 
 <section class="panel">
   <h2>Ähnlichkeit testen</h2>
+  {% if request_id %}<p>Anfrage-ID für die Container-Logs: <code>{{ request_id }}</code></p>{% endif %}
   <form class="inline-form" method="post">
     {% csrf_token %}
     <input type="hidden" name="action" value="test">
@@ -32,18 +33,32 @@
     </div>
     <button class="primary" type="submit">Testen</button>
   </form>
+  {% if embedding_test %}
+    <p>
+      Test-Embedding: {{ embedding_test.state }}
+      {% if embedding_test.error_code %}(<code>{{ embedding_test.error_code }}</code>){% endif %},
+      {% if embedding_test.vector %}{{ embedding_test.vector|length }} Dimensionen{% endif %},
+      Deployment: {{ embedding_deployment|default:"nicht konfiguriert" }},
+      {{ embedding_test.duration_ms }} ms.
+    </p>
+  {% endif %}
   {% if similarity_results %}
     <table>
-      <thead><tr><th>Warengruppe</th><th>Cosine Similarity</th></tr></thead>
+      <thead><tr><th>Warengruppe</th><th>Vektor</th><th>Text</th><th>Cosine</th><th>Finaler Wert</th><th>Entscheidung</th></tr></thead>
       <tbody>
         {% for result in similarity_results %}
           <tr>
             <td>{{ result.category.name }}</td>
-            <td>{% if result.similarity is not None %}{{ result.similarity|floatformat:4 }}{% else %}Kein Vektor{% endif %}</td>
+            <td>{% if result.embedding_available %}{{ result.embedding_model|default:"unbekannt" }} / {{ result.embedding_dimensions }} Dimensionen{% else %}Kein Vektor{% endif %}</td>
+            <td>{{ result.text_score|floatformat:4 }}</td>
+            <td>{% if result.similarity is not None %}{{ result.similarity|floatformat:4 }}{% else %}—{% endif %}</td>
+            <td>{{ result.final_score|floatformat:4 }}</td>
+            <td>{% if result.final_score >= 0.72 %}Qualifiziert{% else %}Unter 0,72{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
+    <p>Der finale Wert ist jeweils der höhere Wert aus Text- und Cosine-Ähnlichkeit; es werden keine weiteren Gewichte angewendet.</p>
   {% endif %}
 </section>
 {% endblock %}

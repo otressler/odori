@@ -11,7 +11,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from core.observability import current_context, log_event, record_provider_diagnostic
+from core.observability import bind_context, current_context, log_event, record_provider_diagnostic
 
 from .models import RecipeImageJob
 
@@ -245,12 +245,17 @@ def run_next_recipe_image_job():
         )
 
     try:
-        image_bytes = _generate_image_bytes(
-            job.prompt,
-            household_id=job.recipe.household_id,
+        with bind_context(
+            request_id=job.correlation_id,
             job_id=job.id,
-            correlation_id=job.correlation_id,
-        )
+            household_id=job.recipe.household_id,
+        ):
+            image_bytes = _generate_image_bytes(
+                job.prompt,
+                household_id=job.recipe.household_id,
+                job_id=job.id,
+                correlation_id=job.correlation_id,
+            )
     except RecipeImageGenerationError as exc:
         with transaction.atomic():
             job = RecipeImageJob.objects.select_for_update().select_related("recipe").get(id=job.id)
