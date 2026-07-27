@@ -208,10 +208,6 @@ def recipe_ingredient_to_pantry_page(request, recipe_id, ingredient_id):
     ingredient, created = CanonicalIngredient.objects.get_or_create(
         household=household, name=line.source_text
     )
-    if created:
-        from pantry.semantic import update_embedding
-
-        update_embedding(ingredient)
     line.canonical_ingredient = ingredient
     line.match_state = RecipeIngredient.MatchState.MATCHED
     line.save(update_fields=["canonical_ingredient", "match_state"])
@@ -223,6 +219,10 @@ def recipe_ingredient_to_pantry_page(request, recipe_id, ingredient_id):
             status=request.POST.get("status", InventoryItem.Status.UNKNOWN),
             version=1,
         )
+    if created:
+        from pantry.services import queue_category_suggestions
+
+        queue_category_suggestions(user=request.user)
     messages.success(request, "Zutat dem Vorrat hinzugefügt und zugeordnet.")
     return redirect("recipe-detail", recipe_id=recipe.id)
 

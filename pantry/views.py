@@ -169,10 +169,6 @@ def inventory_create_page(request):
         messages.error(request, "Ungültiger Verfügbarkeitsstatus.")
         return redirect("inventory-page")
     ingredient, created = CanonicalIngredient.objects.get_or_create(household=household, name=name)
-    if created:
-        from .semantic import update_embedding
-
-        update_embedding(ingredient)
     inventory_item_exists = InventoryItem.objects.filter(
         household=household, ingredient=ingredient
     ).exists()
@@ -182,6 +178,8 @@ def inventory_create_page(request):
     change_inventory_status(
         user=request.user, ingredient_id=ingredient.id, status=status, version=1
     )
+    if created:
+        queue_category_suggestions(user=request.user)
     messages.success(request, "Zutat zum Vorrat hinzugefügt.")
     return redirect("inventory-page")
 

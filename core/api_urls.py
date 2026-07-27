@@ -7,6 +7,7 @@ from shopping import api as shopping_api
 
 urlpatterns = [
     path("ingredients", pantry_api.ingredients),
+    path("ingredients/category-scores", pantry_api.ingredient_category_scores),
     path("ingredients/<uuid:ingredient_id>", pantry_api.ingredient_detail),
     path("inventory", pantry_api.inventory),
     path("inventory/<uuid:ingredient_id>/change-status", pantry_api.change_status),

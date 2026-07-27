@@ -8,8 +8,14 @@ from django.views.decorators.http import require_http_methods
 from core.services import household_for
 
 from .models import CanonicalIngredient, IngredientCategory, InventoryItem
-from .semantic import rank_ingredients, update_embedding
-from .services import PlannedIngredientInUse, change_inventory_status, merge_ingredients
+from .semantic import rank_ingredients
+from .services import (
+    PlannedIngredientInUse,
+    category_score_details,
+    change_inventory_status,
+    merge_ingredients,
+    queue_category_suggestions,
+)
 
 
 def payload(request):
@@ -79,7 +85,7 @@ def ingredients(request):
             "This ingredient already exists.",
             fields={"name": "Already exists."},
         )
-    update_embedding(ingredient)
+    queue_category_suggestions(user=request.user)
     return JsonResponse(ingredient_json(ingredient), status=201)
 
 
@@ -103,8 +109,74 @@ def ingredient_detail(request, ingredient_id):
             setattr(ingredient, key, data[key])
     ingredient.save()
     if "name" in data or "aliases" in data:
-        update_embedding(ingredient)
+        queue_category_suggestions(user=request.user)
     return JsonResponse(ingredient_json(ingredient))
+
+
+@login_required
+@require_http_methods(["GET"])
+def ingredient_category_scores(request):
+    household = household_for(request.user)
+    ingredient_id = request.GET.get("ingredientId")
+    name = request.GET.get("name", "").strip()
+    if ingredient_id:
+        ingredient = CanonicalIngredient.objects.filter(
+            id=ingredient_id, household=household
+        ).first()
+        if not ingredient:
+            raise Http404
+        name = ingredient.name
+        embedding = ingredient.embedding
+        ingredient_json_data = {
+            "id": str(ingredient.id),
+            "name": ingredient.name,
+            "embeddingModel": ingredient.embedding_model or None,
+        }
+    elif name:
+        embedding = []
+        ingredient_json_data = {"id": None, "name": name, "embeddingModel": None}
+    else:
+        return error(
+            "validation_failed",
+            "Provide ingredientId or name.",
+            fields={"ingredientId": "Required when name is omitted."},
+        )
+
+    categories = IngredientCategory.objects.filter(household=household).order_by(
+        "sort_order", "name"
+    )
+    scores = []
+    for category in categories:
+        details = category_score_details(
+            name=name,
+            ingredient_embedding=embedding,
+            category=category,
+        )
+        scores.append(
+            {
+                "id": str(category.id),
+                "name": category.name,
+                "textScore": round(details["text_score"], 3),
+                "embeddingScore": (
+                    round(details["embedding_score"], 3)
+                    if details["embedding_score"] is not None
+                    else None
+                ),
+                "score": round(details["score"], 3),
+                "qualifies": details["score"] >= 0.72,
+                "embeddingUsed": details["embedding_score"] is not None,
+                "embeddingModel": category.embedding_model or None,
+            }
+        )
+    scores.sort(key=lambda item: (-item["score"], item["name"]))
+    return JsonResponse(
+        {
+            "ingredient": ingredient_json_data,
+            "minimumScore": 0.72,
+            "embeddingUsed": any(item["embeddingUsed"] for item in scores),
+            "categories": scores,
+        }
+    )
 
 
 def inventory_json(item):

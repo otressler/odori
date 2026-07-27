@@ -198,25 +198,36 @@ def ensure_suggested_categories(household):
     return categories
 
 
+def category_score_details(*, name, ingredient_embedding, category):
+    _, _, keywords = next(item for item in CATEGORY_SUGGESTIONS if item[0] == category.name)
+    text_score = max(
+        [fuzzy_similarity(name, category.name)]
+        + [fuzzy_similarity(name, keyword) for keyword in keywords]
+    )
+    embedding_score = cosine_similarity(ingredient_embedding, category.embedding)
+    return {
+        "text_score": text_score,
+        "embedding_score": embedding_score,
+        "score": max(embedding_score or 0.0, text_score),
+    }
+
+
 def categorize_household(*, household, minimum_score=0.72):
     categories = ensure_suggested_categories(household)
     updated = 0
-    for ingredient in CanonicalIngredient.objects.filter(
-        household=household, active=True, category__isnull=True
-    ):
+    ingredients = list(CanonicalIngredient.objects.filter(household=household, active=True))
+    for ingredient in ingredients:
         if not ingredient.embedding:
             update_embedding(ingredient)
+    for ingredient in (ingredient for ingredient in ingredients if ingredient.category_id is None):
         candidates = []
         for category in categories:
-            score = cosine_similarity(ingredient.embedding, category.embedding)
-            if score is None:
-                _, _, keywords = next(
-                    item for item in CATEGORY_SUGGESTIONS if item[0] == category.name
-                )
-                score = max([fuzzy_similarity(ingredient.name, category.name)] + [
-                    fuzzy_similarity(ingredient.name, keyword) for keyword in keywords
-                ])
-            candidates.append((score, category))
+            details = category_score_details(
+                name=ingredient.name,
+                ingredient_embedding=ingredient.embedding,
+                category=category,
+            )
+            candidates.append((details["score"], category))
         score, category = max(candidates, key=lambda result: result[0])
         if score >= minimum_score:
             ingredient.category = category

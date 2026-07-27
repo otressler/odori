@@ -80,6 +80,48 @@ class PantryApiTests(TestCase):
         self.assertEqual(result[0]["id"], str(self.ingredient.id))
         self.assertGreaterEqual(result[0]["matchScore"], 0.84)
 
+    def test_category_scores_expose_text_and_embedding_usage(self):
+        IngredientCategory.objects.create(
+            household=self.household, name="Trockenwaren", sort_order=50
+        )
+
+        response = self.client.get("/api/v1/ingredients/category-scores?name=Pasta")
+
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertFalse(result["embeddingUsed"])
+        self.assertEqual(result["ingredient"]["name"], "Pasta")
+        self.assertEqual(result["categories"][0]["name"], "Trockenwaren")
+        self.assertEqual(result["categories"][0]["embeddingScore"], None)
+        self.assertTrue(result["categories"][0]["qualifies"])
+
+    def test_category_scores_use_persisted_embedding_models(self):
+        category = IngredientCategory.objects.create(
+            household=self.household,
+            name="Trockenwaren",
+            sort_order=50,
+            embedding=[1.0, 0.0],
+            embedding_model="test-embedding",
+        )
+        ingredient = CanonicalIngredient.objects.create(
+            household=self.household,
+            name="Unbekannt",
+            embedding=[1.0, 0.0],
+            embedding_model="test-embedding",
+        )
+
+        response = self.client.get(
+            f"/api/v1/ingredients/category-scores?ingredientId={ingredient.id}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertTrue(result["embeddingUsed"])
+        score = next(item for item in result["categories"] if item["id"] == str(category.id))
+        self.assertEqual(score["embeddingScore"], 1.0)
+        self.assertEqual(score["embeddingModel"], "test-embedding")
+        self.assertTrue(score["embeddingUsed"])
+
     def test_inventory_page_creates_an_ingredient_and_initial_status(self):
         response = self.client.post(
             "/pantry/add/", {"name": "Basilikum", "status": InventoryItem.Status.IN_STOCK}
