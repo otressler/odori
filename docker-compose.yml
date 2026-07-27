@@ -11,6 +11,7 @@ services:
       SESSION_SECRET: "${SESSION_SECRET}"
       ALLOWED_TAILNET_HOST: "${ALLOWED_TAILNET_HOST}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS}"
+      CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS}"
     command: gunicorn --bind 0.0.0.0:8000 --workers 1 odori.wsgi:application
     depends_on:
       postgres:

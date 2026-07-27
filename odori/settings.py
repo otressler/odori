@@ -9,6 +9,11 @@ DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [
     host for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host
 ]
+CSRF_TRUSTED_ORIGINS = [
+    origin
+    for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
