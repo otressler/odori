@@ -172,11 +172,19 @@ def similar_ingredient_recommendations(*, user, minimum_score=0.96):
     return recommendations
 
 
-def _category_text(name):
+def _category_keywords(name):
     for category_name, _, keywords in CATEGORY_SUGGESTIONS:
         if category_name == name:
-            return " ".join((category_name, *keywords))
-    return name
+            return keywords
+    return ()
+
+
+def category_embedding_text(category):
+    return " ".join(
+        part
+        for part in (category.name, category.description, *_category_keywords(category.name))
+        if part
+    )
 
 
 def ensure_suggested_categories(household):
@@ -189,7 +197,7 @@ def ensure_suggested_categories(household):
             category.sort_order = sort_order
             category.save(update_fields=["sort_order"])
         if not category.embedding:
-            vector = embed(_category_text(category.name))
+            vector = embed(category_embedding_text(category))
             if vector is not None:
                 category.embedding = vector
                 category.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
@@ -199,9 +207,10 @@ def ensure_suggested_categories(household):
 
 
 def category_score_details(*, name, ingredient_embedding, category):
-    _, _, keywords = next(item for item in CATEGORY_SUGGESTIONS if item[0] == category.name)
+    keywords = _category_keywords(category.name)
     text_score = max(
         [fuzzy_similarity(name, category.name)]
+        + [fuzzy_similarity(name, word) for word in category.description.split()]
         + [fuzzy_similarity(name, keyword) for keyword in keywords]
     )
     embedding_score = cosine_similarity(ingredient_embedding, category.embedding)

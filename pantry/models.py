@@ -13,6 +13,7 @@ class IngredientCategory(models.Model):
         Household, on_delete=models.CASCADE, related_name="ingredient_categories"
     )
     name = models.CharField(max_length=80)
+    description = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     embedding = models.JSONField(default=list, blank=True)
     embedding_model = models.CharField(max_length=120, blank=True)

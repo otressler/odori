@@ -1,7 +1,8 @@
 import json
 from datetime import timedelta
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
@@ -121,6 +122,56 @@ class PantryApiTests(TestCase):
         self.assertEqual(score["embeddingScore"], 1.0)
         self.assertEqual(score["embeddingModel"], "test-embedding")
         self.assertTrue(score["embeddingUsed"])
+
+    def test_category_admin_requires_login(self):
+        response = Client().get("/admin/categories")
+
+        self.assertRedirects(response, "/accounts/login/?next=/admin/categories")
+
+    def test_category_admin_saves_descriptions_and_refreshes_embedding(self):
+        category = IngredientCategory.objects.create(
+            household=self.household, name="Trockenwaren", embedding=[1.0, 0.0]
+        )
+
+        with patch("pantry.views.embed", return_value=[0.0, 1.0]) as embed_mock:
+            response = self.client.post(
+                "/admin/categories",
+                {
+                    "action": "save",
+                    f"description-{category.id}": "Nudeln, Reis und haltbare Grundnahrungsmittel",
+                },
+            )
+
+        self.assertRedirects(response, "/admin/categories")
+        category.refresh_from_db()
+        self.assertEqual(
+            category.description, "Nudeln, Reis und haltbare Grundnahrungsmittel"
+        )
+        self.assertEqual(category.embedding, [0.0, 1.0])
+        embed_mock.assert_called_once()
+
+    def test_category_admin_ranks_similarity_results_and_is_household_scoped(self):
+        first = IngredientCategory.objects.create(
+            household=self.household, name="Trockenwaren", embedding=[1.0, 0.0]
+        )
+        second = IngredientCategory.objects.create(
+            household=self.household, name="Obst & Gemüse", embedding=[0.0, 1.0]
+        )
+        other_household = Household.objects.create(name="Other")
+        IngredientCategory.objects.create(
+            household=other_household, name="Geheim", embedding=[1.0, 0.0]
+        )
+
+        with patch("pantry.views.embed", return_value=[1.0, 0.0]):
+            response = self.client.post(
+                "/admin/categories", {"action": "test", "ingredient": "Spaghetti"}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        results = response.context["similarity_results"]
+        self.assertEqual([result["category"] for result in results], [first, second])
+        self.assertEqual(results[0]["similarity"], 1.0)
+        self.assertEqual(results[1]["similarity"], 0.0)
 
     def test_inventory_page_creates_an_ingredient_and_initial_status(self):
         response = self.client.post(

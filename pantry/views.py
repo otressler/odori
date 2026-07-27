@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import redirect, render
@@ -7,9 +8,16 @@ from django.utils import timezone
 
 from core.services import household_for
 
-from .models import CanonicalIngredient, InventoryItem, PantryCategorizationJob
+from .models import (
+    CanonicalIngredient,
+    IngredientCategory,
+    InventoryItem,
+    PantryCategorizationJob,
+)
+from .semantic import cosine_similarity, embed
 from .services import (
     PlannedIngredientInUse,
+    category_embedding_text,
     change_inventory_status,
     merge_ingredients,
     queue_category_suggestions,
@@ -110,6 +118,80 @@ def inventory_page(request):
             "status_filters": status_filters,
             "category_filters": category_filters,
             "category_job": category_job,
+        },
+    )
+
+
+def category_admin_page(request):
+    household = household_for(request.user)
+    categories = list(IngredientCategory.objects.filter(household=household))
+    test_text = ""
+    similarity_results = []
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "save":
+            changed = 0
+            failed = 0
+            for category in categories:
+                description = request.POST.get(f"description-{category.id}", "").strip()
+                if description == category.description:
+                    continue
+                category.description = description
+                category.embedding = []
+                category.embedding_model = ""
+                category.save(
+                    update_fields=["description", "embedding", "embedding_model"]
+                )
+                changed += 1
+                vector = embed(category_embedding_text(category))
+                if vector is not None:
+                    category.embedding = vector
+                    category.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+                    category.save(update_fields=["embedding", "embedding_model"])
+                else:
+                    failed += 1
+            if changed:
+                messages.success(request, f"{changed} Beschreibung(en) gespeichert.")
+            if failed:
+                messages.warning(
+                    request,
+                    f"{failed} Kategorie-Vektor(en) konnten nicht aktualisiert werden.",
+                )
+            return redirect("admin-categories")
+        if action == "test":
+            test_text = request.POST.get("ingredient", "").strip()
+            if test_text:
+                vector = embed(test_text)
+                if vector is None:
+                    messages.error(
+                        request,
+                        "Der Test konnte nicht ausgeführt werden: "
+                        "kein Embedding vom Modell erhalten.",
+                    )
+                else:
+                    similarity_results = [
+                        {
+                            "category": category,
+                            "similarity": cosine_similarity(vector, category.embedding),
+                        }
+                        for category in categories
+                    ]
+                    similarity_results.sort(
+                        key=lambda result: (
+                            result["similarity"] is not None,
+                            result["similarity"] or 0,
+                        ),
+                        reverse=True,
+                    )
+
+    return render(
+        request,
+        "pantry/category_admin.html",
+        {
+            "categories": categories,
+            "test_text": test_text,
+            "similarity_results": similarity_results,
         },
     )
 

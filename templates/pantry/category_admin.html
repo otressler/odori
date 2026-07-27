@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Warengruppen · Odori{% endblock %}
+
+{% block content %}
+<h1>Warengruppen</h1>
+<p>Pflege die Beschreibungen, die für die Zuordnung neuer Zutaten verwendet werden.</p>
+
+<section class="panel">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save">
+    {% for category in categories %}
+      <div class="field">
+        <label for="description-{{ category.id }}">{{ category.name }}</label>
+        <textarea id="description-{{ category.id }}" name="description-{{ category.id }}" rows="3" placeholder="z. B. Nudeln, Reis und andere haltbare Grundnahrungsmittel">{{ category.description }}</textarea>
+      </div>
+    {% empty %}
+      <p>Noch keine Warengruppen vorhanden.</p>
+    {% endfor %}
+    {% if categories %}<button class="primary" type="submit">Beschreibungen speichern</button>{% endif %}
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Ähnlichkeit testen</h2>
+  <form class="inline-form" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="test">
+    <div class="field">
+      <label for="ingredient-test">Zutat</label>
+      <input id="ingredient-test" name="ingredient" value="{{ test_text }}" maxlength="120" placeholder="z. B. Spaghetti">
+    </div>
+    <button class="primary" type="submit">Testen</button>
+  </form>
+  {% if similarity_results %}
+    <table>
+      <thead><tr><th>Warengruppe</th><th>Cosine Similarity</th></tr></thead>
+      <tbody>
+        {% for result in similarity_results %}
+          <tr>
+            <td>{{ result.category.name }}</td>
+            <td>{% if result.similarity is not None %}{{ result.similarity|floatformat:4 }}{% else %}Kein Vektor{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}
