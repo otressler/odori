@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from core.models import Household
 
@@ -21,6 +22,35 @@ class IngredientCategory(models.Model):
             models.UniqueConstraint(fields=["household", "name"], name="unique_category_name")
         ]
         ordering = ["sort_order", "name"]
+
+
+class PantryCategorizationJob(models.Model):
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="pantry_categorization_jobs"
+    )
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    assigned_count = models.PositiveIntegerField(default=0)
+    error_message = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household"],
+                condition=Q(state__in=["queued", "running"]),
+                name="one_active_pantry_categorization_job",
+            )
+        ]
 
 
 class CanonicalIngredient(models.Model):

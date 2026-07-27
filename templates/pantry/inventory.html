@@ -28,7 +28,9 @@
   <a class="button" href="{% url 'inventory-condense' %}">Ähnliche Zutaten prüfen</a>
   <form method="post" action="{% url 'inventory-category-suggestions' %}">
     {% csrf_token %}
-    <button type="submit">Warengruppen vorschlagen</button>
+    <button type="submit"{% if category_job.state == 'queued' or category_job.state == 'running' %} disabled{% endif %}>
+      {% if category_job.state == 'queued' %}Warengruppen warten{% elif category_job.state == 'running' %}Warengruppen werden vorgeschlagen{% else %}Warengruppen vorschlagen{% endif %}
+    </button>
   </form>
 </div>
 

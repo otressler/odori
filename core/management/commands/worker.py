@@ -3,6 +3,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.db import connection
 
+from pantry.jobs import recover_interrupted_category_jobs, run_next_category_job
 from recipes.images import recover_interrupted_recipe_image_jobs, run_next_recipe_image_job
 
 
@@ -14,7 +15,10 @@ class Command(BaseCommand):
         recovered = recover_interrupted_recipe_image_jobs()
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted recipe image job(s).")
+        recovered = recover_interrupted_category_jobs()
+        if recovered:
+            self.stdout.write(f"Requeued {recovered} interrupted pantry categorization job(s).")
         while True:
             connection.ensure_connection()
-            if not run_next_recipe_image_job():
+            if not run_next_category_job() and not run_next_recipe_image_job():
                 time.sleep(5)

@@ -9,6 +9,7 @@ from .models import (
     IngredientCategory,
     InventoryEvent,
     InventoryItem,
+    PantryCategorizationJob,
 )
 from .semantic import (
     cosine_similarity,
@@ -197,10 +198,7 @@ def ensure_suggested_categories(household):
     return categories
 
 
-def category_suggestions(*, user, minimum_score=0.72):
-    """Seed store categories and assign only high-confidence ingredient suggestions."""
-
-    household = household_for(user)
+def categorize_household(*, household, minimum_score=0.72):
     categories = ensure_suggested_categories(household)
     updated = 0
     for ingredient in CanonicalIngredient.objects.filter(
@@ -225,3 +223,28 @@ def category_suggestions(*, user, minimum_score=0.72):
             ingredient.save(update_fields=["category"])
             updated += 1
     return updated
+
+
+@transaction.atomic
+def queue_category_suggestions(*, user):
+    household = household_for(user)
+    active_job = (
+        PantryCategorizationJob.objects.select_for_update()
+        .filter(
+            household=household,
+            state__in=[
+                PantryCategorizationJob.State.QUEUED,
+                PantryCategorizationJob.State.RUNNING,
+            ],
+        )
+        .first()
+    )
+    if active_job:
+        return active_job, False
+    return PantryCategorizationJob.objects.create(household=household), True
+
+
+def category_suggestions(*, user, minimum_score=0.72):
+    """Synchronous categorization for worker and local callers."""
+
+    return categorize_household(household=household_for(user), minimum_score=minimum_score)

@@ -5,12 +5,12 @@ from django.utils import timezone
 
 from core.services import household_for
 
-from .models import CanonicalIngredient, InventoryItem
+from .models import CanonicalIngredient, InventoryItem, PantryCategorizationJob
 from .services import (
     PlannedIngredientInUse,
-    category_suggestions,
     change_inventory_status,
     merge_ingredients,
+    queue_category_suggestions,
     similar_ingredient_recommendations,
 )
 
@@ -60,6 +60,11 @@ def inventory_page(request):
     if selected_status in InventoryItem.Status.values:
         items = [item for item in items if item.status == selected_status]
     attach_upcoming_requirements(items, household)
+    category_job = (
+        PantryCategorizationJob.objects.filter(household=household)
+        .order_by("-created_at")
+        .first()
+    )
     status_filters = [
         {
             "value": value,
@@ -77,6 +82,7 @@ def inventory_page(request):
             "selected_status": selected_status,
             "status_choices": InventoryItem.Status.choices,
             "status_filters": status_filters,
+            "category_job": category_job,
         },
     )
 
@@ -174,6 +180,9 @@ def inventory_confirm_merge_page(request):
 
 
 def inventory_category_suggestions_page(request):
-    assigned = category_suggestions(user=request.user)
-    messages.success(request, f"{assigned} Zutaten wurden einer Warengruppe zugeordnet.")
+    _, created = queue_category_suggestions(user=request.user)
+    if created:
+        messages.success(request, "Die Warengruppen werden im Hintergrund vorgeschlagen.")
+    else:
+        messages.info(request, "Warengruppen werden bereits vorgeschlagen.")
     return redirect("inventory-page")

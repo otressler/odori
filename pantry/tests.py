@@ -9,7 +9,14 @@ from planning.models import MealSlot
 from planning.services import add_slot, current_week_start, get_or_create_plan
 from recipes.models import Recipe, RecipeIngredient, RecipeSource
 
-from .models import CanonicalIngredient, IngredientCategory, InventoryEvent, InventoryItem
+from .jobs import run_next_category_job
+from .models import (
+    CanonicalIngredient,
+    IngredientCategory,
+    InventoryEvent,
+    InventoryItem,
+    PantryCategorizationJob,
+)
 
 
 class PantryApiTests(TestCase):
@@ -126,6 +133,10 @@ class PantryApiTests(TestCase):
         response = self.client.post("/pantry/categories/suggest/")
 
         self.assertRedirects(response, "/pantry/")
+        job = PantryCategorizationJob.objects.get(household=self.household)
+        self.assertEqual(job.state, PantryCategorizationJob.State.QUEUED)
+
+        self.assertTrue(run_next_category_job())
         self.assertTrue(
             IngredientCategory.objects.filter(
                 household=self.household, name="Obst & Gemüse"
@@ -133,6 +144,21 @@ class PantryApiTests(TestCase):
         )
         bread.refresh_from_db()
         self.assertEqual(bread.category.name, "Bäckerei")
+
+    def test_category_suggestions_does_not_queue_duplicate_active_jobs(self):
+        first = self.client.post("/pantry/categories/suggest/")
+        second = self.client.post("/pantry/categories/suggest/")
+
+        self.assertRedirects(first, "/pantry/")
+        self.assertRedirects(second, "/pantry/")
+        self.assertEqual(
+            PantryCategorizationJob.objects.filter(
+                household=self.household,
+                state=PantryCategorizationJob.State.QUEUED,
+            ).count(),
+            1,
+        )
+        self.assertContains(self.client.get("/pantry/"), "Warengruppen warten")
 
     def test_inventory_shows_earliest_upcoming_recipe_requirement(self):
         source = RecipeSource.objects.create(household=self.household)
