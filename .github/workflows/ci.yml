@@ -13,5 +13,6 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python manage.py makemigrations --check --dry-run
       - run: python -m ruff check .
+      - run: python manage.py collectstatic --noinput
       - run: python -m pytest
       - run: docker build --platform linux/arm64 -t odori:${{ github.sha }} .
