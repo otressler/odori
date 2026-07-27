@@ -15,3 +15,23 @@ the standard checks. In Windows PowerShell, use `python -m ruff check .`, `pytho
 Production uses `docker-compose.yml` behind Traefik. Copy `.env.example` to `.env`, provide unique
 secrets, run migrations, bootstrap the initial owner exactly once, and use `python scripts/smoke.py`
 with `ODORI_SMOKE_URL` after deployment.
+
+## Container releases
+
+GitHub Actions publishes multi-architecture (`linux/amd64` and `linux/arm64`) images to
+`ghcr.io/otressler/odori` on every push to `main` and release tag matching `v*`. For a Pi deployment,
+create and push a release tag, then set `ODORI_VERSION` in the Portainer stack to that tag without the
+leading `v` only if you tag that way; otherwise use the tag exactly as published:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+```dotenv
+ODORI_VERSION=v1.0.0
+```
+
+The workflow also publishes `sha-<commit>` tags. Prefer a release or SHA tag over the mutable `main`
+and `latest` tags. Make the `odori` GHCR package public, or configure a GitHub Container Registry
+credential in Portainer that has `read:packages` permission before deploying a private package.
