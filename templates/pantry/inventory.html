@@ -48,39 +48,41 @@
   {% endfor %}
 </nav>
 
-<div class="inventory-card-grid">
+<div class="inventory-list">
   {% regroup items by ingredient.category as category_groups %}
   {% for category_group in category_groups %}
     <section class="inventory-group">
       <h2>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h2>
-      {% for item in category_group.list %}
-      <article class="inventory-card" data-status="{{ item.status }}">
-        <div class="list-card__art" aria-hidden="true">
-          <img src="{% static 'images/pantry-outline.svg' %}" alt="">
-        </div>
-        <div class="inventory-card__identity">
-          <span class="inventory-card__name">{{ item.ingredient.name }}</span>
-          <span class="inventory-status inventory-status--{{ item.status }}">{{ item.get_status_display }}</span>
-          {% if item.upcoming_requirements %}
-            {% with first_requirement=item.upcoming_requirements.0 %}
-              <span class="inventory-requirement" title="{% for requirement in item.upcoming_requirements %}{{ requirement.title }}: {{ requirement.date|date:'j.n.' }}{% if not forloop.last %} · {% endif %}{% endfor %}">
-                Spätestens {{ first_requirement.date|date:"j.n." }}: {{ first_requirement.title }}{% if item.upcoming_requirements|length > 1 %} +{{ item.upcoming_requirements|length|add:"-1" }}{% endif %}
-              </span>
-            {% endwith %}
-          {% endif %}
-        </div>
-      {# The segmented control already announces the current state, so no separate badge. #}
-      <form class="segmented inventory-card__control" method="post" action="{% url 'inventory-status' item.ingredient.id %}">
-        {% csrf_token %}
-        <input type="hidden" name="version" value="{{ item.version }}">
-        {% for value, label in status_choices %}
-          <button type="submit" name="status" value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
-            {{ label }}<span class="sr-only"> für {{ item.ingredient.name }}</span>
-          </button>
+      <div class="inventory-card-grid">
+        {% for item in category_group.list %}
+        <article class="inventory-card" data-status="{{ item.status }}">
+          <div class="list-card__art" aria-hidden="true">
+            <img src="{% static 'images/pantry-outline.svg' %}" alt="">
+          </div>
+          <div class="inventory-card__identity">
+            <span class="inventory-card__name">{{ item.ingredient.name }}</span>
+            <span class="inventory-status inventory-status--{{ item.status }}">{{ item.get_status_display }}</span>
+            {% if item.upcoming_requirements %}
+              {% with first_requirement=item.upcoming_requirements.0 %}
+                <span class="inventory-requirement" title="{% for requirement in item.upcoming_requirements %}{{ requirement.title }}: {{ requirement.date|date:'j.n.' }}{% if not forloop.last %} · {% endif %}{% endfor %}">
+                  Spätestens {{ first_requirement.date|date:"j.n." }}: {{ first_requirement.title }}{% if item.upcoming_requirements|length > 1 %} +{{ item.upcoming_requirements|length|add:"-1" }}{% endif %}
+                </span>
+              {% endwith %}
+            {% endif %}
+          </div>
+        {# The segmented control already announces the current state, so no separate badge. #}
+        <form class="segmented inventory-card__control" method="post" action="{% url 'inventory-status' item.ingredient.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="version" value="{{ item.version }}">
+          {% for value, label in status_choices %}
+            <button type="submit" name="status" value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
+              {{ label }}<span class="sr-only"> für {{ item.ingredient.name }}</span>
+            </button>
+          {% endfor %}
+        </form>
+        </article>
         {% endfor %}
-      </form>
-      </article>
-      {% endfor %}
+      </div>
     </section>
   {% empty %}
     <div class="empty">

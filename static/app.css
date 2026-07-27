@@ -1121,8 +1121,13 @@ textarea:focus {
 
 /* ---------- 11. Pantry ---------- */
 
-.inventory-card-grid,
 .shopping-card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+
+.inventory-card-grid {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
@@ -1132,6 +1137,11 @@ textarea:focus {
 .shopping-group {
   display: grid;
   gap: 0.6rem;
+}
+
+.inventory-list {
+  display: grid;
+  gap: 1.5rem;
 }
 
 .inventory-group > h2,
