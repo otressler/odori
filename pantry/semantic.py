@@ -164,6 +164,10 @@ def ingredient_embedding_text(ingredient):
     return " ".join([ingredient.name, *ingredient.aliases])
 
 
+def embedding_needs_refresh(vector, model):
+    return not vector or model != settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+
+
 def update_embedding(ingredient, *, job_id=None, correlation_id=None):
     with_context = {"request_id": correlation_id} if correlation_id else {}
     with bind_context(**with_context):

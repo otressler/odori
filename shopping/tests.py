@@ -260,7 +260,9 @@ class ShoppingAuthorizationTests(ShoppingTestCase):
 
     def test_other_household_cannot_purchase_an_item(self):
         self.client.force_login(self.outsider)
-        response = self.client.post(f"/api/v1/shopping-lists/items/{self.item.id}/purchase")
+        response = self.client.post(
+            f"/api/v1/shopping-lists/{self.list.id}/items/{self.item.id}/purchase"
+        )
         self.assertEqual(response.status_code, 404)
         self.item.refresh_from_db()
         self.assertEqual(self.item.state, ShoppingItem.State.OPEN)

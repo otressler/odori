@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 
 from core.models import Household, HouseholdMembership, User
 
-from .models import IngredientCategory
+from .models import IngredientCategory, IngredientCategoryExample
 from .semantic import EmbeddingResult
 from .services import category_score_details
 from .views import category_admin_page
@@ -49,40 +49,57 @@ class CategoryDiagnosticsTests(TestCase):
         context = render_mock.call_args.args[2]
         result = context["similarity_results"][0]
         self.assertEqual(result["category"], category)
-        self.assertEqual(result["similarity"], 1.0)
+        self.assertEqual(result["similarity"], None)
         self.assertEqual(result["final_score"], 1.0)
-        self.assertTrue(result["embedding_available"])
-        self.assertEqual(result["embedding_dimensions"], 2)
+        self.assertEqual(result["best_example"].text, "Pasta")
+        self.assertEqual(context["classification_result"]["state"], "assigned")
         self.assertEqual(context["request_id"], "category-test-request")
 
     def test_spaghetti_matches_dry_goods_without_character_overlap_boost(self):
-        bakery = IngredientCategory(
+        bakery = IngredientCategory.objects.create(
+            household=self.household,
             name="Bäckerei",
-            description=(
-                "Frisches Brot, Brötchen, Toastbrot, Baguette, Wraps, Knäckebrot "
-                "und Gebäck von der Backstation oder Bäcker. Verzehrfertige Backwaren."
-            ),
-            embedding=[1.0, 0.0],
         )
-        dry_goods = IngredientCategory(
+        dry_goods = IngredientCategory.objects.create(
+            household=self.household,
             name="Trockenwaren",
-            description="Nudeln, Pasta, Reis, Hülsenfrüchte, Linsen",
+        )
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=bakery,
+            text="Brot",
+            normalized_text="brot",
+            source=IngredientCategoryExample.Source.STARTER,
+            source_key="bakery:brot",
+            embedding=[1.0, 0.0],
+            embedding_model="test-embedding",
+        )
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=dry_goods,
+            text="Spaghetti",
+            normalized_text="spaghetti",
+            source=IngredientCategoryExample.Source.STARTER,
+            source_key="dry-goods:spaghetti",
             embedding=[0.0, 1.0],
+            embedding_model="test-embedding",
         )
 
         bakery_scores = category_score_details(
             name="Spaghetti",
             ingredient_embedding=[0.0, 1.0],
+            ingredient_embedding_model="test-embedding",
             category=bakery,
         )
         dry_goods_scores = category_score_details(
             name="Spaghetti",
             ingredient_embedding=[0.0, 1.0],
+            ingredient_embedding_model="test-embedding",
             category=dry_goods,
         )
 
         self.assertEqual(bakery_scores["text_score"], 0.0)
         self.assertEqual(bakery_scores["score"], 0.0)
         self.assertEqual(dry_goods_scores["text_score"], 1.0)
-        self.assertEqual(dry_goods_scores["embedding_score"], 1.0)
+        self.assertEqual(dry_goods_scores["embedding_score"], None)
         self.assertEqual(dry_goods_scores["score"], 1.0)

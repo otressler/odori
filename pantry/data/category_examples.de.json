@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "key": "produce",
+      "name": "Obst & Gemüse",
+      "sort_order": 10,
+      "examples": [
+        "Äpfel", "Bananen", "Tomaten", "Gurken", "Kartoffeln", "Zwiebeln",
+        "Karotten", "Paprika", "Brokkoli", "Salat", "frisches Basilikum",
+        "frische Petersilie", "Champignons", "Knoblauch"
+      ]
+    },
+    {
+      "key": "bakery",
+      "name": "Bäckerei",
+      "sort_order": 20,
+      "examples": [
+        "Brot", "Brötchen", "Toastbrot", "Baguette", "Ciabatta", "Wraps",
+        "Knäckebrot", "Croissants", "Brezeln", "Kuchen", "Tortillas", "Gebäck"
+      ]
+    },
+    {
+      "key": "chilled",
+      "name": "Kühlregal",
+      "sort_order": 30,
+      "examples": [
+        "Milch", "Joghurt", "Quark", "Sahne", "Butter", "Margarine",
+        "Mozzarella", "Frischkäse", "Tofu", "Hefe", "frische Tortellini",
+        "Haferdrink", "Sojadrink", "Crème fraîche"
+      ]
+    },
+    {
+      "key": "meat-fish",
+      "name": "Fleisch & Fisch",
+      "sort_order": 40,
+      "examples": [
+        "Hähnchenbrust", "Hackfleisch", "Rindersteak", "Schweinefilet",
+        "Lachs", "Thunfisch", "Garnelen", "Salami", "Kochschinken",
+        "Aufschnitt", "Würstchen", "Seitan", "Hummus", "Feinkostsalat"
+      ]
+    },
+    {
+      "key": "dry-goods",
+      "name": "Trockenwaren",
+      "sort_order": 50,
+      "examples": [
+        "Spaghetti", "Pasta", "Penne", "Fusilli", "getrocknete Tortellini", "Reis",
+        "Couscous", "Bulgur", "Linsen", "Kichererbsen", "getrocknete Bohnen",
+        "Haferflocken", "Mehl", "Semmelbrösel", "Maisgrieß"
+      ]
+    },
+    {
+      "key": "spices-oil",
+      "name": "Gewürze & Öl",
+      "sort_order": 60,
+      "examples": [
+        "Olivenöl", "Rapsöl", "Essig", "Salz", "schwarzer Pfeffer", "Paprikapulver",
+        "Oregano", "getrocknetes Basilikum", "Curry", "Senf", "Ketchup",
+        "Sojasauce", "Backpulver", "Vanillezucker"
+      ]
+    },
+    {
+      "key": "drinks",
+      "name": "Getränke",
+      "sort_order": 70,
+      "examples": [
+        "Mineralwasser", "stilles Wasser", "Apfelsaft", "Orangensaft",
+        "Limonade", "Cola", "Kaffee", "Tee", "Bier", "Rotwein", "Sekt",
+        "Eistee", "Sirup"
+      ]
+    },
+    {
+      "key": "household",
+      "name": "Haushalt & Hygiene",
+      "sort_order": 80,
+      "examples": [
+        "Küchenrolle", "Backpapier", "Alufolie", "Frischhaltefolie", "Müllbeutel",
+        "Spülmittel", "Spülschwamm", "Allzweckreiniger", "Waschmittel",
+        "Toilettenpapier", "Handseife", "Shampoo", "Zahnpasta", "Taschentücher"
+      ]
+    }
+  ]
+}

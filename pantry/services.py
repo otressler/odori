@@ -5,9 +5,11 @@ from django.http import Http404
 from core.observability import current_context
 from core.services import household_for
 
+from .catalog import sync_starter_catalog
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
+    IngredientCategoryExample,
     InventoryEvent,
     InventoryItem,
     PantryCategorizationJob,
@@ -15,35 +17,10 @@ from .models import (
 from .semantic import (
     cosine_similarity,
     embed_with_diagnostics,
-    fuzzy_similarity,
+    embedding_needs_refresh,
     normalized_text,
     rank_ingredients,
     update_embedding,
-)
-
-CATEGORY_SUGGESTIONS = (
-    ("Obst & Gemüse", 10, ("tomate", "gemüse", "obst", "salat", "kartoffel", "zwiebel")),
-    ("Bäckerei", 20, ("brot", "brötchen", "mehl", "kuchen", "backen")),
-    ("Kühlregal", 30, ("milch", "joghurt", "käse", "butter", "sahne", "tofu")),
-    ("Fleisch & Fisch", 40, ("fleisch", "huhn", "rind", "fisch", "lachs", "wurst")),
-    (
-        "Trockenwaren",
-        50,
-        (
-            "nudeln",
-            "pasta",
-            "spaghetti",
-            "macaroni",
-            "reis",
-            "linsen",
-            "bohnen",
-            "mehl",
-            "konserve",
-        ),
-    ),
-    ("Gewürze & Öl", 60, ("salz", "pfeffer", "gewürz", "öl", "essig", "kräuter")),
-    ("Getränke", 70, ("wasser", "saft", "kaffee", "tee", "wein", "bier")),
-    ("Haushalt & Hygiene", 80, ("seife", "shampoo", "toilettenpapier", "spülmittel", "reiniger")),
 )
 
 
@@ -188,89 +165,199 @@ def similar_ingredient_recommendations(*, user, minimum_score=0.96):
     return recommendations
 
 
-def _category_keywords(name):
-    for category_name, _, keywords in CATEGORY_SUGGESTIONS:
-        if category_name == name:
-            return keywords
-    return ()
-
-
-def category_embedding_text(category):
-    return " ".join(
-        part
-        for part in (category.name, category.description, *_category_keywords(category.name))
-        if part
-    )
-
-
 def ensure_suggested_categories(household, *, job_id=None, correlation_id=None):
-    categories = []
-    for name, sort_order, _ in CATEGORY_SUGGESTIONS:
-        category, _ = IngredientCategory.objects.get_or_create(
-            household=household, name=name, defaults={"sort_order": sort_order}
-        )
-        if category.sort_order != sort_order:
-            category.sort_order = sort_order
-            category.save(update_fields=["sort_order"])
-        if not category.embedding:
-            vector = embed_with_diagnostics(
-                category_embedding_text(category),
-                household_id=household.id,
-                job_id=job_id,
-                operation="category_embedding",
-            ).vector
-            if vector is not None:
-                category.embedding = vector
-                category.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
-                category.save(update_fields=["embedding", "embedding_model"])
-        categories.append(category)
-    return categories
+    sync_starter_catalog(household=household)
+    refresh_category_example_embeddings(
+        household=household,
+        job_id=job_id,
+        correlation_id=correlation_id,
+    )
+    return list(
+        IngredientCategory.objects.filter(household=household)
+        .prefetch_related("examples")
+        .order_by("sort_order", "name")
+    )
 
 
-def category_score_details(*, name, ingredient_embedding, category):
-    keywords = _category_keywords(category.name)
-    category_terms = (
-        normalized_text(category.name).split()
-        + normalized_text(category.description).split()
-        + [normalized_text(keyword) for keyword in keywords]
-    )
-    name_terms = normalized_text(name).split()
-    text_score = float(
-        any(
-            fuzzy_similarity(name_term, category_term) == 1.0
-            for name_term in name_terms
-            for category_term in category_terms
+def refresh_category_example_embeddings(
+    *, household, job_id=None, correlation_id=None, force=False
+):
+    """Refresh active example vectors that are missing or use another deployment."""
+
+    updated = 0
+    examples = IngredientCategoryExample.objects.filter(household=household, active=True)
+    for example in examples:
+        if not force and not embedding_needs_refresh(example.embedding, example.embedding_model):
+            continue
+        vector = embed_with_diagnostics(
+            example.text,
+            household_id=household.id,
+            job_id=job_id,
+            operation="category_example_embedding",
+        ).vector
+        if vector is not None:
+            example.embedding = vector
+            example.embedding_model = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+            example.save(update_fields=["embedding", "embedding_model"])
+            updated += 1
+    return updated
+
+
+def _compatible_similarity(*, ingredient_embedding, ingredient_model, example):
+    if (
+        not ingredient_embedding
+        or not example.embedding
+        or ingredient_model != example.embedding_model
+    ):
+        return None
+    return cosine_similarity(ingredient_embedding, example.embedding)
+
+
+def _category_candidate(*, category, ingredient_texts, ingredient_embedding, ingredient_model):
+    normalized_ingredient_texts = {normalized_text(text) for text in ingredient_texts if text}
+    active_examples = [example for example in category.examples.all() if example.active]
+    exact_examples = [
+        example
+        for example in active_examples
+        if example.normalized_text in normalized_ingredient_texts
+    ]
+    if exact_examples:
+        return {
+            "category": category,
+            "score": 1.0,
+            "exact_match": True,
+            "embedding_score": None,
+            "best_example": exact_examples[0],
+            "matched_examples": exact_examples[:1],
+        }
+
+    scored_examples = [
+        (score, example)
+        for example in active_examples
+        if (
+            score := _compatible_similarity(
+                ingredient_embedding=ingredient_embedding,
+                ingredient_model=ingredient_model,
+                example=example,
+            )
         )
-    )
-    embedding_score = cosine_similarity(ingredient_embedding, category.embedding)
+        is not None
+    ]
+    if not scored_examples:
+        return {
+            "category": category,
+            "score": None,
+            "exact_match": False,
+            "embedding_score": None,
+            "best_example": None,
+            "matched_examples": [],
+        }
+    scored_examples.sort(key=lambda result: (-result[0], result[1].normalized_text))
+    top_examples = scored_examples[:3]
+    score = sum(item[0] for item in top_examples) / len(top_examples)
     return {
-        "text_score": text_score,
-        "embedding_score": embedding_score,
-        "score": max(embedding_score or 0.0, text_score),
+        "category": category,
+        "score": score,
+        "exact_match": False,
+        "embedding_score": score,
+        "best_example": top_examples[0][1],
+        "matched_examples": [item[1] for item in top_examples],
     }
 
 
-def categorize_household(*, household, minimum_score=0.72, job_id=None, correlation_id=None):
+def classify_category(
+    *, name, aliases=(), ingredient_embedding=None, ingredient_embedding_model="", categories
+):
+    candidates = [
+        _category_candidate(
+            category=category,
+            ingredient_texts=(name, *aliases),
+            ingredient_embedding=ingredient_embedding,
+            ingredient_model=ingredient_embedding_model,
+        )
+        for category in categories
+    ]
+    scored_candidates = [candidate for candidate in candidates if candidate["score"] is not None]
+    if not scored_candidates:
+        return {
+            "state": "no_vectors",
+            "category": None,
+            "runner_up": None,
+            "score": None,
+            "runner_up_score": None,
+            "margin": None,
+            "candidate": None,
+            "candidates": candidates,
+        }
+
+    scored_candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
+    candidate = scored_candidates[0]
+    runner_up = scored_candidates[1] if len(scored_candidates) > 1 else None
+    runner_up_score = runner_up["score"] if runner_up else 0.0
+    margin = candidate["score"] - runner_up_score
+    category = candidate["category"]
+    minimum_similarity = (
+        category.minimum_similarity
+        if category.minimum_similarity is not None
+        else settings.CATEGORY_CLASSIFIER_MIN_SIMILARITY
+    )
+    minimum_margin = (
+        category.minimum_margin
+        if category.minimum_margin is not None
+        else settings.CATEGORY_CLASSIFIER_MIN_MARGIN
+    )
+    assigned = candidate["exact_match"] or (
+        candidate["score"] >= minimum_similarity and margin >= minimum_margin
+    )
+    return {
+        "state": "assigned" if assigned else "review_required",
+        "category": category,
+        "runner_up": runner_up["category"] if runner_up else None,
+        "score": candidate["score"],
+        "runner_up_score": runner_up_score,
+        "margin": margin,
+        "minimum_similarity": minimum_similarity,
+        "minimum_margin": minimum_margin,
+        "candidate": candidate,
+        "candidates": candidates,
+    }
+
+
+def category_score_details(*, name, ingredient_embedding, category, ingredient_embedding_model=""):
+    candidate = _category_candidate(
+        category=category,
+        ingredient_texts=(name,),
+        ingredient_embedding=ingredient_embedding,
+        ingredient_model=ingredient_embedding_model,
+    )
+    return {
+        "text_score": float(candidate["exact_match"]),
+        "embedding_score": candidate["embedding_score"],
+        "score": candidate["score"] or 0.0,
+        "best_example": candidate["best_example"],
+        "matched_examples": candidate["matched_examples"],
+    }
+
+
+def categorize_household(*, household, job_id=None, correlation_id=None):
     categories = ensure_suggested_categories(
         household, job_id=job_id, correlation_id=correlation_id
     )
     updated = 0
     ingredients = list(CanonicalIngredient.objects.filter(household=household, active=True))
     for ingredient in ingredients:
-        if not ingredient.embedding:
+        if embedding_needs_refresh(ingredient.embedding, ingredient.embedding_model):
             update_embedding(ingredient, job_id=job_id, correlation_id=correlation_id)
     for ingredient in (ingredient for ingredient in ingredients if ingredient.category_id is None):
-        candidates = []
-        for category in categories:
-            details = category_score_details(
-                name=ingredient.name,
-                ingredient_embedding=ingredient.embedding,
-                category=category,
-            )
-            candidates.append((details["score"], category))
-        score, category = max(candidates, key=lambda result: result[0])
-        if score >= minimum_score:
-            ingredient.category = category
+        classification = classify_category(
+            name=ingredient.name,
+            aliases=ingredient.aliases,
+            ingredient_embedding=ingredient.embedding,
+            ingredient_embedding_model=ingredient.embedding_model,
+            categories=categories,
+        )
+        if classification["state"] == "assigned":
+            ingredient.category = classification["category"]
             ingredient.save(update_fields=["category"])
             updated += 1
     return updated
@@ -301,7 +388,7 @@ def queue_category_suggestions(*, user):
     )
 
 
-def category_suggestions(*, user, minimum_score=0.72):
+def category_suggestions(*, user):
     """Synchronous categorization for worker and local callers."""
 
-    return categorize_household(household=household_for(user), minimum_score=minimum_score)
+    return categorize_household(household=household_for(user))

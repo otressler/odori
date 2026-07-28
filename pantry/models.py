@@ -17,12 +17,59 @@ class IngredientCategory(models.Model):
     sort_order = models.PositiveIntegerField(default=0)
     embedding = models.JSONField(default=list, blank=True)
     embedding_model = models.CharField(max_length=120, blank=True)
+    minimum_similarity = models.FloatField(null=True, blank=True)
+    minimum_margin = models.FloatField(null=True, blank=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["household", "name"], name="unique_category_name")
         ]
         ordering = ["sort_order", "name"]
+
+
+class IngredientCategoryExample(models.Model):
+    class Source(models.TextChoices):
+        STARTER = "starter", "Starter catalog"
+        OWNER = "owner", "Owner"
+        CONFIRMED = "confirmed", "Confirmed assignment"
+        IMPORTED = "imported", "Imported"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="ingredient_category_examples"
+    )
+    category = models.ForeignKey(
+        IngredientCategory, on_delete=models.CASCADE, related_name="examples"
+    )
+    text = models.CharField(max_length=120)
+    normalized_text = models.CharField(max_length=120)
+    source = models.CharField(max_length=12, choices=Source.choices)
+    source_key = models.CharField(max_length=120, blank=True)
+    active = models.BooleanField(default=True)
+    embedding = models.JSONField(default=list, blank=True)
+    embedding_model = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["category", "normalized_text"],
+                name="unique_category_example_text",
+            ),
+            models.UniqueConstraint(
+                fields=["category", "source", "source_key"],
+                condition=Q(source_key__gt=""),
+                name="unique_category_example_source_key",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["household", "category", "active"],
+                name="pantry_inge_househo_7ca0b4_idx",
+            ),
+        ]
+        ordering = ["category__sort_order", "category__name", "text"]
 
 
 class PantryCategorizationJob(models.Model):

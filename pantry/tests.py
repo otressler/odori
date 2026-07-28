@@ -2,18 +2,20 @@ import json
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import Client, TestCase
 from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
 from planning.models import MealSlot
-from planning.services import add_slot, current_week_start, get_or_create_plan
+from planning.services import add_slot, current_week_start, get_or_create_plan, week_start_for
 from recipes.models import Recipe, RecipeIngredient, RecipeSource
 
 from .jobs import run_next_category_job
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
+    IngredientCategoryExample,
     InventoryEvent,
     InventoryItem,
     PantryCategorizationJob,
@@ -94,13 +96,21 @@ class PantryApiTests(TestCase):
         self.assertEqual(result["ingredient"]["name"], "Pasta")
         self.assertEqual(result["categories"][0]["name"], "Trockenwaren")
         self.assertEqual(result["categories"][0]["embeddingScore"], None)
-        self.assertTrue(result["categories"][0]["qualifies"])
+        self.assertTrue(result["categories"][0]["exactMatch"])
+        self.assertEqual(result["state"], "assigned")
 
     def test_category_scores_use_persisted_embedding_models(self):
         category = IngredientCategory.objects.create(
             household=self.household,
             name="Trockenwaren",
             sort_order=50,
+        )
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=category,
+            text="Testnudeln",
+            normalized_text="testnudeln",
+            source=IngredientCategoryExample.Source.OWNER,
             embedding=[1.0, 0.0],
             embedding_model="test-embedding",
         )
@@ -120,13 +130,27 @@ class PantryApiTests(TestCase):
         self.assertTrue(result["embeddingUsed"])
         score = next(item for item in result["categories"] if item["id"] == str(category.id))
         self.assertEqual(score["embeddingScore"], 1.0)
-        self.assertEqual(score["embeddingModel"], "test-embedding")
+        self.assertEqual(score["bestExample"], "Testnudeln")
         self.assertTrue(score["embeddingUsed"])
 
     def test_category_admin_requires_login(self):
         response = Client().get("/admin/categories")
 
         self.assertRedirects(response, "/accounts/login/?next=/admin/categories")
+
+    def test_category_admin_syncs_starter_catalog(self):
+        response = self.client.get("/admin/categories")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            IngredientCategoryExample.objects.filter(
+                household=self.household,
+                category__name="Trockenwaren",
+                normalized_text="spaghetti",
+                source=IngredientCategoryExample.Source.STARTER,
+                active=True,
+            ).exists()
+        )
 
     def test_category_admin_saves_descriptions_and_queues_embedding_refresh(self):
         category = IngredientCategory.objects.create(
@@ -150,21 +174,43 @@ class PantryApiTests(TestCase):
         self.assertEqual(
             category.description, "Nudeln, Reis und haltbare Grundnahrungsmittel"
         )
-        self.assertEqual(category.embedding, [])
-        self.assertEqual(category.embedding_model, "")
+        self.assertEqual(category.embedding, [1.0, 0.0])
         job = PantryCategorizationJob.objects.get(household=self.household)
         self.assertEqual(job.state, PantryCategorizationJob.State.QUEUED)
 
     def test_category_admin_ranks_similarity_results_and_is_household_scoped(self):
-        first = IngredientCategory.objects.create(
-            household=self.household, name="Trockenwaren", embedding=[1.0, 0.0]
+        first = IngredientCategory.objects.create(household=self.household, name="Trockenwaren")
+        second = IngredientCategory.objects.create(household=self.household, name="Obst & Gemüse")
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=first,
+            text="Testnudeln",
+            normalized_text="testnudeln",
+            source=IngredientCategoryExample.Source.OWNER,
+            embedding=[1.0, 0.0],
+            embedding_model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
         )
-        second = IngredientCategory.objects.create(
-            household=self.household, name="Obst & Gemüse", embedding=[0.0, 1.0]
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=second,
+            text="Testobst",
+            normalized_text="testobst",
+            source=IngredientCategoryExample.Source.OWNER,
+            embedding=[0.0, 1.0],
+            embedding_model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
         )
         other_household = Household.objects.create(name="Other")
-        IngredientCategory.objects.create(
-            household=other_household, name="Geheim", embedding=[1.0, 0.0]
+        hidden_category = IngredientCategory.objects.create(
+            household=other_household, name="Geheim"
+        )
+        IngredientCategoryExample.objects.create(
+            household=other_household,
+            category=hidden_category,
+            text="Geheimzutat",
+            normalized_text="geheimzutat",
+            source=IngredientCategoryExample.Source.OWNER,
+            embedding=[1.0, 0.0],
+            embedding_model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
         )
 
         from .semantic import EmbeddingResult
@@ -174,14 +220,18 @@ class PantryApiTests(TestCase):
             return_value=EmbeddingResult(vector=[1.0, 0.0], state="succeeded"),
         ):
             response = self.client.post(
-                "/admin/categories", {"action": "test", "ingredient": "Spaghetti"}
+                "/admin/categories", {"action": "test", "ingredient": "Unbekanntes Testprodukt"}
             )
 
         self.assertEqual(response.status_code, 200)
         results = response.context["similarity_results"]
-        self.assertEqual([result["category"] for result in results], [first, second])
+        self.assertEqual([result["category"] for result in results[:2]], [first, second])
         self.assertEqual(results[0]["similarity"], 1.0)
         self.assertEqual(results[1]["similarity"], 0.0)
+        self.assertTrue(
+            all(result["category"].household_id == self.household.id for result in results)
+        )
+        self.assertNotIn(hidden_category, [result["category"] for result in results])
 
     def test_inventory_page_creates_an_ingredient_and_initial_status(self):
         response = self.client.post(
@@ -235,7 +285,7 @@ class PantryApiTests(TestCase):
 
         response = self.client.post("/pantry/categories/suggest/")
 
-        self.assertRedirects(response, "/pantry/")
+        self.assertRedirects(response, "/pantry/", fetch_redirect_response=False)
         job = PantryCategorizationJob.objects.get(household=self.household)
         self.assertEqual(job.state, PantryCategorizationJob.State.QUEUED)
 
@@ -326,20 +376,25 @@ class PantryApiTests(TestCase):
             source_text="Basilikum",
             sort_order=1,
         )
-        week_start = current_week_start()
-        get_or_create_plan(user=self.user, week_start=week_start)
+        today = timezone.localdate()
+        within_window_date = today + timedelta(days=6)
+        outside_window_date = today + timedelta(days=7)
+        within_window_week_start = week_start_for(within_window_date)
+        outside_window_week_start = week_start_for(outside_window_date)
+        get_or_create_plan(user=self.user, week_start=within_window_week_start)
+        get_or_create_plan(user=self.user, week_start=outside_window_week_start)
         add_slot(
             user=self.user,
-            week_start=week_start,
-            date=timezone.localdate() + timedelta(days=6),
+            week_start=within_window_week_start,
+            date=within_window_date,
             slot=MealSlot.Slot.DINNER,
             entry_type=MealSlot.EntryType.RECIPE,
             recipe_id=recipe.id,
         )
         add_slot(
             user=self.user,
-            week_start=week_start + timedelta(days=7),
-            date=timezone.localdate() + timedelta(days=7),
+            week_start=outside_window_week_start,
+            date=outside_window_date,
             slot=MealSlot.Slot.DINNER,
             entry_type=MealSlot.EntryType.RECIPE,
             recipe_id=late_recipe.id,

@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError
 from django.http import Http404, JsonResponse
@@ -7,12 +8,13 @@ from django.views.decorators.http import require_http_methods
 
 from core.services import household_for
 
+from .catalog import sync_starter_catalog
 from .models import CanonicalIngredient, IngredientCategory, InventoryItem
-from .semantic import rank_ingredients
+from .semantic import embed_with_diagnostics, rank_ingredients
 from .services import (
     PlannedIngredientInUse,
-    category_score_details,
     change_inventory_status,
+    classify_category,
     merge_ingredients,
     queue_category_suggestions,
 )
@@ -127,13 +129,24 @@ def ingredient_category_scores(request):
             raise Http404
         name = ingredient.name
         embedding = ingredient.embedding
+        aliases = ingredient.aliases
+        embedding_model = ingredient.embedding_model
         ingredient_json_data = {
             "id": str(ingredient.id),
             "name": ingredient.name,
             "embeddingModel": ingredient.embedding_model or None,
         }
     elif name:
-        embedding = []
+        embedding_result = embed_with_diagnostics(
+            name,
+            household_id=household.id,
+            operation="category_score_test",
+        )
+        embedding = embedding_result.vector or []
+        aliases = []
+        embedding_model = (
+            settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT if embedding_result.vector else ""
+        )
         ingredient_json_data = {"id": None, "name": name, "embeddingModel": None}
     else:
         return error(
@@ -142,37 +155,60 @@ def ingredient_category_scores(request):
             fields={"ingredientId": "Required when name is omitted."},
         )
 
-    categories = IngredientCategory.objects.filter(household=household).order_by(
-        "sort_order", "name"
+    sync_starter_catalog(household=household)
+    categories = list(
+        IngredientCategory.objects.filter(household=household)
+        .prefetch_related("examples")
+        .order_by("sort_order", "name")
     )
-    scores = []
-    for category in categories:
-        details = category_score_details(
-            name=name,
-            ingredient_embedding=embedding,
-            category=category,
-        )
-        scores.append(
-            {
-                "id": str(category.id),
-                "name": category.name,
-                "textScore": round(details["text_score"], 3),
-                "embeddingScore": (
-                    round(details["embedding_score"], 3)
-                    if details["embedding_score"] is not None
-                    else None
-                ),
-                "score": round(details["score"], 3),
-                "qualifies": details["score"] >= 0.72,
-                "embeddingUsed": details["embedding_score"] is not None,
-                "embeddingModel": category.embedding_model or None,
-            }
-        )
-    scores.sort(key=lambda item: (-item["score"], item["name"]))
+    classification = classify_category(
+        name=name,
+        aliases=aliases,
+        ingredient_embedding=embedding,
+        ingredient_embedding_model=embedding_model,
+        categories=categories,
+    )
+    scores = [
+        {
+            "id": str(candidate["category"].id),
+            "name": candidate["category"].name,
+            "exactMatch": candidate["exact_match"],
+            "embeddingScore": (
+                round(candidate["embedding_score"], 3)
+                if candidate["embedding_score"] is not None
+                else None
+            ),
+            "score": round(candidate["score"], 3) if candidate["score"] is not None else None,
+            "embeddingUsed": candidate["embedding_score"] is not None,
+            "bestExample": candidate["best_example"].text if candidate["best_example"] else None,
+            "matchedExamples": [example.text for example in candidate["matched_examples"]],
+        }
+        for candidate in classification["candidates"]
+    ]
+    scores.sort(key=lambda item: (item["score"] is None, -(item["score"] or 0.0), item["name"]))
     return JsonResponse(
         {
             "ingredient": ingredient_json_data,
-            "minimumScore": 0.72,
+            "state": classification["state"],
+            "topCategory": classification["category"].name if classification["category"] else None,
+            "runnerUpCategory": (
+                classification["runner_up"].name if classification["runner_up"] else None
+            ),
+            "topScore": (
+                round(classification["score"], 3) if classification["score"] is not None else None
+            ),
+            "runnerUpScore": (
+                round(classification["runner_up_score"], 3)
+                if classification["runner_up_score"] is not None
+                else None
+            ),
+            "margin": (
+                round(classification["margin"], 3)
+                if classification["margin"] is not None
+                else None
+            ),
+            "minimumSimilarity": classification.get("minimum_similarity"),
+            "minimumMargin": classification.get("minimum_margin"),
             "embeddingUsed": any(item["embeddingUsed"] for item in scores),
             "categories": scores,
         }

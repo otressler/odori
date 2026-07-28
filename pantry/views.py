@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from core.services import household_for
 
+from .catalog import sync_starter_catalog
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
@@ -18,8 +19,8 @@ from .models import (
 from .semantic import embed_with_diagnostics
 from .services import (
     PlannedIngredientInUse,
-    category_score_details,
     change_inventory_status,
+    classify_category,
     merge_ingredients,
     queue_category_suggestions,
     similar_ingredient_recommendations,
@@ -125,10 +126,16 @@ def inventory_page(request):
 
 def category_admin_page(request):
     household = household_for(request.user)
-    categories = list(IngredientCategory.objects.filter(household=household))
+    sync_starter_catalog(household=household)
+    categories = list(
+        IngredientCategory.objects.filter(household=household)
+        .prefetch_related("examples")
+        .order_by("sort_order", "name")
+    )
     test_text = ""
     similarity_results = []
     embedding_test = None
+    classification_result = None
 
     if request.method == "POST":
         action = request.POST.get("action")
@@ -142,11 +149,7 @@ def category_admin_page(request):
                     if description == category.description:
                         continue
                     category.description = description
-                    category.embedding = []
-                    category.embedding_model = ""
-                    category.save(
-                        update_fields=["description", "embedding", "embedding_model"]
-                    )
+                    category.save(update_fields=["description"])
                     changed += 1
                 if changed:
                     _, queued = queue_category_suggestions(user=request.user)
@@ -189,27 +192,27 @@ def category_admin_page(request):
                         ),
                     )
                 else:
-                    similarity_results = []
-                    for category in categories:
-                        details = category_score_details(
-                            name=test_text,
-                            ingredient_embedding=embedding_test.vector,
-                            category=category,
-                        )
-                        similarity_results.append(
-                            {
-                                "category": category,
-                                "text_score": details["text_score"],
-                                "similarity": details["embedding_score"],
-                                "final_score": details["score"],
-                                "embedding_available": bool(category.embedding),
-                                "embedding_dimensions": len(category.embedding),
-                                "embedding_model": category.embedding_model,
-                            }
-                        )
+                    classification_result = classify_category(
+                        name=test_text,
+                        ingredient_embedding=embedding_test.vector,
+                        ingredient_embedding_model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
+                        categories=categories,
+                    )
+                    similarity_results = [
+                        {
+                            "category": candidate["category"],
+                            "text_score": float(candidate["exact_match"]),
+                            "similarity": candidate["embedding_score"],
+                            "final_score": candidate["score"],
+                            "best_example": candidate["best_example"],
+                            "matched_examples": candidate["matched_examples"],
+                        }
+                        for candidate in classification_result["candidates"]
+                    ]
                     similarity_results.sort(
                         key=lambda result: (
-                            result["final_score"],
+                            result["final_score"] is not None,
+                            result["final_score"] or 0.0,
                             result["similarity"] is not None,
                         ),
                         reverse=True,
@@ -222,6 +225,7 @@ def category_admin_page(request):
             "categories": categories,
             "test_text": test_text,
             "similarity_results": similarity_results,
+            "classification_result": classification_result,
             "embedding_test": embedding_test,
             "embedding_deployment": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
             "request_id": getattr(request, "request_id", ""),
