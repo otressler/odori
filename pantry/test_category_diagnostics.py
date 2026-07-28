@@ -7,6 +7,7 @@ from core.models import Household, HouseholdMembership, User
 
 from .models import IngredientCategory
 from .semantic import EmbeddingResult
+from .services import category_score_details
 from .views import category_admin_page
 
 
@@ -53,3 +54,35 @@ class CategoryDiagnosticsTests(TestCase):
         self.assertTrue(result["embedding_available"])
         self.assertEqual(result["embedding_dimensions"], 2)
         self.assertEqual(context["request_id"], "category-test-request")
+
+    def test_spaghetti_matches_dry_goods_without_character_overlap_boost(self):
+        bakery = IngredientCategory(
+            name="Bäckerei",
+            description=(
+                "Frisches Brot, Brötchen, Toastbrot, Baguette, Wraps, Knäckebrot "
+                "und Gebäck von der Backstation oder Bäcker. Verzehrfertige Backwaren."
+            ),
+            embedding=[1.0, 0.0],
+        )
+        dry_goods = IngredientCategory(
+            name="Trockenwaren",
+            description="Nudeln, Pasta, Reis, Hülsenfrüchte, Linsen",
+            embedding=[0.0, 1.0],
+        )
+
+        bakery_scores = category_score_details(
+            name="Spaghetti",
+            ingredient_embedding=[0.0, 1.0],
+            category=bakery,
+        )
+        dry_goods_scores = category_score_details(
+            name="Spaghetti",
+            ingredient_embedding=[0.0, 1.0],
+            category=dry_goods,
+        )
+
+        self.assertEqual(bakery_scores["text_score"], 0.0)
+        self.assertEqual(bakery_scores["score"], 0.0)
+        self.assertEqual(dry_goods_scores["text_score"], 1.0)
+        self.assertEqual(dry_goods_scores["embedding_score"], 1.0)
+        self.assertEqual(dry_goods_scores["score"], 1.0)

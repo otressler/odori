@@ -152,6 +152,12 @@ The category test at `/admin/categories` reports its embedding outcome, model de
 dimensions, text similarity, cosine similarity, and final score. The final score is the greater of
 the text and cosine scores; no hidden weights are applied.
 
+To validate embedding connectivity from inside the web container, run:
+
+```bash
+python scripts/check_embedding_connectivity.py
+```
+
 ## Network policy
 
 - Traefik is the only service connected to `web`; it terminates HTTPS for the tailnet hostname.

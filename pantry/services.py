@@ -16,6 +16,7 @@ from .semantic import (
     cosine_similarity,
     embed_with_diagnostics,
     fuzzy_similarity,
+    normalized_text,
     rank_ingredients,
     update_embedding,
 )
@@ -25,7 +26,21 @@ CATEGORY_SUGGESTIONS = (
     ("Bäckerei", 20, ("brot", "brötchen", "mehl", "kuchen", "backen")),
     ("Kühlregal", 30, ("milch", "joghurt", "käse", "butter", "sahne", "tofu")),
     ("Fleisch & Fisch", 40, ("fleisch", "huhn", "rind", "fisch", "lachs", "wurst")),
-    ("Trockenwaren", 50, ("pasta", "reis", "linsen", "bohnen", "mehl", "konserve")),
+    (
+        "Trockenwaren",
+        50,
+        (
+            "nudeln",
+            "pasta",
+            "spaghetti",
+            "macaroni",
+            "reis",
+            "linsen",
+            "bohnen",
+            "mehl",
+            "konserve",
+        ),
+    ),
     ("Gewürze & Öl", 60, ("salz", "pfeffer", "gewürz", "öl", "essig", "kräuter")),
     ("Getränke", 70, ("wasser", "saft", "kaffee", "tee", "wein", "bier")),
     ("Haushalt & Hygiene", 80, ("seife", "shampoo", "toilettenpapier", "spülmittel", "reiniger")),
@@ -214,10 +229,18 @@ def ensure_suggested_categories(household, *, job_id=None, correlation_id=None):
 
 def category_score_details(*, name, ingredient_embedding, category):
     keywords = _category_keywords(category.name)
-    text_score = max(
-        [fuzzy_similarity(name, category.name)]
-        + [fuzzy_similarity(name, word) for word in category.description.split()]
-        + [fuzzy_similarity(name, keyword) for keyword in keywords]
+    category_terms = (
+        normalized_text(category.name).split()
+        + normalized_text(category.description).split()
+        + [normalized_text(keyword) for keyword in keywords]
+    )
+    name_terms = normalized_text(name).split()
+    text_score = float(
+        any(
+            fuzzy_similarity(name_term, category_term) == 1.0
+            for name_term in name_terms
+            for category_term in category_terms
+        )
     )
     embedding_score = cosine_similarity(ingredient_embedding, category.embedding)
     return {
