@@ -30,7 +30,7 @@
         <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
           <span class="recipe-card__image-wrap">
             {% if recipe.image_status == "ready" and recipe.image %}
-              <img class="recipe-card__image" src="{{ recipe.image.url }}" alt="{{ recipe.title }}">
+              <img class="recipe-card__image" src="{% url 'recipe-image' recipe.id %}" alt="{{ recipe.title }}">
             {% else %}
               <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
               <span class="recipe-card__image-status">Bild wird zubereitet</span>

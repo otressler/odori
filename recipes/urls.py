@@ -33,6 +33,11 @@ urlpatterns = [
         name="recipe-image-regenerate",
     ),
     path(
+        "<uuid:recipe_id>/image/",
+        login_required(views.recipe_image),
+        name="recipe-image",
+    ),
+    path(
         "<uuid:recipe_id>/ingredients/<uuid:ingredient_id>/add-to-pantry/",
         login_required(views.recipe_ingredient_to_pantry_page),
         name="recipe-ingredient-to-pantry",

@@ -2,7 +2,7 @@ import re
 from decimal import Decimal
 
 from django.contrib import messages
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 
 from core.services import household_for
@@ -268,6 +268,13 @@ def recipe_image_regenerate_page(request, recipe_id):
     regenerate_recipe_image(recipe)
     messages.success(request, "Ein neues Rezeptbild wird zubereitet.")
     return redirect("recipe-detail", recipe_id=recipe.id)
+
+
+def recipe_image(request, recipe_id):
+    recipe = recipe_for_user(request.user, recipe_id)
+    if not recipe.image:
+        raise Http404
+    return FileResponse(recipe.image.open("rb"))
 
 
 def recipe_for_user(user, recipe_id):

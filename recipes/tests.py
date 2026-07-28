@@ -1,6 +1,9 @@
 import json
+from tempfile import TemporaryDirectory
 
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient
@@ -146,6 +149,18 @@ class RecipeLifecycleTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_recipe_image_is_served_to_a_household_member(self):
+        response = self.create_recipe()
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            recipe.image.save("pasta.png", SimpleUploadedFile("pasta.png", b"image-data"))
+            response = self.client.get(reverse("recipe-image", args=[recipe.id]))
+            image_bytes = b"".join(response.streaming_content)
+            response.close()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(image_bytes, b"image-data")
 
     def test_recipe_form_accepts_more_than_twelve_ingredients(self):
         form_data = {"title": "Viele Zutaten", "servings": "2", "step-0": "Kochen."}
