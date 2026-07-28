@@ -1,3 +1,9 @@
 {
-    "sarif-viewer.connectToGithubCodeScanning": "off"
+    "sarif-viewer.connectToGithubCodeScanning": "off",
+    "chat.tools.terminal.autoApprove": {
+        "/^python manage\\.py shell -c \"from django\\.core\\.files\\.storage import default_storage; print\\(default_storage\\.__class__\\.__module__ \\+ '\\.' \\+ default_storage\\.__class__\\.__name__\\); print\\(default_storage\\.location\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

@@ -1,3 +1,6 @@
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
 from django.test import TestCase, override_settings
 
 from core.models import Household, HouseholdMembership, ProviderDiagnostic, User
@@ -35,3 +38,17 @@ class RecipeImageDiagnosticsTests(TestCase):
         diagnostic = ProviderDiagnostic.objects.get(job_id=self.job.id)
         self.assertEqual(diagnostic.operation, "recipe_image_generation")
         self.assertEqual(diagnostic.error_code, "missing_configuration")
+
+    @patch("recipes.images._generate_image_bytes", return_value=b"generated-image")
+    def test_generated_image_is_saved_with_default_storage(self, _generate_image_bytes):
+        self.recipe.image_prompt = self.job.prompt
+        self.recipe.save(update_fields=["image_prompt"])
+
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.assertTrue(run_next_recipe_image_job())
+
+        self.job.refresh_from_db()
+        self.recipe.refresh_from_db()
+        self.assertEqual(self.job.state, RecipeImageJob.State.SUCCEEDED)
+        self.assertEqual(self.recipe.image_status, "ready")
+        self.assertTrue(self.recipe.image.name.endswith(".png"))

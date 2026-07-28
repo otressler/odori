@@ -157,6 +157,15 @@ class RecipeLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Recipe.objects.get(title="Viele Zutaten").ingredients.count(), 13)
 
+    def test_recipe_form_uses_semantic_ingredient_search_for_pantry_assignment(self):
+        response = self.client.get("/recipes/new/")
+
+        self.assertContains(response, 'data-ingredient-search')
+        self.assertContains(response, 'name="ingredient-canonical-0"')
+        self.assertContains(response, 'type="hidden"')
+        self.assertNotContains(response, '<select id="ingredient-canonical-0"')
+        self.assertContains(response, 'fetch(searchEndpoint + "?q="')
+
     def test_recipe_form_accepts_more_than_twelve_steps(self):
         form_data = {"title": "Viele Schritte", "servings": "2"}
         for index in range(13):

@@ -114,6 +114,13 @@ class PageRenderTests(TestCase):
         self.assertContains(response, "Offen auf der Liste")
         self.assertEqual(response.context["open_items"], 1)
 
+    def test_home_page_links_to_uncategorized_review(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.context["uncategorized_count"], 1)
+        self.assertContains(response, "/pantry/categories/review/")
+        self.assertContains(response, "Odori hat Vorschläge vorbereitet")
+
     def test_home_page_reminds_about_open_item_needed_today(self):
         week_start = current_week_start()
         add_slot(

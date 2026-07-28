@@ -39,12 +39,13 @@ def sync_starter_catalog(*, household, dry_run=False):
 
         source_keys = set()
         for text in category_data["examples"]:
-            source_key = f"{category_data['key']}:{normalized_text(text)}"
+            normalized = normalized_text(text)
+            source_key = f"{category_data['key']}:{normalized}"
             source_keys.add(source_key)
             defaults = {
                 "household": household,
                 "text": text,
-                "normalized_text": normalized_text(text),
+                "normalized_text": normalized,
                 "source": IngredientCategoryExample.Source.STARTER,
                 "active": True,
             }
@@ -54,6 +55,12 @@ def sync_starter_catalog(*, household, dry_run=False):
                 source_key=source_key,
             ).first()
             if example is None:
+                existing_example = IngredientCategoryExample.objects.filter(
+                    category=category,
+                    normalized_text=normalized,
+                ).first()
+                if existing_example is not None:
+                    continue
                 result["examples_created"] += 1
                 if not dry_run:
                     IngredientCategoryExample.objects.create(

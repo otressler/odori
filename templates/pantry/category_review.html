@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Warengruppen prüfen · Odori{% endblock %}
+
+{% block content %}
+<header class="review-heading">
+  <div>
+    <p class="hero__eyebrow">Gemeinsam lernen</p>
+    <h1>Wo gehört das hin?</h1>
+    <p class="muted">Eine Auswahl genügt. Deine Entscheidung hilft Odori bei ähnlichen Zutaten.</p>
+  </div>
+  {% if review_items %}<span class="review-count">{{ review_items|length }} offen</span>{% endif %}
+</header>
+
+{% if review_items %}
+  <div class="review-list">
+    {% for item in review_items %}
+      <article class="review-item">
+        <div class="review-item__name">
+          <span class="review-item__number">{{ forloop.counter|stringformat:"02d" }}</span>
+          <h2>{{ item.ingredient.name }}</h2>
+        </div>
+        <div class="review-suggestions" aria-label="Vorgeschlagene Warengruppen für {{ item.ingredient.name }}">
+          {% for suggestion in item.suggestions %}
+            <form method="post" action="{% url 'category-review-assign' item.ingredient.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="category_id" value="{{ suggestion.category.id }}">
+              <button class="category-choice{% if forloop.first %} category-choice--best{% endif %}" type="submit">
+                <span class="category-choice__name">{{ suggestion.category.name }}</span>
+                <span class="category-choice__reason">
+                  {% if suggestion.score_percent is not None %}{{ suggestion.score_percent }} % passend{% else %}Auswählen{% endif %}
+                  {% if suggestion.best_example %} · ähnlich wie {{ suggestion.best_example.text }}{% endif %}
+                </span>
+                <span class="category-choice__arrow" aria-hidden="true">→</span>
+              </button>
+            </form>
+          {% endfor %}
+        </div>
+        {% if item.remaining_categories %}
+          <details class="review-more">
+            <summary>Andere Warengruppe</summary>
+            <div class="review-more__choices">
+              {% for category in item.remaining_categories %}
+                <form method="post" action="{% url 'category-review-assign' item.ingredient.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="category_id" value="{{ category.id }}">
+                  <button type="submit">{{ category.name }}</button>
+                </form>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <section class="empty review-empty">
+    <h2>Alles einsortiert</h2>
+    <p>Im Moment wartet keine Zutat auf deine Entscheidung.</p>
+    <a class="button" href="{% url 'inventory-page' %}">Zum Vorrat</a>
+  </section>
+{% endif %}
+{% endblock %}

@@ -20,6 +20,7 @@ from .models import (
     InventoryItem,
     PantryCategorizationJob,
 )
+from .services import classify_category
 
 
 class PantryApiTests(TestCase):
@@ -312,6 +313,79 @@ class PantryApiTests(TestCase):
             1,
         )
         self.assertContains(self.client.get("/pantry/"), "Warengruppen warten")
+
+    def test_category_review_shows_ranked_suggestions_for_uncategorized_items(self):
+        bakery = IngredientCategory.objects.create(
+            household=self.household, name="Bäckerei", sort_order=10
+        )
+        produce = IngredientCategory.objects.create(
+            household=self.household, name="Obst & Gemüse", sort_order=20
+        )
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=bakery,
+            text="Brot",
+            normalized_text="brot",
+            source=IngredientCategoryExample.Source.OWNER,
+            embedding=[1.0, 0.0],
+            embedding_model="test-embedding",
+        )
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=produce,
+            text="Apfel",
+            normalized_text="apfel",
+            source=IngredientCategoryExample.Source.OWNER,
+            embedding=[0.0, 1.0],
+            embedding_model="test-embedding",
+        )
+        self.ingredient.name = "Fermentino"
+        self.ingredient.embedding = [0.9, 0.1]
+        self.ingredient.embedding_model = "test-embedding"
+        self.ingredient.save(update_fields=["name", "embedding", "embedding_model"])
+
+        response = self.client.get("/pantry/categories/review/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Fermentino")
+        suggestions = response.context["review_items"][0]["suggestions"]
+        self.assertEqual(
+            [suggestion["category"] for suggestion in suggestions[:2]],
+            [bakery, produce],
+        )
+
+    def test_confirming_category_assigns_item_and_teaches_classifier(self):
+        category = IngredientCategory.objects.create(
+            household=self.household, name="Obst & Gemüse"
+        )
+        self.ingredient.embedding = [0.8, 0.2]
+        self.ingredient.embedding_model = "test-embedding"
+        self.ingredient.save(update_fields=["embedding", "embedding_model"])
+
+        response = self.client.post(
+            f"/pantry/categories/review/{self.ingredient.id}/assign/",
+            {"category_id": category.id},
+        )
+
+        self.assertRedirects(response, "/pantry/categories/review/")
+        self.ingredient.refresh_from_db()
+        self.assertEqual(self.ingredient.category, category)
+        example = IngredientCategoryExample.objects.get(
+            category=category,
+            normalized_text="tomate",
+            source=IngredientCategoryExample.Source.CONFIRMED,
+        )
+        self.assertEqual(example.embedding, [0.8, 0.2])
+        self.assertEqual(example.embedding_model, "test-embedding")
+
+        learned = classify_category(
+            name="Tomate",
+            categories=[
+                IngredientCategory.objects.prefetch_related("examples").get(id=category.id)
+            ],
+        )
+        self.assertEqual(learned["state"], "assigned")
+        self.assertEqual(learned["category"], category)
 
     def test_inventory_shows_earliest_upcoming_recipe_requirement(self):
         source = RecipeSource.objects.create(household=self.household)

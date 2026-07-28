@@ -233,5 +233,8 @@ def home(request):
             "replenish_count": InventoryItem.objects.filter(
                 household=household, status=InventoryItem.Status.NEEDS_REPLENISHMENT
             ).count(),
+            "uncategorized_count": CanonicalIngredient.objects.filter(
+                household=household, active=True, category__isnull=True
+            ).count(),
         },
     )

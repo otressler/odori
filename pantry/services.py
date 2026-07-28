@@ -363,6 +363,90 @@ def categorize_household(*, household, job_id=None, correlation_id=None):
     return updated
 
 
+def category_review_items(*, user):
+    household = household_for(user)
+    sync_starter_catalog(household=household)
+    categories = list(
+        IngredientCategory.objects.filter(household=household)
+        .prefetch_related("examples")
+        .order_by("sort_order", "name")
+    )
+    review_items = []
+    ingredients = CanonicalIngredient.objects.filter(
+        household=household, active=True, category__isnull=True
+    ).order_by("name")
+    for ingredient in ingredients:
+        classification = classify_category(
+            name=ingredient.name,
+            aliases=ingredient.aliases,
+            ingredient_embedding=ingredient.embedding,
+            ingredient_embedding_model=ingredient.embedding_model,
+            categories=categories,
+        )
+        ranked = sorted(
+            classification["candidates"],
+            key=lambda candidate: (
+                candidate["score"] is not None,
+                candidate["score"] or 0.0,
+            ),
+            reverse=True,
+        )
+        suggestions = [
+            {
+                "category": candidate["category"],
+                "score_percent": (
+                    round(candidate["score"] * 100) if candidate["score"] is not None else None
+                ),
+                "best_example": candidate["best_example"],
+            }
+            for candidate in ranked[:3]
+        ]
+        review_items.append(
+            {
+                "ingredient": ingredient,
+                "suggestions": suggestions,
+                "remaining_categories": [
+                    candidate["category"] for candidate in ranked[3:]
+                ],
+            }
+        )
+    return review_items
+
+
+@transaction.atomic
+def confirm_ingredient_category(*, user, ingredient_id, category_id):
+    household = household_for(user)
+    ingredient = (
+        CanonicalIngredient.objects.select_for_update()
+        .filter(
+            id=ingredient_id,
+            household=household,
+            active=True,
+            category__isnull=True,
+        )
+        .first()
+    )
+    category = IngredientCategory.objects.filter(id=category_id, household=household).first()
+    if not ingredient or not category:
+        raise Http404
+
+    ingredient.category = category
+    ingredient.save(update_fields=["category"])
+    IngredientCategoryExample.objects.get_or_create(
+        category=category,
+        normalized_text=normalized_text(ingredient.name),
+        defaults={
+            "household": household,
+            "text": ingredient.name,
+            "source": IngredientCategoryExample.Source.CONFIRMED,
+            "source_key": f"ingredient:{ingredient.id}",
+            "embedding": ingredient.embedding,
+            "embedding_model": ingredient.embedding_model,
+        },
+    )
+    return ingredient
+
+
 @transaction.atomic
 def queue_category_suggestions(*, user):
     household = household_for(user)

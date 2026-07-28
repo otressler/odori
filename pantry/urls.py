@@ -11,6 +11,16 @@ urlpatterns = [
         login_required(views.inventory_category_suggestions_page),
         name="inventory-category-suggestions",
     ),
+    path(
+        "categories/review/",
+        login_required(views.category_review_page),
+        name="category-review",
+    ),
+    path(
+        "categories/review/<uuid:ingredient_id>/assign/",
+        login_required(views.category_review_assign_page),
+        name="category-review-assign",
+    ),
     path("condense/", login_required(views.inventory_condense_page), name="inventory-condense"),
     path(
         "condense/confirm/",

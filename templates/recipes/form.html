@@ -59,12 +59,16 @@
           </div>
           <div class="field">
             <label for="ingredient-canonical-{{ forloop.counter0 }}">Vorrat</label>
-            <select id="ingredient-canonical-{{ forloop.counter0 }}" name="ingredient-canonical-{{ forloop.counter0 }}">
-              <option value="">— nicht zugeordnet —</option>
-              {% for ingredient in canonical_ingredients %}
-                <option value="{{ ingredient.id }}"{% if ingredient.id == row.canonical_ingredient_id %} selected{% endif %}>{{ ingredient.name }}</option>
-              {% endfor %}
-            </select>
+            <div class="ingredient-search" data-ingredient-search>
+              <input id="ingredient-canonical-{{ forloop.counter0 }}-search" type="search"
+                     autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                     aria-controls="ingredient-canonical-{{ forloop.counter0 }}-results"
+                     placeholder="Vorratszutat suchen"
+                     value="{% for ingredient in canonical_ingredients %}{% if ingredient.id == row.canonical_ingredient_id %}{{ ingredient.name }}{% endif %}{% endfor %}">
+              <input id="ingredient-canonical-{{ forloop.counter0 }}" type="hidden"
+                     name="ingredient-canonical-{{ forloop.counter0 }}" value="{{ row.canonical_ingredient_id|default:'' }}">
+              <div id="ingredient-canonical-{{ forloop.counter0 }}-results" class="ingredient-search__results" role="listbox" hidden></div>
+            </div>
           </div>
         </div>
       {% endfor %}
@@ -103,6 +107,76 @@
   /* Rows are server-rendered; JavaScript only appends more of the same markup. */
   var ingredients = document.getElementById("ingredient-rows");
   var steps = document.getElementById("step-rows");
+  var searchEndpoint = "/api/v1/ingredients";
+
+  function configureIngredientSearch(container) {
+    var input = container.querySelector('[type="search"]');
+    var value = container.querySelector('[type="hidden"]');
+    var results = container.querySelector('[role="listbox"]');
+    var debounceTimer;
+    var requestNumber = 0;
+
+    function closeResults() {
+      results.hidden = true;
+      results.replaceChildren();
+      input.setAttribute("aria-expanded", "false");
+    }
+
+    function selectIngredient(ingredient) {
+      value.value = ingredient.id;
+      input.value = ingredient.name;
+      closeResults();
+    }
+
+    function showResults(ingredients) {
+      results.replaceChildren();
+      ingredients.forEach(function (ingredient) {
+        var option = document.createElement("button");
+        option.type = "button";
+        option.className = "ingredient-search__option";
+        option.setAttribute("role", "option");
+        option.textContent = ingredient.name;
+        option.addEventListener("mousedown", function (event) {
+          event.preventDefault();
+          selectIngredient(ingredient);
+        });
+        results.appendChild(option);
+      });
+      results.hidden = ingredients.length === 0;
+      input.setAttribute("aria-expanded", String(ingredients.length > 0));
+    }
+
+    function search() {
+      var query = input.value.trim();
+      value.value = "";
+      if (!query) {
+        closeResults();
+        return;
+      }
+      var currentRequest = ++requestNumber;
+      fetch(searchEndpoint + "?q=" + encodeURIComponent(query), {
+        headers: { "Accept": "application/json" }
+      })
+        .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+        .then(function (data) {
+          if (currentRequest === requestNumber) { showResults(data.ingredients || []); }
+        })
+        .catch(function () {
+          if (currentRequest === requestNumber) { closeResults(); }
+        });
+    }
+
+    input.addEventListener("input", function () {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(search, 250);
+    });
+    input.addEventListener("blur", function () { window.setTimeout(closeResults, 150); });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") { closeResults(); }
+    });
+  }
+
+  ingredients.querySelectorAll("[data-ingredient-search]").forEach(configureIngredientSearch);
 
   function nextIndex(container, selector) {
     return container.querySelectorAll(selector).length;
@@ -115,14 +189,25 @@
         var i = nextIndex(ingredients, ".ingredient-row");
         var template = ingredients.querySelector(".ingredient-row");
         var clone = template.cloneNode(true);
-        clone.querySelectorAll("input, select, label").forEach(function (node) {
+        clone.querySelectorAll("input, label, [role='listbox']").forEach(function (node) {
           ["id", "name", "for"].forEach(function (attribute) {
             var value = node.getAttribute(attribute);
-            if (value) { node.setAttribute(attribute, value.replace(/-\d+$/, "-" + i)); }
+            if (value) {
+              node.setAttribute(attribute, value.replace(/-(\d+)(?=-|$)/, "-" + i));
+            }
           });
-          if (node.tagName !== "LABEL") { node.value = ""; }
+          ["aria-controls"].forEach(function (attribute) {
+            var value = node.getAttribute(attribute);
+            if (value) {
+              node.setAttribute(attribute, value.replace(/-(\d+)(?=-|$)/, "-" + i));
+            }
+          });
+          if (node.tagName === "INPUT") { node.value = ""; }
         });
+        clone.querySelector("[role='listbox']").replaceChildren();
+        clone.querySelector("[role='listbox']").hidden = true;
         ingredients.appendChild(clone);
+        configureIngredientSearch(clone.querySelector("[data-ingredient-search]"));
         clone.querySelector("input").focus();
       } else {
         var index = nextIndex(steps, "textarea");

@@ -19,8 +19,10 @@ from .models import (
 from .semantic import embed_with_diagnostics
 from .services import (
     PlannedIngredientInUse,
+    category_review_items,
     change_inventory_status,
     classify_category,
+    confirm_ingredient_category,
     merge_ingredients,
     queue_category_suggestions,
     similar_ingredient_recommendations,
@@ -330,3 +332,21 @@ def inventory_category_suggestions_page(request):
     else:
         messages.info(request, "Warengruppen werden bereits vorgeschlagen.")
     return redirect("inventory-page")
+
+
+def category_review_page(request):
+    return render(
+        request,
+        "pantry/category_review.html",
+        {"review_items": category_review_items(user=request.user)},
+    )
+
+
+def category_review_assign_page(request, ingredient_id):
+    confirm_ingredient_category(
+        user=request.user,
+        ingredient_id=ingredient_id,
+        category_id=request.POST.get("category_id"),
+    )
+    messages.success(request, "Warengruppe gespeichert. Odori merkt sich diese Zuordnung.")
+    return redirect("category-review")

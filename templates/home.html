@@ -48,6 +48,20 @@
   </div>
 </section>
 
+{% if uncategorized_count %}
+<section class="category-inbox" aria-labelledby="category-inbox-title">
+  <div class="category-inbox__mark" aria-hidden="true">
+    <svg><use href="#i-question"></use></svg>
+  </div>
+  <div class="category-inbox__body">
+    <p class="category-inbox__eyebrow">Deine Entscheidung zählt</p>
+    <h2 id="category-inbox-title">{{ uncategorized_count }} offen für eine Warengruppe</h2>
+    <p>Odori hat Vorschläge vorbereitet und lernt aus jeder Auswahl.</p>
+  </div>
+  <a class="button secondary" href="{% url 'category-review' %}">Jetzt einsortieren</a>
+</section>
+{% endif %}
+
 {% if shopping_reminders %}
 <section class="panel home-reminder" aria-labelledby="shopping-reminder-title">
   <div class="split">
