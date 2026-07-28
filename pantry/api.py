@@ -9,12 +9,18 @@ from django.views.decorators.http import require_http_methods
 from core.services import household_for
 
 from .catalog import sync_starter_catalog
-from .models import CanonicalIngredient, IngredientCategory, InventoryItem
+from .models import (
+    CanonicalIngredient,
+    IngredientCategory,
+    IngredientCategoryExample,
+    InventoryItem,
+)
 from .semantic import embed_with_diagnostics, rank_ingredients
 from .services import (
     PlannedIngredientInUse,
     change_inventory_status,
     classify_category,
+    learn_category_assignment,
     merge_ingredients,
     queue_category_suggestions,
 )
@@ -86,6 +92,11 @@ def ingredients(request):
             "validation_failed",
             "This ingredient already exists.",
             fields={"name": "Already exists."},
+        )
+    if category is not None:
+        learn_category_assignment(
+            ingredient=ingredient,
+            source=IngredientCategoryExample.Source.CONFIRMED,
         )
     queue_category_suggestions(user=request.user)
     return JsonResponse(ingredient_json(ingredient), status=201)

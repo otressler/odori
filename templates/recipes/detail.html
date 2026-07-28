@@ -12,6 +12,9 @@
       {% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}
     </p>
   </div>
+  {% if recipe.image_status == "ready" and recipe.image %}
+    <img class="recipe-page__image" src="{% url 'recipe-image' recipe.id %}" alt="{{ recipe.title }}">
+  {% endif %}
   {% if recipe.servings %}
     <form class="inline-form" method="get">
       <div class="field">

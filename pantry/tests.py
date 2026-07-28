@@ -134,6 +134,27 @@ class PantryApiTests(TestCase):
         self.assertEqual(score["bestExample"], "Testnudeln")
         self.assertTrue(score["embeddingUsed"])
 
+    def test_explicit_category_on_new_ingredient_becomes_a_confirmed_example(self):
+        category = IngredientCategory.objects.create(
+            household=self.household, name="Trockenwaren"
+        )
+
+        response = self.client.post(
+            "/api/v1/ingredients",
+            {"name": "Hauspasta", "categoryId": str(category.id)},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            IngredientCategoryExample.objects.filter(
+                category=category,
+                normalized_text="hauspasta",
+                source=IngredientCategoryExample.Source.CONFIRMED,
+                active=True,
+            ).exists()
+        )
+
     def test_category_admin_requires_login(self):
         response = Client().get("/admin/categories")
 
@@ -234,6 +255,82 @@ class PantryApiTests(TestCase):
         )
         self.assertNotIn(hidden_category, [result["category"] for result in results])
 
+    def test_category_admin_lists_assignments_and_can_correct_them(self):
+        first = IngredientCategory.objects.create(household=self.household, name="Bäckerei")
+        second = IngredientCategory.objects.create(
+            household=self.household, name="Obst & Gemüse"
+        )
+        self.ingredient.category = first
+        self.ingredient.save(update_fields=["category"])
+        learned = IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=first,
+            text=self.ingredient.name,
+            normalized_text="tomate",
+            source="assigned",
+            source_key=f"ingredient:{self.ingredient.id}",
+            active=True,
+        )
+
+        page = self.client.get("/admin/categories")
+
+        self.assertContains(page, "Zugeordnete Zutaten")
+        self.assertContains(page, "Tomate")
+        self.assertEqual(page.context["assignment_count"], 1)
+
+        response = self.client.post(
+            "/admin/categories",
+            {
+                "action": "reassign",
+                "ingredient_id": self.ingredient.id,
+                "category_id": second.id,
+            },
+        )
+
+        self.assertRedirects(response, "/admin/categories")
+        self.ingredient.refresh_from_db()
+        learned.refresh_from_db()
+        self.assertEqual(self.ingredient.category, second)
+        self.assertFalse(learned.active)
+        self.assertTrue(
+            IngredientCategoryExample.objects.filter(
+                category=second,
+                normalized_text="tomate",
+                source=IngredientCategoryExample.Source.CONFIRMED,
+                active=True,
+            ).exists()
+        )
+
+    def test_category_admin_can_add_and_disable_training_examples(self):
+        category = IngredientCategory.objects.create(
+            household=self.household, name="Trockenwaren"
+        )
+
+        response = self.client.post(
+            "/admin/categories",
+            {
+                "action": "add-example",
+                "category_id": category.id,
+                "text": "Familiennudeln",
+            },
+        )
+
+        self.assertRedirects(response, "/admin/categories")
+        example = IngredientCategoryExample.objects.get(
+            category=category, normalized_text="familiennudeln"
+        )
+        self.assertEqual(example.source, IngredientCategoryExample.Source.OWNER)
+        self.assertTrue(example.active)
+
+        response = self.client.post(
+            "/admin/categories",
+            {"action": "toggle-example", "example_id": example.id},
+        )
+
+        self.assertRedirects(response, "/admin/categories")
+        example.refresh_from_db()
+        self.assertFalse(example.active)
+
     def test_inventory_page_creates_an_ingredient_and_initial_status(self):
         response = self.client.post(
             "/pantry/add/", {"name": "Basilikum", "status": InventoryItem.Status.IN_STOCK}
@@ -298,6 +395,42 @@ class PantryApiTests(TestCase):
         )
         bread.refresh_from_db()
         self.assertEqual(bread.category.name, "Bäckerei")
+
+    def test_automatic_category_assignment_becomes_a_curatable_example(self):
+        category = IngredientCategory.objects.create(
+            household=self.household,
+            name="Fermentiertes",
+            minimum_similarity=0.8,
+            minimum_margin=0.1,
+        )
+        IngredientCategoryExample.objects.create(
+            household=self.household,
+            category=category,
+            text="Kimchi",
+            normalized_text="kimchi",
+            source=IngredientCategoryExample.Source.OWNER,
+            embedding=[1.0, 0.0],
+            embedding_model="test-embedding",
+        )
+        self.ingredient.name = "Sauerkraut"
+        self.ingredient.embedding = [1.0, 0.0]
+        self.ingredient.embedding_model = "test-embedding"
+        self.ingredient.save(update_fields=["name", "embedding", "embedding_model"])
+        categories = [
+            IngredientCategory.objects.prefetch_related("examples").get(id=category.id)
+        ]
+
+        with patch("pantry.services.ensure_suggested_categories", return_value=categories):
+            from .services import categorize_household
+
+            self.assertEqual(categorize_household(household=self.household), 1)
+
+        learned = IngredientCategoryExample.objects.get(
+            category=category,
+            normalized_text="sauerkraut",
+        )
+        self.assertEqual(learned.source, "assigned")
+        self.assertTrue(learned.active)
 
     def test_category_suggestions_does_not_queue_duplicate_active_jobs(self):
         first = self.client.post("/pantry/categories/suggest/")

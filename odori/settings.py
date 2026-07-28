@@ -2,8 +2,13 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from dotenv import dotenv_values
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+for _name, _value in dotenv_values(BASE_DIR / ".env").items():
+    if _name.startswith("AZURE_OPENAI_") and _value is not None:
+        os.environ.setdefault(_name, _value)
+
 SECRET_KEY = os.environ.get("SESSION_SECRET", "development-only-change-me")
 DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [

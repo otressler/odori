@@ -339,6 +339,73 @@ def category_score_details(*, name, ingredient_embedding, category, ingredient_e
     }
 
 
+def _learn_category_assignment(*, ingredient, category, source):
+    source_key = f"ingredient:{ingredient.id}"
+    IngredientCategoryExample.objects.filter(
+        household=ingredient.household,
+        source__in=[
+            IngredientCategoryExample.Source.ASSIGNED,
+            IngredientCategoryExample.Source.CONFIRMED,
+        ],
+        source_key=source_key,
+    ).exclude(category=category).update(active=False)
+    normalized = normalized_text(ingredient.name)
+    example = IngredientCategoryExample.objects.filter(
+        category=category,
+        normalized_text=normalized,
+    ).first()
+    if example is None:
+        example = IngredientCategoryExample.objects.create(
+            household=ingredient.household,
+            category=category,
+            text=ingredient.name,
+            normalized_text=normalized,
+            source=source,
+            source_key=source_key,
+            embedding=ingredient.embedding,
+            embedding_model=ingredient.embedding_model,
+        )
+    elif example.source in {
+        IngredientCategoryExample.Source.ASSIGNED,
+        IngredientCategoryExample.Source.CONFIRMED,
+    }:
+        example.text = ingredient.name
+        example.source = source
+        example.source_key = source_key
+        example.active = True
+        example.embedding = ingredient.embedding
+        example.embedding_model = ingredient.embedding_model
+        example.save(
+            update_fields=[
+                "text",
+                "source",
+                "source_key",
+                "active",
+                "embedding",
+                "embedding_model",
+                "updated_at",
+            ]
+        )
+    return example
+
+
+def _assign_category(*, ingredient, category, source):
+    ingredient.category = category
+    ingredient.save(update_fields=["category"])
+    _learn_category_assignment(ingredient=ingredient, category=category, source=source)
+    return ingredient
+
+
+def learn_category_assignment(*, ingredient, source):
+    if ingredient.category_id is None:
+        return None
+    return _learn_category_assignment(
+        ingredient=ingredient,
+        category=ingredient.category,
+        source=source,
+    )
+
+
 def categorize_household(*, household, job_id=None, correlation_id=None):
     categories = ensure_suggested_categories(
         household, job_id=job_id, correlation_id=correlation_id
@@ -357,8 +424,11 @@ def categorize_household(*, household, job_id=None, correlation_id=None):
             categories=categories,
         )
         if classification["state"] == "assigned":
-            ingredient.category = classification["category"]
-            ingredient.save(update_fields=["category"])
+            _assign_category(
+                ingredient=ingredient,
+                category=classification["category"],
+                source=IngredientCategoryExample.Source.ASSIGNED,
+            )
             updated += 1
     return updated
 
@@ -430,21 +500,66 @@ def confirm_ingredient_category(*, user, ingredient_id, category_id):
     if not ingredient or not category:
         raise Http404
 
-    ingredient.category = category
-    ingredient.save(update_fields=["category"])
-    IngredientCategoryExample.objects.get_or_create(
+    return _assign_category(
+        ingredient=ingredient,
         category=category,
-        normalized_text=normalized_text(ingredient.name),
+        source=IngredientCategoryExample.Source.CONFIRMED,
+    )
+
+
+@transaction.atomic
+def curate_ingredient_category(*, user, ingredient_id, category_id):
+    household = household_for(user)
+    ingredient = (
+        CanonicalIngredient.objects.select_for_update()
+        .filter(id=ingredient_id, household=household, active=True)
+        .first()
+    )
+    category = IngredientCategory.objects.filter(id=category_id, household=household).first()
+    if not ingredient or not category:
+        raise Http404
+    return _assign_category(
+        ingredient=ingredient,
+        category=category,
+        source=IngredientCategoryExample.Source.CONFIRMED,
+    )
+
+
+@transaction.atomic
+def add_category_example(*, user, category_id, text):
+    household = household_for(user)
+    category = IngredientCategory.objects.filter(id=category_id, household=household).first()
+    cleaned_text = text.strip()
+    if not category or not cleaned_text:
+        raise Http404
+    example, created = IngredientCategoryExample.objects.get_or_create(
+        category=category,
+        normalized_text=normalized_text(cleaned_text),
         defaults={
             "household": household,
-            "text": ingredient.name,
-            "source": IngredientCategoryExample.Source.CONFIRMED,
-            "source_key": f"ingredient:{ingredient.id}",
-            "embedding": ingredient.embedding,
-            "embedding_model": ingredient.embedding_model,
+            "text": cleaned_text,
+            "source": IngredientCategoryExample.Source.OWNER,
         },
     )
-    return ingredient
+    if not created and not example.active:
+        example.active = True
+        example.save(update_fields=["active", "updated_at"])
+    return example
+
+
+@transaction.atomic
+def toggle_category_example(*, user, example_id):
+    household = household_for(user)
+    example = (
+        IngredientCategoryExample.objects.select_for_update()
+        .filter(id=example_id, household=household)
+        .first()
+    )
+    if not example:
+        raise Http404
+    example.active = not example.active
+    example.save(update_fields=["active", "updated_at"])
+    return example
 
 
 @transaction.atomic

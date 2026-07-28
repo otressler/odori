@@ -47,7 +47,6 @@ def sync_starter_catalog(*, household, dry_run=False):
                 "text": text,
                 "normalized_text": normalized,
                 "source": IngredientCategoryExample.Source.STARTER,
-                "active": True,
             }
             example = IngredientCategoryExample.objects.filter(
                 category=category,
@@ -64,7 +63,10 @@ def sync_starter_catalog(*, household, dry_run=False):
                 result["examples_created"] += 1
                 if not dry_run:
                     IngredientCategoryExample.objects.create(
-                        category=category, source_key=source_key, **defaults
+                        category=category,
+                        source_key=source_key,
+                        active=True,
+                        **defaults,
                     )
             elif any(
                 getattr(example, field) != value

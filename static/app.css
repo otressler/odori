@@ -1126,6 +1126,258 @@ textarea:focus {
   }
 }
 
+/* ---------- Category administration ---------- */
+
+.admin-category-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.admin-category-heading .hero__eyebrow {
+  margin-bottom: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--terracotta-deep);
+}
+
+.admin-category-heading h1,
+.admin-category-heading p {
+  margin-bottom: 0;
+}
+
+.admin-category-stats {
+  display: flex;
+  flex: none;
+  gap: 1.25rem;
+  margin: 0;
+}
+
+.admin-category-stats div {
+  min-width: 6rem;
+  padding-left: 0.8rem;
+  border-left: 2px solid var(--line-strong);
+}
+
+.admin-category-stats dt {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-category-stats dd {
+  margin: 0;
+  color: var(--terracotta-deep);
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.admin-category-kicker {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-description-details > summary {
+  margin: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.admin-description-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-description-details > summary::after {
+  content: "+";
+  margin-left: 0.5rem;
+  color: var(--terracotta-deep);
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.admin-description-details[open] > summary {
+  margin-bottom: 1rem;
+}
+
+.admin-description-details[open] > summary::after {
+  content: "−";
+}
+
+.admin-category-list {
+  border-top: 1px solid var(--line-strong);
+}
+
+.admin-category-group {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.admin-category-group__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.admin-category-group__head h3,
+.admin-category-group__head p {
+  margin: 0;
+}
+
+.admin-category-group__head h3 {
+  font-size: 1.45rem;
+}
+
+.admin-category-group__head p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.admin-category-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.9fr);
+  gap: 1.5rem;
+}
+
+.admin-category-columns h4 {
+  margin: 0 0 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-assignment-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.admin-assignment {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 0.8fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.7rem;
+  border-left: 3px solid var(--olive);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.admin-assignment strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-assignment select,
+.admin-assignment button {
+  min-height: 2.3rem;
+  font-size: 0.85rem;
+}
+
+.admin-assignment button {
+  padding: 0.35rem 0.7rem;
+}
+
+.admin-example-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.admin-example-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.8rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-example-list li > span {
+  display: grid;
+  min-width: 0;
+}
+
+.admin-example-list strong {
+  overflow-wrap: anywhere;
+}
+
+.admin-example-list small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.admin-example-list .is-inactive {
+  opacity: 0.58;
+}
+
+.admin-example-list form {
+  flex: none;
+  margin: 0;
+}
+
+.admin-example-list button {
+  min-height: 2.2rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.admin-example-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.admin-example-add input,
+.admin-example-add button {
+  min-height: 2.5rem;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 52rem) {
+  .admin-category-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .admin-category-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 35rem) {
+  .admin-category-stats {
+    width: 100%;
+  }
+
+  .admin-category-stats div {
+    flex: 1;
+  }
+
+  .admin-assignment {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .admin-assignment strong {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ---------- 10. Recipe catalogue ---------- */
 
 .recipe-grid {
@@ -1250,6 +1502,15 @@ textarea:focus {
 .recipe-body {
   display: grid;
   gap: 1.5rem;
+}
+
+.recipe-page__image {
+  width: min(100%, 15rem);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
 }
 
 @media (min-width: 56rem) {

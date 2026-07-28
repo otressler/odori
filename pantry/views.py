@@ -13,19 +13,23 @@ from .catalog import sync_starter_catalog
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
+    IngredientCategoryExample,
     InventoryItem,
     PantryCategorizationJob,
 )
 from .semantic import embed_with_diagnostics
 from .services import (
     PlannedIngredientInUse,
+    add_category_example,
     category_review_items,
     change_inventory_status,
     classify_category,
     confirm_ingredient_category,
+    curate_ingredient_category,
     merge_ingredients,
     queue_category_suggestions,
     similar_ingredient_recommendations,
+    toggle_category_example,
 )
 
 
@@ -141,6 +145,35 @@ def category_admin_page(request):
 
     if request.method == "POST":
         action = request.POST.get("action")
+        if action == "reassign":
+            ingredient = curate_ingredient_category(
+                user=request.user,
+                ingredient_id=request.POST.get("ingredient_id"),
+                category_id=request.POST.get("category_id"),
+            )
+            messages.success(
+                request,
+                f"{ingredient.name} wurde neu zugeordnet und als bestätigtes Beispiel gespeichert.",
+            )
+            return redirect("admin-categories")
+        if action == "add-example":
+            example = add_category_example(
+                user=request.user,
+                category_id=request.POST.get("category_id"),
+                text=request.POST.get("text", ""),
+            )
+            queue_category_suggestions(user=request.user)
+            messages.success(request, f"„{example.text}“ wird jetzt als Beispiel verwendet.")
+            return redirect("admin-categories")
+        if action == "toggle-example":
+            example = toggle_category_example(
+                user=request.user,
+                example_id=request.POST.get("example_id"),
+            )
+            queue_category_suggestions(user=request.user)
+            state = "aktiv" if example.active else "pausiert"
+            messages.success(request, f"Das Beispiel „{example.text}“ ist jetzt {state}.")
+            return redirect("admin-categories")
         if action == "save":
             changed = 0
             with transaction.atomic():
@@ -220,11 +253,33 @@ def category_admin_page(request):
                         reverse=True,
                     )
 
+    assignments = list(
+        CanonicalIngredient.objects.filter(
+            household=household,
+            active=True,
+            category__isnull=False,
+        )
+        .select_related("category")
+        .order_by("category__sort_order", "category__name", "name")
+    )
+    assignments_by_category = {}
+    for ingredient in assignments:
+        assignments_by_category.setdefault(ingredient.category_id, []).append(ingredient)
+    for category in categories:
+        category.assigned_items = assignments_by_category.get(category.id, [])
+        category.active_example_count = sum(
+            example.active for example in category.examples.all()
+        )
+
     return render(
         request,
         "pantry/category_admin.html",
         {
             "categories": categories,
+            "assignment_count": len(assignments),
+            "active_example_count": IngredientCategoryExample.objects.filter(
+                household=household, active=True
+            ).count(),
             "test_text": test_text,
             "similarity_results": similarity_results,
             "classification_result": classification_result,

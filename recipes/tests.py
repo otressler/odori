@@ -98,6 +98,17 @@ class RecipeLifecycleTests(TestCase):
         self.assertContains(response, "Favorisieren")
         self.assertContains(response, "Archivieren")
 
+    def test_recipe_detail_shows_a_ready_recipe_image(self):
+        response = self.create_recipe()
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        recipe.image = "recipes/pasta.png"
+        recipe.image_status = "ready"
+        recipe.save(update_fields=["image", "image_status"])
+
+        response = self.client.get(f"/recipes/{recipe.id}/")
+
+        self.assertContains(response, reverse("recipe-image", args=[recipe.id]))
+
     def test_recipe_catalogue_separates_statuses_and_searches_ingredients_and_tags(self):
         response = self.create_recipe(
             title="Sommertopf",

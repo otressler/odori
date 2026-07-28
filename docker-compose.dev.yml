@@ -1,25 +1,18 @@
 services:
   odori-web:
     build: .
-    environment:
-      DEBUG: "true"
-      DATABASE_URL: postgresql://odori:odori@postgres:5432/odori
-      SESSION_SECRET: local-development-only
-      ALLOWED_TAILNET_HOST: localhost
-      ALLOWED_HOSTS: localhost,127.0.0.1
-      CSRF_TRUSTED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+    environment: !reset []
+    env_file: .env
     ports: ["8000:8000"]
     networks: !override [internal]
     labels: !reset []
   odori-worker:
     build: .
-    environment:
-      DEBUG: "true"
-      DATABASE_URL: postgresql://odori:odori@postgres:5432/odori
-      SESSION_SECRET: local-development-only
+    environment: !reset []
+    env_file: .env
   postgres:
-    environment:
-      POSTGRES_PASSWORD: odori
+    environment: !reset []
+    env_file: .env
     ports: ["5432:5432"]
     networks: [internal]
 networks:

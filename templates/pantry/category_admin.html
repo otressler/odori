@@ -2,10 +2,26 @@
 {% block title %}Warengruppen · Odori{% endblock %}
 
 {% block content %}
-<h1>Warengruppen</h1>
-<p>Pflege die Beschreibungen, die für die Zuordnung neuer Zutaten verwendet werden.</p>
+<header class="admin-category-heading">
+  <div>
+    <p class="hero__eyebrow">Kuration</p>
+    <h1>Warengruppen</h1>
+    <p>Prüfe Zuordnungen und bestimme, welche Beispiele zukünftige Entscheidungen beeinflussen.</p>
+  </div>
+  <dl class="admin-category-stats">
+    <div><dt>Zugeordnet</dt><dd>{{ assignment_count }}</dd></div>
+    <div><dt>Aktive Beispiele</dt><dd>{{ active_example_count }}</dd></div>
+  </dl>
+</header>
 
-<section class="panel">
+<details class="panel admin-description-details">
+  <summary class="panel__head">
+    <div>
+      <p class="admin-category-kicker">Grundlagen</p>
+      <h2>Beschreibungen</h2>
+    </div>
+    <span class="muted">Bearbeiten</span>
+  </summary>
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="action" value="save">
@@ -19,7 +35,81 @@
     {% endfor %}
     {% if categories %}<button class="primary" type="submit">Beschreibungen speichern</button>{% endif %}
   </form>
-</section>
+</details>
+
+<div class="rule-heading"><h2>Zugeordnete Zutaten</h2></div>
+
+<div class="admin-category-list">
+  {% for category in categories %}
+    <section class="admin-category-group" aria-labelledby="category-{{ category.id }}">
+      <header class="admin-category-group__head">
+        <div>
+          <h3 id="category-{{ category.id }}">{{ category.name }}</h3>
+          <p>{{ category.assigned_items|length }} Zutaten · {{ category.active_example_count }} aktive Beispiele</p>
+        </div>
+      </header>
+
+      <div class="admin-category-columns">
+        <div>
+          <h4>Zutaten</h4>
+          <div class="admin-assignment-list">
+            {% for ingredient in category.assigned_items %}
+              <form class="admin-assignment" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="reassign">
+                <input type="hidden" name="ingredient_id" value="{{ ingredient.id }}">
+                <strong>{{ ingredient.name }}</strong>
+                <label class="sr-only" for="category-for-{{ ingredient.id }}">Warengruppe für {{ ingredient.name }}</label>
+                <select id="category-for-{{ ingredient.id }}" name="category_id">
+                  {% for option in categories %}
+                    <option value="{{ option.id }}"{% if option.id == category.id %} selected{% endif %}>{{ option.name }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit">Ändern</button>
+              </form>
+            {% empty %}
+              <p class="muted">Noch keine Zutaten zugeordnet.</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div>
+          <h4>Lernbeispiele</h4>
+          <ul class="admin-example-list">
+            {% for example in category.examples.all %}
+              <li{% if not example.active %} class="is-inactive"{% endif %}>
+                <span>
+                  <strong>{{ example.text }}</strong>
+                  <small>
+                    {% if example.source == "starter" %}Startkatalog{% elif example.source == "owner" %}Eigene Regel{% elif example.source == "assigned" %}Automatisch gelernt{% elif example.source == "confirmed" %}Bestätigt{% else %}Importiert{% endif %}
+                  </small>
+                </span>
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="toggle-example">
+                  <input type="hidden" name="example_id" value="{{ example.id }}">
+                  <button class="ghost" type="submit">{% if example.active %}Pausieren{% else %}Aktivieren{% endif %}</button>
+                </form>
+              </li>
+            {% empty %}
+              <li><span class="muted">Noch keine Beispiele vorhanden.</span></li>
+            {% endfor %}
+          </ul>
+          <form class="admin-example-add" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add-example">
+            <input type="hidden" name="category_id" value="{{ category.id }}">
+            <label class="sr-only" for="example-{{ category.id }}">Beispiel für {{ category.name }}</label>
+            <input id="example-{{ category.id }}" name="text" maxlength="120" placeholder="Eigenes Beispiel hinzufügen" required>
+            <button type="submit">Hinzufügen</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  {% empty %}
+    <p class="empty">Noch keine Warengruppen vorhanden.</p>
+  {% endfor %}
+</div>
 
 <section class="panel">
   <h2>Ähnlichkeit testen</h2>

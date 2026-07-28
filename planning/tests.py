@@ -141,6 +141,16 @@ class WeekStructureTests(PlanningTestCase):
 
 
 class CookingTests(PlanningTestCase):
+    def test_kitchen_page_shows_a_ready_recipe_image(self):
+        self.recipe.image = "recipes/sugo.png"
+        self.recipe.image_status = "ready"
+        self.recipe.save(update_fields=["image", "image_status"])
+        slot = self.make_slot()
+
+        response = self.client.get(f"/plan/slots/{slot.id}/kitchen/")
+
+        self.assertContains(response, f"/recipes/{self.recipe.id}/image/")
+
     def test_cooking_records_exactly_one_event(self):
         slot = self.make_slot()
         mark_cooked(user=self.user, slot_id=slot.id, slot_version=slot.version)

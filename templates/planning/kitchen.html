@@ -9,6 +9,9 @@
     <h1 style="margin:0">{{ recipe.title }}</h1>
     <p class="muted" style="margin:.35rem 0 0">Für {{ slot.servings }} Portionen{% if recipe.servings %} (Rezept: {{ recipe.servings }}){% endif %}</p>
   </div>
+  {% if recipe.image_status == "ready" and recipe.image %}
+    <img class="recipe-page__image" src="{% url 'recipe-image' recipe.id %}" alt="{{ recipe.title }}">
+  {% endif %}
   <a class="button ghost" href="{% url 'plan-week' slot.plan.week_start_date|date:'Y-m-d' %}">Zurück zum Plan</a>
 </div>
 

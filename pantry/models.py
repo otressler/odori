@@ -31,6 +31,7 @@ class IngredientCategoryExample(models.Model):
     class Source(models.TextChoices):
         STARTER = "starter", "Starter catalog"
         OWNER = "owner", "Owner"
+        ASSIGNED = "assigned", "Automatic assignment"
         CONFIRMED = "confirmed", "Confirmed assignment"
         IMPORTED = "imported", "Imported"
 
