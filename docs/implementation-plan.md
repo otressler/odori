@@ -24,6 +24,7 @@ Build one vertical slice at a time. Each milestone must be deployable to the Pi,
 | 0. Engineering foundation | Repeatable local/CI/Pi build with authentication and diagnostics | FR-11 | None |
 | 1. Cookbook and pantry | Household can manually curate recipes and track availability | FR-04, FR-05, FR-14 | None |
 | 2. Plan, shop, and cook | Weekly planning through purchase and cooking works end to end | FR-07 to FR-10, FR-12, FR-15, FR-16 | None |
+| 2.5. Catalog enrichment and operations | Household can categorize its pantry with reviewable suggestions, use generated ingredient artwork, and operate the background work safely | FR-05, FR-11 | Optional Azure OpenAI embeddings and Microsoft Foundry image generation |
 | 3. Assisted import | URL, image, and PDF sources become reviewable drafts | FR-01 to FR-03 | Document Intelligence and Azure OpenAI |
 | 4. Recommendations | Explainable catalog ranking and optional generated drafts | FR-06, FR-17 | None for ranking; optional Azure OpenAI for generation |
 | 5. Collaboration and recovery | Multi-device updates, conflict handling, export, and tested recovery | FR-13, FR-18 | None |
@@ -258,6 +259,64 @@ Tests:
 **Depends on:** 2A through 2C
 
 Run one browser-level scenario from recipe creation to planning, list generation, purchase, cooking, history, and refreshed recommendation inputs. Measure Pi response times with representative household data and fix queries with unbounded scans or N+1 access.
+
+## Milestone 2.5: Catalog enrichment and operations
+
+**Exit gate:** A household owner can manage categories and examples, receive reviewable automatic category assignments, and use generated ingredient icons without blocking the core pantry and meal workflows. The owner can inspect worker, queue, provider, and embedding health; failed enrichment work is safely retryable and provider outages leave manual pantry operation available.
+
+### Packet 2.5A: Category intelligence and review
+
+**Owner:** pantry intelligence agent
+**Depends on:** Milestone 2 pantry taxonomy and worker runtime
+
+Tasks:
+
+- Extend household-owned ingredient categories with descriptions, starter examples, owner examples, and configurable similarity thresholds.
+- Generate and persist embeddings for categories, examples, and canonical ingredients when enabled; retain local text-similarity fallback when embeddings or Azure are unavailable.
+- Queue restart-safe household categorization work, assign only sufficiently confident suggestions, and expose an owner review flow for uncategorized ingredients and alternate choices.
+- Keep automatic assignments auditable, allow owners to confirm or correct them, and preserve category history when the starter catalog is synchronized.
+
+Tests:
+
+- Embedding-disabled and provider-failure paths preserve manual category administration and use the documented fallback.
+- Confidence, margin, and tie behavior never silently assign an ambiguous category.
+- Concurrent/restarted category jobs remain household-scoped and do not duplicate active work.
+
+### Packet 2.5B: Generated ingredient artwork
+
+**Owner:** catalog media agent
+**Depends on:** 2.5A category metadata and worker runtime
+
+Tasks:
+
+- Add durable ingredient-icon jobs with queued, running, succeeded, failed, and superseded states.
+- Generate recipe-card-compatible ingredient artwork through the worker only, store media outside static assets, and serve the persisted result through the application.
+- Keep a clear placeholder and status while generation is pending or unavailable; allow an owner to requeue failed work without blocking pantry changes.
+- Bound provider requests by prompt/version and timeout, and redact prompt content, provider payloads, and credentials from logs and diagnostics.
+
+Tests:
+
+- Retried, superseded, and interrupted icon jobs leave one correct final media reference.
+- Failed generation retains a usable placeholder and reports a safe actionable status.
+- Media access and job actions remain scoped to the owning household.
+
+### Packet 2.5C: Owner operations and diagnostics
+
+**Owner:** operations agent
+**Depends on:** 2.5A and 2.5B
+
+Tasks:
+
+- Emit structured, correlated web and worker events with sensitive values redacted.
+- Record bounded, sanitized provider diagnostics and expose database, worker heartbeat, queue, recent job, provider, and embedding coverage on an owner-only operations page.
+- Provide liveness, readiness, and worker-heartbeat health endpoints; add an embedding connectivity check for deployment troubleshooting.
+- Permit explicit retry of failed category and icon jobs while retaining attempt counts and generating a new correlation ID.
+
+Tests:
+
+- Non-owners cannot view operations data or retry another household's work.
+- Diagnostics never retain prompts, embeddings, provider payloads, cookies, or credentials and prune to the configured retention bound.
+- A stale worker heartbeat and a failed provider request produce actionable, non-sensitive operational states.
 
 ## Milestone 3: Assisted import
 
