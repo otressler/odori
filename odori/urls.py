@@ -9,6 +9,7 @@ from core.services import household_owner_required
 from pantry import views as pantry_views
 
 urlpatterns = [
+    path("orbit/", include("orbit.urls")),
     path(
         "admin/categories",
         login_required(household_owner_required(pantry_views.category_admin_page)),

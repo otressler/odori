@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "orbit",
     "core",
     "pantry",
     "recipes",
@@ -34,6 +35,7 @@ INSTALLED_APPS = [
     "shopping",
 ]
 MIDDLEWARE = [
+    "orbit.middleware.OrbitMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -69,6 +71,10 @@ DATABASES = {
         conn_max_age=60,
     )
 }
+ORBIT_DATABASE_URL = os.environ.get("ORBIT_DATABASE_URL", "")
+if ORBIT_DATABASE_URL:
+    DATABASES["orbit"] = dj_database_url.parse(ORBIT_DATABASE_URL, conn_max_age=60)
+    DATABASE_ROUTERS = ["core.orbit.OrbitDatabaseRouter"]
 AUTH_USER_MODEL = "core.User"
 LANGUAGE_CODE = "de"
 TIME_ZONE = "Europe/Berlin"
@@ -126,6 +132,54 @@ AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS = float(
 WORKER_HEARTBEAT_MAX_AGE_SECONDS = int(
     os.environ.get("WORKER_HEARTBEAT_MAX_AGE_SECONDS", "30")
 )
+ORBIT_CONFIG = {
+    "ENABLED": os.environ.get("ORBIT_ENABLED", "true").lower() == "true",
+    "AUTH_CHECK": "core.orbit.orbit_access_allowed",
+    "STORAGE_LIMIT": int(os.environ.get("ORBIT_STORAGE_LIMIT", "5000")),
+    "RECORD_REQUESTS": True,
+    "RECORD_QUERIES": True,
+    "RECORD_LOGS": True,
+    "RECORD_EXCEPTIONS": True,
+    "RECORD_DUMPS": False,
+    "RECORD_COMMANDS": True,
+    "RECORD_CACHE": True,
+    "RECORD_MODELS": False,
+    "RECORD_HTTP_CLIENT": True,
+    "RECORD_MAIL": True,
+    "RECORD_SIGNALS": False,
+    "RECORD_JOBS": True,
+    "RECORD_REDIS": True,
+    "RECORD_GATES": True,
+    "RECORD_TRANSACTIONS": False,
+    "RECORD_STORAGE": True,
+    "RECORD_LLM": False,
+    "MCP_ENABLED": os.environ.get("ORBIT_MCP_ENABLED", str(DEBUG)).lower() == "true",
+    "MCP_INCLUDE_PAYLOADS": False,
+    "MCP_MAX_LIMIT": 50,
+    "MCP_MAX_PAYLOAD_CHARS": 4000,
+    "WATCHER_FAIL_SILENTLY": True,
+    "SLOW_QUERY_THRESHOLD_MS": int(os.environ.get("ORBIT_SLOW_QUERY_THRESHOLD_MS", "500")),
+    "IGNORE_PATHS": ["/orbit/", "/static/", "/media/", "/health/"],
+    "HIDE_REQUEST_HEADERS": ["Authorization", "Cookie", "X-CSRFToken"],
+    "HIDE_REQUEST_BODY_KEYS": [
+        "password",
+        "token",
+        "secret",
+        "api_key",
+        "content",
+        "text",
+        "recipe",
+        "source",
+    ],
+    "MASK_ALL_PAYLOADS": True,
+}
+if ORBIT_DATABASE_URL:
+    ORBIT_CONFIG.update(
+        {
+            "STORAGE_BACKEND": "orbit.backends.django_db.DjangoDBBackend",
+            "STORAGE_DB_ALIAS": "orbit",
+        }
+    )
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

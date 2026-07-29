@@ -22,6 +22,35 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = "Run durable background jobs."
 
+    def run_next_job(self):
+        runners = (
+            ("pantry_category", run_next_category_job),
+            ("recipe_image", run_next_recipe_image_job),
+            ("ingredient_icon", run_next_ingredient_icon_job),
+        )
+        for job_type, runner in runners:
+            started = time.monotonic()
+            try:
+                processed = runner()
+            except Exception:
+                log_event(
+                    logger,
+                    "worker.job_execution_failed",
+                    level=logging.ERROR,
+                    job_type=job_type,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                )
+                raise
+            if processed:
+                log_event(
+                    logger,
+                    "worker.job_execution_completed",
+                    job_type=job_type,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                )
+                return True
+        return False
+
     def heartbeat(self, *, state, last_error_message="", completed_job=False):
         now = timezone.now()
         heartbeat, _ = WorkerHeartbeat.objects.get_or_create(
@@ -82,11 +111,7 @@ class Command(BaseCommand):
                 time.sleep(5)
                 continue
 
-            processed_job = (
-                run_next_category_job()
-                or run_next_recipe_image_job()
-                or run_next_ingredient_icon_job()
-            )
+            processed_job = self.run_next_job()
             self.heartbeat(
                 state=(
                     WorkerHeartbeat.State.WORKING

@@ -152,6 +152,25 @@ The category test at `/admin/categories` reports its embedding outcome, model de
 dimensions, text similarity, cosine similarity, and final score. The final score is the greater of
 the text and cosine scores; no hidden weights are applied.
 
+### Django Orbit
+
+Django Orbit is the central source for request, query, log, exception, transaction, storage, and
+supported client telemetry. Its dashboard is at `/orbit/` and requires a Django superuser because
+its evidence may span households. The existing **Betrieb** page remains the source for curated
+household diagnostics, worker freshness, and custom polling-worker job state.
+
+Orbit keeps at most `ORBIT_STORAGE_LIMIT` entries (default `5000`). Set
+`ORBIT_DATABASE_URL` to use a dedicated telemetry database, then run:
+
+```bash
+python manage.py migrate orbit --database=orbit
+```
+
+Without `ORBIT_DATABASE_URL`, apply the Orbit migrations to the default database with the normal
+release migration command. In production, leave `ORBIT_MCP_ENABLED` unset or `false`; local
+development enables metadata-only MCP access by default. Never enable payload access or loosen
+the configured masking without an explicit data-retention review.
+
 To validate embedding connectivity from inside the web container, run:
 
 ```bash
