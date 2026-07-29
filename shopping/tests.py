@@ -2,7 +2,9 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
+from django.core.files.base import ContentFile
 from django.test import TestCase
+from django.test import override_settings
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryEvent, InventoryItem
@@ -284,6 +286,16 @@ class ShoppingPageTests(ShoppingTestCase):
         response = self.client.get(f"/shopping/{shopping_list.id}/")
         self.assertContains(response, "Mehl")
         self.assertContains(response, "500")
+
+    @override_settings(DEBUG=False)
+    def test_generated_list_renders_icons_through_the_authenticated_endpoint(self):
+        self.flour.icon.save("mehl.png", ContentFile(b"icon"), save=True)
+        self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
+        shopping_list = self.generate()
+
+        response = self.client.get(f"/shopping/{shopping_list.id}/")
+
+        self.assertContains(response, f'/pantry/icons/{self.flour.id}/')
 
     def test_list_groups_every_state_by_category_and_offers_compact_view(self):
         from pantry.models import IngredientCategory

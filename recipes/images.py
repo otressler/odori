@@ -175,6 +175,7 @@ def _generate_image_bytes(
             correlation_id=correlation_id,
             deployment=deployment,
             started=started,
+            operation=operation,
             error=error,
         )
         raise error from exc

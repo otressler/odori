@@ -1,9 +1,12 @@
 import json
 from datetime import timedelta
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.test import Client, TestCase
+from django.test import override_settings
 from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
@@ -355,6 +358,37 @@ class PantryApiTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, InventoryItem.Status.NEEDS_REPLENISHMENT)
 
+    def test_inventory_page_filters_by_query(self):
+        matching = InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.ingredient,
+        )
+        other = CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
+        InventoryItem.objects.create(household=self.household, ingredient=other)
+
+        response = self.client.get("/pantry/", {"q": "tom"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["items"]), [matching])
+
+    def test_ingredient_icon_is_limited_to_its_household(self):
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.ingredient.icon.save("tomate.png", ContentFile(b"icon"), save=True)
+            response = self.client.get(f"/pantry/icons/{self.ingredient.id}/")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"icon")
+
+            other_user = User.objects.create_user(username="other", password="pass")
+            other_household = Household.objects.create(name="Other")
+            HouseholdMembership.objects.create(
+                household=other_household, user=other_user, role="owner"
+            )
+            self.client.force_login(other_user)
+            response = self.client.get(f"/pantry/icons/{self.ingredient.id}/")
+
+        self.assertEqual(response.status_code, 404)
+
     def test_condense_shows_similar_ingredient_recommendation_without_merging(self):
         plural = CanonicalIngredient.objects.create(household=self.household, name="Tomaten")
 
@@ -396,6 +430,7 @@ class PantryApiTests(TestCase):
         bread.refresh_from_db()
         self.assertEqual(bread.category.name, "Bäckerei")
 
+    @override_settings(AZURE_OPENAI_EMBEDDING_DEPLOYMENT="test-embedding")
     def test_automatic_category_assignment_becomes_a_curatable_example(self):
         category = IngredientCategory.objects.create(
             household=self.household,

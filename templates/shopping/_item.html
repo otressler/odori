@@ -7,7 +7,7 @@
       <button type="submit" aria-label="{{ item.label }} als gekauft markieren">
         <span class="shopping-card__compact-art" aria-hidden="true">
           {% if item.canonical_ingredient.icon %}
-            <img src="{{ item.canonical_ingredient.icon.url }}" alt="">
+            <img src="{% url 'ingredient-icon' item.canonical_ingredient.id %}" alt="">
           {% else %}
             <img src="{% static 'images/shopping-outline.svg' %}" alt="">
           {% endif %}
@@ -19,7 +19,7 @@
   {% endif %}
   <div class="list-card__art" aria-hidden="true">
     {% if item.canonical_ingredient.icon %}
-      <img src="{{ item.canonical_ingredient.icon.url }}" alt="">
+      <img src="{% url 'ingredient-icon' item.canonical_ingredient.id %}" alt="">
     {% else %}
       <img src="{% static 'images/shopping-outline.svg' %}" alt="">
     {% endif %}

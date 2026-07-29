@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 
 from core.models import Household, HouseholdMembership, ProviderDiagnostic, User
 
-from .images import run_next_recipe_image_job
+from .images import _generate_image_bytes, run_next_recipe_image_job
 from .models import Recipe, RecipeImageJob, RecipeSource
 
 
@@ -52,3 +52,25 @@ class RecipeImageDiagnosticsTests(TestCase):
         self.assertEqual(self.job.state, RecipeImageJob.State.SUCCEEDED)
         self.assertEqual(self.recipe.image_status, "ready")
         self.assertTrue(self.recipe.image.name.endswith(".png"))
+
+    @override_settings(
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_IMAGE_DEPLOYMENT="test-deployment",
+    )
+    @patch("recipes.images.urlopen")
+    def test_invalid_icon_image_data_records_the_icon_operation(self, urlopen):
+        response = urlopen.return_value.__enter__.return_value
+        response.read.return_value = b'{"data": [{"b64_json": "not-valid-base64"}]}'
+
+        with self.assertRaises(Exception):
+            _generate_image_bytes(
+                "A pantry icon",
+                household_id=self.household.id,
+                job_id=self.job.id,
+                correlation_id=None,
+                operation="ingredient_icon_generation",
+            )
+
+        diagnostic = ProviderDiagnostic.objects.get(job_id=self.job.id)
+        self.assertEqual(diagnostic.operation, "ingredient_icon_generation")

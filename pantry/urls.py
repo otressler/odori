@@ -5,6 +5,11 @@ from . import views
 
 urlpatterns = [
     path("", login_required(views.inventory_page), name="inventory-page"),
+    path(
+        "icons/<uuid:ingredient_id>/",
+        login_required(views.ingredient_icon),
+        name="ingredient-icon",
+    ),
     path("add/", login_required(views.inventory_create_page), name="inventory-create"),
     path(
         "categories/suggest/",

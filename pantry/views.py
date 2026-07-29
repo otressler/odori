@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
@@ -65,7 +65,7 @@ def inventory_page(request):
     query = request.GET.get("q", "").strip()
     selected_status = request.GET.get("status", "")
     selected_filter = request.GET.get("filter", "")
-    items = list(
+    items = (
         InventoryItem.objects.select_related("ingredient")
         .filter(household=household)
         .order_by(
@@ -76,6 +76,7 @@ def inventory_page(request):
     )
     if query:
         items = items.filter(ingredient__name__icontains=query)
+    items = list(items)
     if selected_status in InventoryItem.Status.values:
         items = [item for item in items if item.status == selected_status]
     attach_upcoming_requirements(items, household)
@@ -128,6 +129,15 @@ def inventory_page(request):
             "category_job": category_job,
         },
     )
+
+
+def ingredient_icon(request, ingredient_id):
+    ingredient = CanonicalIngredient.objects.filter(
+        id=ingredient_id, household=household_for(request.user)
+    ).first()
+    if not ingredient or not ingredient.icon:
+        raise Http404
+    return FileResponse(ingredient.icon.open("rb"))
 
 
 def category_admin_page(request):
