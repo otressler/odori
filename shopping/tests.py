@@ -285,6 +285,34 @@ class ShoppingPageTests(ShoppingTestCase):
         self.assertContains(response, "Mehl")
         self.assertContains(response, "500")
 
+    def test_list_groups_every_state_by_category_and_offers_compact_view(self):
+        from pantry.models import IngredientCategory
+
+        category = IngredientCategory.objects.create(household=self.household, name="Backwaren")
+        self.flour.category = category
+        self.flour.save(update_fields=["category"])
+        self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
+        shopping_list = self.generate()
+        item = shopping_list.items.get(canonical_ingredient=self.flour)
+        set_item_state(
+            user=self.user,
+            item_id=item.id,
+            version=item.version,
+            state=ShoppingItem.State.PURCHASED,
+        )
+        add_manual_item(
+            user=self.user,
+            list_id=shopping_list.id,
+            label="Hefe",
+            ingredient_id=self.flour.id,
+        )
+
+        response = self.client.get(f"/shopping/{shopping_list.id}/")
+
+        self.assertContains(response, 'class="shopping-category-list"', count=2)
+        self.assertContains(response, "Backwaren", count=2)
+        self.assertContains(response, 'data-shopping-view="compact"')
+
     def test_generated_list_renders_the_earliest_required_date(self):
         self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
         shopping_list = self.generate()

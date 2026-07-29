@@ -2,13 +2,17 @@
 {% block title %}{{ list.name }} · Odori{% endblock %}
 
 {% block content %}
-<div class="split" style="margin-bottom:1rem">
+<div class="split shopping-heading" style="margin-bottom:1rem">
   <div>
     <p class="muted" style="margin:0">Einkaufsliste</p>
     <h1 style="margin:0">{{ list.name }}</h1>
     {% if list.generated_at %}<p class="muted" style="margin:.25rem 0 0">Zuletzt berechnet am {{ list.generated_at|date:"j.n.Y, H:i" }} Uhr</p>{% endif %}
   </div>
-  <div class="button-row">
+  <div class="button-row shopping-heading__actions">
+    <div class="segmented shopping-view-toggle" aria-label="Ansicht der Einkaufsliste">
+      <button type="button" data-shopping-view="standard" aria-pressed="true">Liste</button>
+      <button type="button" data-shopping-view="compact" aria-pressed="false">Kompakt</button>
+    </div>
     <form method="post" action="{% url 'shopping-generate' %}">
       {% csrf_token %}
       <input type="hidden" name="week_start" value="{{ week_start }}">
@@ -21,11 +25,11 @@
   </div>
 </div>
 
-<p class="message message--warning">
+<p class="message message--warning shopping-detail-note">
   Eigene Einträge sowie gekaufte und übersprungene Zeilen bleiben beim Neuberechnen erhalten.
 </p>
 
-<section class="panel">
+<section class="panel shopping-add-item">
   <h2>Eigenen Eintrag hinzufügen</h2>
   <form class="inline-form" method="post" action="{% url 'shopping-item-create' list.id %}">
     {% csrf_token %}
@@ -45,34 +49,85 @@
   <p class="field__hint">Verknüpfte Einträge setzen den Vorrat beim Abhaken automatisch auf „vorrätig“.</p>
 </section>
 
-<div class="rule-heading"><h2>Offen ({{ open_items|length }})</h2></div>
-
-<div class="shopping-card-grid">
-  {% regroup open_items by canonical_ingredient.category as category_groups %}
-  {% for category_group in category_groups %}
-    <section class="shopping-group">
-      <h3>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h3>
-      {% for item in category_group.list %}{% include "shopping/_item.html" with item=item %}{% endfor %}
-    </section>
-  {% empty %}
-    <div class="empty">
-      <h3>Alles erledigt</h3>
-      <p>Nichts mehr offen auf dieser Liste.</p>
+<div class="shopping-list" data-shopping-list>
+  <section class="shopping-section shopping-section--open">
+    <div class="rule-heading"><h2>Offen ({{ open_items|length }})</h2></div>
+    {% regroup open_items by canonical_ingredient.category as category_groups %}
+    <div class="shopping-category-list">
+      {% for category_group in category_groups %}
+        <section class="shopping-group">
+          <h3>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h3>
+          <div class="shopping-item-grid">
+            {% for item in category_group.list %}{% include "shopping/_item.html" with item=item %}{% endfor %}
+          </div>
+        </section>
+      {% empty %}
+        <div class="empty">
+          <h3>Alles erledigt</h3>
+          <p>Nichts mehr offen auf dieser Liste.</p>
+        </div>
+      {% endfor %}
     </div>
-  {% endfor %}
+  </section>
+
+  {% if purchased_items %}
+    <section class="shopping-section shopping-section--purchased">
+      <div class="rule-heading"><h2>Gekauft ({{ purchased_items|length }})</h2></div>
+      {% regroup purchased_items by canonical_ingredient.category as category_groups %}
+      <div class="shopping-category-list">
+        {% for category_group in category_groups %}
+          <section class="shopping-group">
+            <h3>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h3>
+            <div class="shopping-item-grid">
+              {% for item in category_group.list %}{% include "shopping/_item.html" with item=item %}{% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if skipped_items %}
+    <section class="shopping-section shopping-section--skipped">
+      <div class="rule-heading"><h2>Übersprungen ({{ skipped_items|length }})</h2></div>
+      {% regroup skipped_items by canonical_ingredient.category as category_groups %}
+      <div class="shopping-category-list">
+        {% for category_group in category_groups %}
+          <section class="shopping-group">
+            <h3>{{ category_group.grouper.name|default:"Nicht zugeordnet" }}</h3>
+            <div class="shopping-item-grid">
+              {% for item in category_group.list %}{% include "shopping/_item.html" with item=item %}{% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 </div>
+{% endblock %}
 
-{% if purchased_items %}
-  <div class="rule-heading"><h2>Gekauft ({{ purchased_items|length }})</h2></div>
-  <div class="shopping-card-grid">
-    {% for item in purchased_items %}{% include "shopping/_item.html" with item=item %}{% endfor %}
-  </div>
-{% endif %}
+{% block scripts %}
+<script>
+  (function () {
+    var list = document.querySelector("[data-shopping-list]");
+    var controls = document.querySelectorAll("[data-shopping-view]");
+    var storageKey = "odori-shopping-view";
+    if (!list || !controls.length) return;
 
-{% if skipped_items %}
-  <div class="rule-heading"><h2>Übersprungen ({{ skipped_items|length }})</h2></div>
-  <div class="shopping-card-grid">
-    {% for item in skipped_items %}{% include "shopping/_item.html" with item=item %}{% endfor %}
-  </div>
-{% endif %}
+    function setView(view) {
+      list.dataset.shoppingView = view;
+      document.body.classList.toggle("shopping-compact-view", view === "compact");
+      controls.forEach(function (control) {
+        control.setAttribute("aria-pressed", String(control.dataset.shoppingView === view));
+      });
+      window.localStorage.setItem(storageKey, view);
+    }
+
+    var savedView = window.localStorage.getItem(storageKey);
+    if (savedView === "compact" || savedView === "standard") setView(savedView);
+    controls.forEach(function (control) {
+      control.addEventListener("click", function () { setView(control.dataset.shoppingView); });
+    });
+  }());
+</script>
 {% endblock %}

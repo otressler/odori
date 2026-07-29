@@ -115,6 +115,13 @@ class CanonicalIngredient(models.Model):
     aliases = models.JSONField(default=list, blank=True)
     embedding = models.JSONField(default=list, blank=True)
     embedding_model = models.CharField(max_length=120, blank=True)
+    icon = models.FileField(upload_to="pantry-icons/", blank=True)
+    icon_status = models.CharField(
+        max_length=12,
+        choices=(("pending", "Ausstehend"), ("ready", "Fertig"), ("failed", "Fehlgeschlagen")),
+        default="pending",
+    )
+    icon_prompt = models.TextField(blank=True)
     active = models.BooleanField(default=True)
     merged_into = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -124,6 +131,32 @@ class CanonicalIngredient(models.Model):
             models.UniqueConstraint(fields=["household", "name"], name="unique_ingredient_name")
         ]
         ordering = ["name"]
+
+
+class IngredientIconJob(models.Model):
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        SUPERSEDED = "superseded", "Superseded"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ingredient = models.ForeignKey(
+        CanonicalIngredient, on_delete=models.CASCADE, related_name="icon_jobs"
+    )
+    prompt = models.TextField()
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    attempt_count = models.PositiveIntegerField(default=0)
+    error_message = models.CharField(max_length=500, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
+    correlation_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class InventoryItem(models.Model):

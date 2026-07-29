@@ -2,31 +2,24 @@
 {% block title %}{{ recipe.title|default:"Entwurf" }} · Odori{% endblock %}
 
 {% block content %}
-<div class="split" style="margin-bottom:1.25rem">
-  <div>
-    <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Ricetta</p>
-    <h1 style="margin:0">{{ recipe.title|default:"Unbenannter Entwurf" }}</h1>
-    <p class="recipe-card__meta" style="margin-top:.5rem">
+<section class="recipe-hero">
+  {% if recipe.image_status == "ready" and recipe.image %}
+    <img class="recipe-hero__image" src="{% url 'recipe-image' recipe.id %}" alt="{{ recipe.title }}">
+  {% else %}
+    <div class="recipe-hero__image recipe-hero__image--placeholder" aria-hidden="true"></div>
+  {% endif %}
+  <div class="recipe-hero__shade"></div>
+  <div class="recipe-hero__heading">
+    <p class="hero__eyebrow">Ricetta</p>
+    <h1>{{ recipe.title|default:"Unbenannter Entwurf" }}</h1>
+    <p class="recipe-hero__meta">
       <span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>
       {% if recipe.servings %}<span>Für {{ requested_servings }} Portionen</span>{% endif %}
       {% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}
     </p>
   </div>
-  {% if recipe.image_status == "ready" and recipe.image %}
-    <img class="recipe-page__image" src="{% url 'recipe-image' recipe.id %}" alt="{{ recipe.title }}">
-  {% endif %}
-  {% if recipe.servings %}
-    <form class="inline-form" method="get">
-      <div class="field">
-        <label for="servings">Portionen anpassen</label>
-        <input id="servings" name="servings" type="number" min="1" inputmode="numeric" value="{{ requested_servings }}">
-      </div>
-      <button type="submit">Skalieren</button>
-    </form>
-  {% endif %}
-</div>
-
-<div class="button-row" style="margin-bottom:1.5rem">
+</section>
+<div class="recipe-actions">
   {% if recipe.status == "draft" %}
     <a class="button" href="{% url 'recipe-edit' recipe.id %}">Entwurf bearbeiten</a>
     <form method="post" action="{% url 'recipe-approve' recipe.id %}">{% csrf_token %}
@@ -57,6 +50,13 @@
 <div class="recipe-body">
   <section class="panel">
     <h2>Zutaten</h2>
+    {% if recipe.servings %}
+      <form class="recipe-servings" method="get">
+        <label for="servings">Portionen anpassen</label>
+        <input id="servings" name="servings" type="number" min="1" inputmode="numeric" value="{{ requested_servings }}">
+        <button type="submit">Skalieren</button>
+      </form>
+    {% endif %}
     <ul class="ingredient-list">
       {% for ingredient in recipe.ingredients.all %}
         <li>

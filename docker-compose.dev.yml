@@ -4,20 +4,24 @@ services:
     environment: !reset []
     env_file: .env
     ports: ["8000:8000"]
-    networks: !override [internal]
+    networks: !override [net]
     labels: !reset []
   odori-worker:
     build: .
     environment: !reset []
     env_file: .env
+    networks: !override [net]
   postgres:
     environment: !reset []
     env_file: .env
     ports: ["5432:5432"]
-    networks: [internal]
+    networks: !override [net]
 networks:
   proxy: !reset null
-  internal: {}
+  internal: !reset null
+  net: {
+    internal: false
+  }
 volumes:
   postgres:
     name: odori_dev_postgres

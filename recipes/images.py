@@ -55,9 +55,19 @@ def queue_recipe_image(recipe):
     )
 
 
-def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
+def _generate_image_bytes(
+    prompt,
+    *,
+    household_id,
+    job_id,
+    correlation_id,
+    operation="recipe_image_generation",
+    background=None,
+    output_format=None,
+    deployment=None,
+):
     started = time.monotonic()
-    deployment = settings.AZURE_OPENAI_IMAGE_DEPLOYMENT
+    deployment = settings.AZURE_OPENAI_IMAGE_DEPLOYMENT if deployment is None else deployment
     if not all((settings.AZURE_OPENAI_ENDPOINT, settings.AZURE_OPENAI_API_KEY, deployment)):
         error = RecipeImageGenerationError(
             "Microsoft Foundry image generation is not configured.",
@@ -69,13 +79,19 @@ def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
             correlation_id=correlation_id,
             deployment=deployment,
             started=started,
+            operation=operation,
             error=error,
         )
         raise error
+    payload = {"prompt": prompt, "size": "1024x1024", "n": 1}
+    if background:
+        payload["background"] = background
+    if output_format:
+        payload["output_format"] = output_format
     request = Request(
         f"{settings.AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/"
         f"{deployment}/images/generations?api-version={settings.AZURE_OPENAI_IMAGE_API_VERSION}",
-        data=json.dumps({"prompt": prompt, "size": "1024x1024", "n": 1}).encode(),
+        data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "api-key": settings.AZURE_OPENAI_API_KEY},
         method="POST",
     )
@@ -92,12 +108,17 @@ def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
             correlation_id=correlation_id,
             deployment=deployment,
             started=started,
+            operation=operation,
             error=error,
         )
         raise error from exc
     except HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:400]
+        except OSError:
+            detail = ""
         error = RecipeImageGenerationError(
-            "Microsoft Foundry could not generate the recipe image.",
+            f"Microsoft Foundry could not generate the image. {detail}".strip(),
             error_code="http_error",
             http_status=exc.code,
         )
@@ -107,6 +128,7 @@ def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
             correlation_id=correlation_id,
             deployment=deployment,
             started=started,
+            operation=operation,
             error=error,
         )
         raise error from exc
@@ -121,6 +143,7 @@ def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
             correlation_id=correlation_id,
             deployment=deployment,
             started=started,
+            operation=operation,
             error=error,
         )
         raise error from exc
@@ -135,6 +158,7 @@ def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
             correlation_id=correlation_id,
             deployment=deployment,
             started=started,
+            operation=operation,
             error=error,
         )
         raise error from exc
@@ -160,6 +184,7 @@ def _generate_image_bytes(prompt, *, household_id, job_id, correlation_id):
         correlation_id=correlation_id,
         deployment=deployment,
         started=started,
+        operation=operation,
     )
     return image_bytes
 
@@ -171,6 +196,7 @@ def _record_image_diagnostic(
     correlation_id,
     deployment,
     started,
+    operation="recipe_image_generation",
     error=None,
 ):
     duration_ms = round((time.monotonic() - started) * 1000)
@@ -179,7 +205,7 @@ def _record_image_diagnostic(
         household_id=household_id,
         correlation_id=correlation_id,
         job_id=job_id,
-        operation="recipe_image_generation",
+        operation=operation,
         state=state,
         error_code=error.error_code if error else "",
         http_status=error.http_status if error else None,
@@ -188,7 +214,7 @@ def _record_image_diagnostic(
     )
     log_event(
         logger,
-        "provider.recipe_image_completed",
+        "provider.image_generation_completed",
         level=logging.WARNING if error else logging.INFO,
         job_id=job_id,
         household_id=household_id,

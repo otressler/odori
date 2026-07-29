@@ -1,18 +1,29 @@
 {% load static %}
 <article class="shopping-card{% if item.state != 'open' %} shopping-card--done{% endif %}">
-  <div class="list-card__art" aria-hidden="true">
-    <img src="{% static 'images/shopping-outline.svg' %}" alt="">
-  </div>
   {% if item.state == "open" %}
-    <form method="post" action="{% url 'shopping-item-purchase' item.id %}">
+    <form class="shopping-card__compact-action" method="post" action="{% url 'shopping-item-purchase' item.id %}">
       {% csrf_token %}
       <input type="hidden" name="version" value="{{ item.version }}">
-      <button class="check-button" type="submit" title="Gekauft">
-        <svg aria-hidden="true"><use href="#i-check"></use></svg>
-        <span class="sr-only">{{ item.label }} als gekauft markieren</span>
+      <button type="submit" aria-label="{{ item.label }} als gekauft markieren">
+        <span class="shopping-card__compact-art" aria-hidden="true">
+          {% if item.canonical_ingredient.icon %}
+            <img src="{{ item.canonical_ingredient.icon.url }}" alt="">
+          {% else %}
+            <img src="{% static 'images/shopping-outline.svg' %}" alt="">
+          {% endif %}
+        </span>
+        <span class="shopping-card__compact-label">{{ item.label }}</span>
+        {% if item.quantity_components %}<span>{{ item.quantity_text }}</span>{% endif %}
       </button>
     </form>
   {% endif %}
+  <div class="list-card__art" aria-hidden="true">
+    {% if item.canonical_ingredient.icon %}
+      <img src="{{ item.canonical_ingredient.icon.url }}" alt="">
+    {% else %}
+      <img src="{% static 'images/shopping-outline.svg' %}" alt="">
+    {% endif %}
+  </div>
 
   <div class="shopping-card__main">
     <p class="shopping-card__label" style="margin:0">
@@ -38,11 +49,22 @@
 
   <div class="button-row">
     {% if item.state == "open" %}
-      <form method="post" action="{% url 'shopping-item-state' item.id %}">
+      <form class="shopping-card__skip" method="post" action="{% url 'shopping-item-state' item.id %}">
         {% csrf_token %}
         <input type="hidden" name="version" value="{{ item.version }}">
         <input type="hidden" name="state" value="skipped">
-        <button type="submit">Überspringen</button>
+        <button type="submit">
+          <svg aria-hidden="true"><use href="#i-skip"></use></svg>
+          <span>Überspringen</span>
+        </button>
+      </form>
+      <form class="shopping-card__complete" method="post" action="{% url 'shopping-item-purchase' item.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="version" value="{{ item.version }}">
+        <button class="secondary" type="submit">
+          <svg aria-hidden="true"><use href="#i-check"></use></svg>
+          <span>Gekauft</span>
+        </button>
       </form>
     {% else %}
       <span class="status status--{% if item.state == 'purchased' %}in_stock{% else %}unknown{% endif %}">{{ item.get_state_display }}</span>

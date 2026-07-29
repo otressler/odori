@@ -1502,15 +1502,117 @@ textarea:focus {
 .recipe-body {
   display: grid;
   gap: 1.5rem;
+  align-items: start;
 }
 
-.recipe-page__image {
-  width: min(100%, 15rem);
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
+.recipe-hero {
+  position: relative;
+  display: grid;
+  min-height: clamp(25rem, 58vw, 39rem);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
   box-shadow: var(--shadow-soft);
+  color: #fff;
+}
+
+.recipe-hero__image,
+.recipe-hero__shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.recipe-hero__image {
+  object-fit: cover;
+}
+
+.recipe-hero__image--placeholder {
+  background:
+    linear-gradient(130deg, color-mix(in srgb, var(--olive-deep) 88%, #000), transparent 65%),
+    var(--terracotta-deep);
+}
+
+.recipe-hero__shade {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.52), transparent 46%, rgba(0, 0, 0, 0.76));
+}
+
+.recipe-hero__heading {
+  position: relative;
+  z-index: 1;
+  margin: clamp(1rem, 3vw, 2rem);
+  align-self: end;
+}
+
+.recipe-hero__heading h1 {
+  max-width: 16ch;
+  margin: 0;
+  color: inherit;
+  font-size: clamp(2.25rem, 6vw, 4.75rem);
+  line-height: 0.98;
+}
+
+.recipe-hero .hero__eyebrow {
+  border-color: color-mix(in srgb, #fff 55%, transparent);
+  background: color-mix(in srgb, #000 28%, transparent);
+  color: inherit;
+}
+
+.recipe-hero__meta,
+.recipe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.recipe-hero__meta {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+}
+
+.recipe-hero__meta .tag {
+  border-color: color-mix(in srgb, #fff 45%, transparent);
+  background: color-mix(in srgb, #000 28%, transparent);
+  color: inherit;
+}
+
+.recipe-actions {
+  margin: 0 0 1.5rem;
+}
+
+.recipe-servings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5rem auto;
+  align-items: end;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.recipe-servings label {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 35rem) {
+  .recipe-hero {
+    min-height: 31rem;
+  }
+
+  .recipe-hero__heading {
+    margin: 1rem;
+  }
+
+  .recipe-actions {
+    gap: 0.4rem;
+  }
+
+  .recipe-actions button,
+  .recipe-actions .button {
+    padding: 0.45rem 0.6rem;
+  }
 }
 
 @media (min-width: 56rem) {
@@ -1630,12 +1732,6 @@ textarea:focus {
 
 /* ---------- 11. Pantry ---------- */
 
-.shopping-card-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-}
-
 .inventory-card-grid {
   display: grid;
   gap: 1rem;
@@ -1646,6 +1742,36 @@ textarea:focus {
 .shopping-group {
   display: grid;
   gap: 0.6rem;
+}
+
+.shopping-list {
+  display: grid;
+  gap: 2rem;
+}
+
+.shopping-section .rule-heading {
+  margin-top: 0;
+}
+
+.shopping-category-list {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.shopping-group {
+  gap: 0.7rem;
+}
+
+.shopping-group > h3 {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+}
+
+.shopping-item-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
 }
 
 .inventory-list {
@@ -1671,6 +1797,43 @@ textarea:focus {
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
+}
+
+.shopping-card__compact-action {
+  display: none;
+}
+
+.shopping-card .list-card__art {
+  background: var(--olive-soft);
+}
+
+.shopping-card .button-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  margin-top: auto;
+}
+
+.shopping-card .button-row form {
+  display: flex;
+}
+
+.shopping-card .button-row button {
+  width: 100%;
+}
+
+.shopping-card__skip {
+  grid-column: 1;
+}
+
+.shopping-card__complete {
+  grid-column: 2;
+}
+
+.shopping-card__skip svg,
+.shopping-card__complete svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .inventory-card {
@@ -2038,6 +2201,127 @@ textarea:focus {
   display: block;
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.shopping-list[data-shopping-view="compact"] {
+  gap: 0;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-section:not(.shopping-section--open) {
+  display: none;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-section--open .rule-heading {
+  display: none;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-category-list {
+  gap: 1.1rem;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-group {
+  gap: 0.45rem;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-group > h3 {
+  font-size: 0.9rem;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-item-grid {
+  gap: 0.2rem;
+  grid-template-columns: repeat(auto-fill, minmax(6.8rem, 1fr));
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card {
+  display: block;
+  min-height: 5.5rem;
+  padding: 0;
+  overflow: visible;
+  border-color: var(--line-strong);
+  background:
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--olive-soft) 76%, transparent), transparent 60%),
+    var(--surface);
+  box-shadow: none;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card:nth-child(4n + 2) {
+  background:
+    radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--saffron-soft) 78%, transparent), transparent 60%),
+    var(--surface);
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card:nth-child(4n + 3) {
+  background:
+    radial-gradient(circle at 76% 82%, color-mix(in srgb, var(--terracotta-soft) 72%, transparent), transparent 60%),
+    var(--surface);
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card:nth-child(4n) {
+  background:
+    radial-gradient(circle at 20% 78%, color-mix(in srgb, var(--olive-soft) 76%, transparent), transparent 60%),
+    var(--surface);
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card::before,
+.shopping-list[data-shopping-view="compact"] .shopping-card > :not(.shopping-card__compact-action) {
+  display: none;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-action {
+  display: block;
+  height: 100%;
+  margin: 0;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-action button {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  justify-items: center;
+  width: 100%;
+  min-height: 5.5rem;
+  padding: 0.55rem 0.45rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 1px);
+  background: transparent;
+  color: var(--text);
+  text-align: center;
+  text-wrap: balance;
+  box-shadow: none;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-art {
+  display: grid;
+  width: 2.3rem;
+  height: 2.3rem;
+  place-items: center;
+  align-self: start;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-art img {
+  width: 100%;
+  height: 100%;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-label {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-label + span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.shopping-list[data-shopping-view="compact"] .shopping-card__compact-action button:hover {
+  background: var(--surface-sunk);
+}
+
+body.shopping-compact-view .shopping-detail-note,
+body.shopping-compact-view .shopping-add-item,
+body.shopping-compact-view .shopping-heading__actions > form {
+  display: none;
 }
 
 .check-button {
