@@ -9,7 +9,13 @@ from core.services import household_for
 
 from .models import Recipe
 from .semantic import rank_recipes
-from .services import approve_recipe, archive_recipe, create_or_update_recipe, toggle_favorite
+from .services import (
+    StaleRecipeVersion,
+    approve_recipe,
+    archive_recipe,
+    create_or_update_recipe,
+    toggle_favorite,
+)
 
 
 def read_json(request):
@@ -108,7 +114,13 @@ def recipe_detail(request, recipe_id):
     if request.method == "GET":
         return JsonResponse(recipe_json(recipe, request.user, request.GET.get("servings")))
     if request.method == "DELETE":
-        archive_recipe(recipe)
+        data = read_json(request)
+        if not isinstance(data, dict):
+            return error("malformed_input", "Expected JSON.", 400)
+        try:
+            archive_recipe(recipe, version=data.get("version"))
+        except StaleRecipeVersion:
+            return error("stale_version", "This recipe changed elsewhere.", 409)
         return JsonResponse({}, status=204)
     if recipe.status == Recipe.Status.APPROVED:
         return error(

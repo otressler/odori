@@ -1,5 +1,7 @@
 from getpass import getpass
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from core.models import User
@@ -30,6 +32,10 @@ class Command(BaseCommand):
 
         if not password:
             raise CommandError("A password is required.")
+        try:
+            validate_password(password, user=user)
+        except ValidationError as exc:
+            raise CommandError(str(exc)) from exc
 
         user.set_password(password)
         user.save(update_fields=["password"])

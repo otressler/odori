@@ -12,6 +12,7 @@ from pantry.services import change_inventory_status
 from .models import Recipe, RecipeIngredient
 from .semantic import rank_recipes
 from .services import (
+    StaleRecipeVersion,
     approve_recipe,
     archive_recipe,
     create_or_update_recipe,
@@ -19,6 +20,9 @@ from .services import (
     regenerate_recipe_image,
     toggle_favorite,
 )
+
+MAX_RECIPE_INGREDIENTS = 100
+MAX_RECIPE_STEPS = 100
 
 
 def recipe_list(request):
@@ -90,6 +94,8 @@ def recipe_form_data(request):
         for field_name in request.POST
         if (match := re.fullmatch(r"ingredient-source-(\d+)", field_name))
     )
+    if len(ingredient_indexes) > MAX_RECIPE_INGREDIENTS:
+        raise ValueError(f"A recipe can contain at most {MAX_RECIPE_INGREDIENTS} ingredients.")
     for index in ingredient_indexes:
         source_text = request.POST.get(f"ingredient-source-{index}", "").strip()
         if not source_text:
@@ -108,6 +114,8 @@ def recipe_form_data(request):
         for field_name in request.POST
         if (match := re.fullmatch(r"step-(\d+)", field_name))
     )
+    if len(step_indexes) > MAX_RECIPE_STEPS:
+        raise ValueError(f"A recipe can contain at most {MAX_RECIPE_STEPS} steps.")
     steps = [
         {"body": request.POST.get(f"step-{index}", "").strip()}
         for index in step_indexes
@@ -240,7 +248,11 @@ def recipe_approve_page(request, recipe_id):
 
 def recipe_archive_page(request, recipe_id):
     recipe = recipe_for_user(request.user, recipe_id)
-    archive_recipe(recipe)
+    try:
+        archive_recipe(recipe, version=int(request.POST.get("version", "")))
+    except (StaleRecipeVersion, ValueError):
+        messages.error(request, "Das Rezept wurde inzwischen geändert. Bitte erneut prüfen.")
+        return redirect("recipe-detail", recipe_id=recipe.id)
     messages.success(request, "Rezept archiviert.")
     return redirect("recipe-list")
 

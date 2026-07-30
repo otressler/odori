@@ -1,10 +1,10 @@
+import json
 from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
 from django.core.files.base import ContentFile
-from django.test import TestCase
-from django.test import override_settings
+from django.test import TestCase, override_settings
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryEvent, InventoryItem
@@ -273,6 +273,20 @@ class ShoppingAuthorizationTests(ShoppingTestCase):
         self.client.logout()
         response = self.client.get("/shopping/")
         self.assertEqual(response.status_code, 302)
+
+
+class ShoppingApiTests(ShoppingTestCase):
+    def test_item_delete_rejects_a_stale_version(self):
+        shopping_list = ShoppingList.objects.create(household=self.household, name="Erledigungen")
+        item = add_manual_item(user=self.user, list_id=shopping_list.id, label="Servietten")
+        path = f"/api/v1/shopping-lists/{shopping_list.id}/items/{item.id}"
+
+        response = self.client.delete(
+            path, json.dumps({"version": 0}), content_type="application/json"
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(ShoppingItem.objects.filter(id=item.id).exists())
 
 
 class ShoppingPageTests(ShoppingTestCase):

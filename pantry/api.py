@@ -2,7 +2,7 @@ import json
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_http_methods
 
@@ -24,6 +24,14 @@ from .services import (
     merge_ingredients,
     queue_category_suggestions,
 )
+
+MAX_INGREDIENT_ALIASES = 50
+MAX_INGREDIENT_ALIAS_LENGTH = 120
+
+
+class InventoryBatchError(Exception):
+    def __init__(self, response):
+        self.response = response
 
 
 def payload(request):
@@ -48,6 +56,34 @@ def ingredient_json(ingredient):
         "active": ingredient.active,
         "categoryId": str(ingredient.category_id) if ingredient.category_id else None,
     }
+
+
+def ingredient_update_error(data):
+    fields = {}
+    if "name" in data and (
+        not isinstance(data["name"], str)
+        or not data["name"].strip()
+        or len(data["name"].strip()) > 120
+    ):
+        fields["name"] = "Must be a non-empty string of at most 120 characters."
+    if "aliases" in data:
+        aliases = data["aliases"]
+        if (
+            not isinstance(aliases, list)
+            or len(aliases) > MAX_INGREDIENT_ALIASES
+            or any(
+                not isinstance(alias, str)
+                or not alias.strip()
+                or len(alias.strip()) > MAX_INGREDIENT_ALIAS_LENGTH
+                for alias in aliases
+            )
+        ):
+            fields["aliases"] = (
+                "Must contain at most 50 non-empty strings of at most 120 characters."
+            )
+    if "active" in data and not isinstance(data["active"], bool):
+        fields["active"] = "Must be a boolean."
+    return fields
 
 
 @login_required
@@ -106,21 +142,38 @@ def ingredients(request):
 @require_http_methods(["PATCH"])
 def ingredient_detail(request, ingredient_id):
     data = payload(request)
-    if not data:
+    if not isinstance(data, dict) or not data:
         return error("malformed_input", "Expected a JSON object.", 400)
     household = household_for(request.user)
     ingredient = CanonicalIngredient.objects.filter(id=ingredient_id, household=household).first()
     if not ingredient:
         raise Http404
     if "mergeIntoId" in data:
+        if not isinstance(data["mergeIntoId"], str):
+            return error(
+                "validation_failed",
+                "mergeIntoId must be a string.",
+                fields={"mergeIntoId": "Invalid."},
+            )
         merged = merge_ingredients(
             user=request.user, source_id=ingredient_id, target_id=data["mergeIntoId"]
         )
         return JsonResponse(ingredient_json(merged))
+    fields = ingredient_update_error(data)
+    if fields:
+        return error("validation_failed", "Invalid ingredient data.", fields=fields)
     for key in ("name", "aliases", "active"):
         if key in data:
-            setattr(ingredient, key, data[key])
-    ingredient.save()
+            value = data[key]
+            setattr(ingredient, key, value.strip() if isinstance(value, str) else value)
+    try:
+        ingredient.save()
+    except IntegrityError:
+        return error(
+            "validation_failed",
+            "This ingredient already exists.",
+            fields={"name": "Already exists."},
+        )
     if "name" in data or "aliases" in data:
         queue_category_suggestions(user=request.user)
     return JsonResponse(ingredient_json(ingredient))
@@ -276,25 +329,35 @@ def inventory(request):
     changes = data.get("items") if data else None
     if not isinstance(changes, list):
         return error("validation_failed", "items must be an array.", fields={"items": "Required."})
+    if any(not isinstance(change, dict) for change in changes):
+        return error(
+            "validation_failed", "Each item must be an object.", fields={"items": "Invalid."}
+        )
+    if any(change.get("status") not in InventoryItem.Status.values for change in changes):
+        return error(
+            "validation_failed", "Invalid availability status.", fields={"status": "Invalid."}
+        )
     updated = []
-    for change in changes:
-        if change.get("status") not in InventoryItem.Status.values:
-            return error(
-                "validation_failed", "Invalid availability status.", fields={"status": "Invalid."}
-            )
-        try:
-            result = change_inventory_status(
-                user=request.user,
-                ingredient_id=change.get("ingredientId"),
-                status=change["status"],
-                version=change.get("version", 1),
-                confirm_planned_use=bool(change.get("confirmPlannedUse")),
-            )
-        except PlannedIngredientInUse as conflict:
-            return planned_conflict(conflict)
-        if result is None:
-            return error("stale_version", "This inventory item changed elsewhere.", 409)
-        updated.append(inventory_json(result))
+    try:
+        with transaction.atomic():
+            for change in changes:
+                try:
+                    result = change_inventory_status(
+                        user=request.user,
+                        ingredient_id=change.get("ingredientId"),
+                        status=change["status"],
+                        version=change.get("version", 1),
+                        confirm_planned_use=bool(change.get("confirmPlannedUse")),
+                    )
+                except PlannedIngredientInUse as conflict:
+                    raise InventoryBatchError(planned_conflict(conflict)) from conflict
+                if result is None:
+                    raise InventoryBatchError(
+                        error("stale_version", "This inventory item changed elsewhere.", 409)
+                    )
+                updated.append(inventory_json(result))
+    except InventoryBatchError as exc:
+        return exc.response
     return JsonResponse({"items": updated})
 
 

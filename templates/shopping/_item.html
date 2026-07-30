@@ -78,6 +78,7 @@
     {% if item.source == "manual" %}
       <form method="post" action="{% url 'shopping-item-delete' item.id %}">
         {% csrf_token %}
+        <input type="hidden" name="version" value="{{ item.version }}">
         <button class="danger" type="submit"><span aria-hidden="true">✕</span><span class="sr-only">{{ item.label }} entfernen</span></button>
       </form>
     {% endif %}

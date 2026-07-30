@@ -99,7 +99,18 @@ def shopping_items(request, list_id):
 @require_http_methods(["PATCH", "DELETE"])
 def shopping_item_detail(request, list_id, item_id):
     if request.method == "DELETE":
-        delete_item(user=request.user, item_id=item_id)
+        data = payload(request)
+        if not isinstance(data, dict):
+            return error("malformed_input", "Expected a JSON object.", 400)
+        try:
+            delete_item(user=request.user, item_id=item_id, version=data.get("version"))
+        except StaleItemVersion as conflict:
+            return error(
+                "stale_version",
+                "This shopping item changed elsewhere.",
+                409,
+                fields={"version": conflict.item.version},
+            )
         return JsonResponse({}, status=204)
     data = payload(request)
     if data is None:

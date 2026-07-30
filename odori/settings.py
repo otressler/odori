@@ -2,15 +2,20 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import dotenv_values
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 for _name, _value in dotenv_values(BASE_DIR / ".env").items():
-    if _name.startswith("AZURE_OPENAI_") and _value is not None:
+    if _value is not None:
         os.environ.setdefault(_name, _value)
 
-SECRET_KEY = os.environ.get("SESSION_SECRET", "development-only-change-me")
-DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
+DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
+SECRET_KEY = os.environ.get("SESSION_SECRET")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("SESSION_SECRET must be set when DEBUG is false.")
+    SECRET_KEY = "development-only-change-me"
 ALLOWED_HOSTS = [
     host for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host
 ]
@@ -97,6 +102,27 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+_default_secure_setting = "true" if not DEBUG else "false"
+SECURE_SSL_REDIRECT = os.environ.get(
+    "SECURE_SSL_REDIRECT", _default_secure_setting
+).lower() == "true"
+SECURE_HSTS_SECONDS = int(
+    os.environ.get("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0")
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+SECURE_HSTS_PRELOAD = os.environ.get(
+    "SECURE_HSTS_PRELOAD", _default_secure_setting
+).lower() == "true"
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get("DATA_UPLOAD_MAX_MEMORY_SIZE", 1024 * 1024))
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(os.environ.get("DATA_UPLOAD_MAX_NUMBER_FIELDS", 600))
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
 SESSION_COOKIE_AGE = int(os.environ.get("SESSION_IDLE_SECONDS", 28800))
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 INGREDIENT_EMBEDDINGS_ENABLED = (

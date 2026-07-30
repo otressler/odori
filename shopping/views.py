@@ -147,8 +147,12 @@ def shopping_item_purchase(request, item_id):
 def shopping_item_delete(request, item_id):
     item = item_for_user(request.user, item_id)
     list_id = item.shopping_list_id
-    delete_item(user=request.user, item_id=item_id)
-    messages.success(request, "Eintrag entfernt.")
+    try:
+        delete_item(user=request.user, item_id=item_id, version=read_version(request))
+    except StaleItemVersion:
+        messages.error(request, "Der Eintrag wurde inzwischen geändert. Bitte erneut prüfen.")
+    else:
+        messages.success(request, "Eintrag entfernt.")
     return redirect("shopping-detail", list_id=list_id)
 
 

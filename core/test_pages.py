@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryItem
-from planning.models import MealSlot
+from planning.models import MealPlan, MealSlot
 from planning.services import add_slot, current_week_start
 from recipes.models import Recipe, RecipeIngredient, RecipeSource, RecipeStep
 from shopping.models import ShoppingItem, ShoppingList
@@ -113,6 +113,14 @@ class PageRenderTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, "Offen auf der Liste")
         self.assertEqual(response.context["open_items"], 1)
+
+    def test_home_page_does_not_create_a_meal_plan(self):
+        self.assertFalse(MealPlan.objects.filter(household=self.household).exists())
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(MealPlan.objects.filter(household=self.household).exists())
 
     def test_home_page_links_to_uncategorized_review(self):
         response = self.client.get("/")

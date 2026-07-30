@@ -37,6 +37,7 @@
     <button type="submit">Rezeptbild neu erstellen</button>
   </form>
   <form method="post" action="{% url 'recipe-archive' recipe.id %}">{% csrf_token %}
+    <input type="hidden" name="version" value="{{ recipe.version }}">
     <button class="danger" type="submit">Archivieren</button>
   </form>
 </div>

@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
 
+from core.services import household_for
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
@@ -28,9 +29,13 @@ def as_decimal(value):
         raise ValueError("amount must be numeric")
 
 
+class StaleRecipeVersion(Exception):
+    pass
+
+
 @transaction.atomic
 def create_or_update_recipe(*, user, data, recipe=None):
-    household = user.memberships.select_related("household").first().household
+    household = household_for(user)
     if recipe is None:
         source = RecipeSource.objects.create(household=household)
         recipe = Recipe.objects.create(household=household, source=source, created_by=user)
@@ -152,11 +157,15 @@ def create_recipe_revision(recipe, user):
 
 
 @transaction.atomic
-def archive_recipe(recipe):
+def archive_recipe(recipe, *, version):
+    recipe = Recipe.objects.select_for_update().get(id=recipe.id)
+    if recipe.version != version:
+        raise StaleRecipeVersion
     recipe.status = Recipe.Status.ARCHIVED
     recipe.archived_at = timezone.now()
     recipe.version += 1
     recipe.save(update_fields=["status", "archived_at", "version", "updated_at"])
+    return recipe
 
 
 @transaction.atomic

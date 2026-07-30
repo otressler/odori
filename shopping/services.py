@@ -275,6 +275,8 @@ def purchase_item(*, user, item_id, version):
 
 
 @transaction.atomic
-def delete_item(*, user, item_id):
+def delete_item(*, user, item_id, version):
     item = item_for_user(user, item_id, lock=True)
+    if item.version != version:
+        raise StaleItemVersion(item)
     item.delete()

@@ -5,8 +5,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.test import Client, TestCase
-from django.test import override_settings
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
@@ -71,6 +70,37 @@ class PantryApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 409)
 
+    def test_inventory_batch_rolls_back_changes_when_a_later_item_is_stale(self):
+        other = CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
+        other_item = InventoryItem.objects.create(
+            household=self.household,
+            ingredient=other,
+            status=InventoryItem.Status.UNKNOWN,
+            version=2,
+        )
+
+        response = self.patch_inventory(
+            {
+                "items": [
+                    {
+                        "ingredientId": str(self.ingredient.id),
+                        "status": InventoryItem.Status.IN_STOCK,
+                        "version": 1,
+                    },
+                    {
+                        "ingredientId": str(other.id),
+                        "status": InventoryItem.Status.IN_STOCK,
+                        "version": 1,
+                    },
+                ]
+            }
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(InventoryItem.objects.filter(ingredient=self.ingredient).exists())
+        other_item.refresh_from_db()
+        self.assertEqual(other_item.status, InventoryItem.Status.UNKNOWN)
+
     def test_other_household_ingredient_is_hidden(self):
         other_household = Household.objects.create(name="Other")
         other = CanonicalIngredient.objects.create(household=other_household, name="Basilikum")
@@ -102,6 +132,46 @@ class PantryApiTests(TestCase):
         self.assertEqual(result["categories"][0]["embeddingScore"], None)
         self.assertTrue(result["categories"][0]["exactMatch"])
         self.assertEqual(result["state"], "assigned")
+
+    def test_ingredient_patch_rejects_invalid_field_types_and_oversized_alias_lists(self):
+        response = self.client.patch(
+            f"/api/v1/ingredients/{self.ingredient.id}",
+            json.dumps({"name": 1, "aliases": ["ok"] * 51, "active": "true"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            set(response.json()["error"]["fields"]), {"name", "aliases", "active"}
+        )
+        self.ingredient.refresh_from_db()
+        self.assertEqual(self.ingredient.name, "Tomate")
+
+    def test_ingredient_patch_normalizes_valid_text_fields(self):
+        response = self.client.patch(
+            f"/api/v1/ingredients/{self.ingredient.id}",
+            json.dumps({"name": " Tomaten ", "aliases": [" Paradeiser "], "active": False}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.ingredient.refresh_from_db()
+        self.assertEqual(self.ingredient.name, "Tomaten")
+        self.assertEqual(self.ingredient.aliases, [" Paradeiser "])
+        self.assertFalse(self.ingredient.active)
+
+    def test_pantry_mutation_pages_reject_get_requests(self):
+        paths = [
+            "/pantry/add/",
+            "/pantry/categories/suggest/",
+            f"/pantry/categories/review/{self.ingredient.id}/assign/",
+            "/pantry/condense/confirm/",
+            f"/pantry/{self.ingredient.id}/status/",
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 405)
 
     def test_category_scores_use_persisted_embedding_models(self):
         category = IngredientCategory.objects.create(

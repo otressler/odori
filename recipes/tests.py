@@ -2,6 +2,7 @@ import json
 from tempfile import TemporaryDirectory
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.http import Http404
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -9,7 +10,7 @@ from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient
 
 from .models import Recipe, RecipeImageJob, RecipeIngredient, RecipeSource
-from .services import create_recipe_revision
+from .services import create_or_update_recipe, create_recipe_revision
 
 
 class RecipeLifecycleTests(TestCase):
@@ -161,6 +162,23 @@ class RecipeLifecycleTests(TestCase):
             1,
         )
 
+    def test_recipe_mutation_pages_reject_get_requests(self):
+        response = self.create_recipe()
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        line = recipe.ingredients.get()
+        paths = [
+            f"/recipes/{recipe.id}/approve/",
+            f"/recipes/{recipe.id}/archive/",
+            f"/recipes/{recipe.id}/favorite/",
+            f"/recipes/{recipe.id}/revise/",
+            f"/recipes/{recipe.id}/image/regenerate/",
+            f"/recipes/{recipe.id}/ingredients/{line.id}/add-to-pantry/",
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 405)
+
     def test_recipe_image_is_served_to_a_household_member(self):
         response = self.create_recipe()
         recipe = Recipe.objects.get(id=response.json()["id"])
@@ -202,6 +220,16 @@ class RecipeLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Recipe.objects.get(title="Viele Schritte").steps.count(), 13)
 
+    def test_recipe_form_rejects_more_than_one_hundred_ingredients(self):
+        form_data = {"title": "Zu viele Zutaten", "servings": "2", "step-0": "Kochen."}
+        for index in range(101):
+            form_data[f"ingredient-source-{index}"] = f"Zutat {index + 1}"
+
+        response = self.client.post("/recipes/new/", form_data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Recipe.objects.filter(title="Zu viele Zutaten").exists())
+
     def test_approved_recipe_can_be_revised_from_detail_workflow(self):
         response = self.create_recipe()
         recipe_id = response.json()["id"]
@@ -215,10 +243,33 @@ class RecipeLifecycleTests(TestCase):
     def test_archived_recipes_are_hidden_from_default_search(self):
         response = self.create_recipe()
         recipe_id = response.json()["id"]
-        response = self.client.delete(f"/api/v1/recipes/{recipe_id}")
+        response = self.client.delete(
+            f"/api/v1/recipes/{recipe_id}",
+            json.dumps({"version": response.json()["version"]}),
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 204)
         recipes = self.client.get("/api/v1/recipes").json()["recipes"]
         self.assertEqual(recipes, [])
+
+    def test_recipe_archive_rejects_a_stale_version(self):
+        response = self.create_recipe()
+        recipe_id = response.json()["id"]
+
+        response = self.client.delete(
+            f"/api/v1/recipes/{recipe_id}",
+            json.dumps({"version": 1}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(Recipe.objects.get(id=recipe_id).status, Recipe.Status.DRAFT)
+
+    def test_recipe_creation_without_a_household_raises_not_found(self):
+        user = User.objects.create_user(username="no-household", password="pass")
+
+        with self.assertRaises(Http404):
+            create_or_update_recipe(user=user, data={"title": "Kein Zuhause"})
 
     def test_recipe_from_another_household_is_hidden(self):
         other_user = User.objects.create_user(username="other", password="pass")

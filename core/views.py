@@ -15,8 +15,8 @@ from pantry.models import (
     InventoryItem,
     PantryCategorizationJob,
 )
-from planning.models import MealSlot
-from planning.services import current_week_start, get_or_create_plan
+from planning.models import MealPlan, MealSlot
+from planning.services import current_week_start
 from recipes.models import Recipe, RecipeImageJob
 from shopping.models import ShoppingItem, ShoppingList
 
@@ -181,11 +181,15 @@ def retry_image_job(request, job_id):
 def home(request):
     household = household_for(request.user)
     today = timezone.localdate()
-    plan = get_or_create_plan(user=request.user, week_start=current_week_start())
+    plan = MealPlan.objects.filter(
+        household=household, week_start_date=current_week_start()
+    ).first()
     today_slots = (
         MealSlot.objects.select_related("recipe")
         .filter(plan=plan, date=today)
         .order_by("created_at")
+        if plan
+        else MealSlot.objects.none()
     )
     active_list = ShoppingList.objects.filter(
         household=household, state=ShoppingList.State.ACTIVE

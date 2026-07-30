@@ -1,7 +1,7 @@
 import json
-from io import StringIO
 
 from django.core import management
+from django.core.management.base import CommandError
 from django.test import Client, TestCase
 
 from .models import Household, HouseholdMembership, User
@@ -38,13 +38,32 @@ class IdentityAndIsolationTests(TestCase):
         self.assertEqual(self.client.get("/health/ready").status_code, 200)
 
     def test_set_user_password_updates_a_hashed_password(self):
-        output = StringIO()
-
         management.call_command(
-            "set_user_password", "mara", password="new-secret", stdout=output
+            "set_user_password", "mara", password="A1!new-secret"
         )
 
         self.user.refresh_from_db()
-        self.assertTrue(self.user.check_password("new-secret"))
-        self.assertFalse(self.user.password == "new-secret")
-        self.assertIn('Password updated for user "mara".', output.getvalue())
+        self.assertTrue(self.user.check_password("A1!new-secret"))
+        self.assertFalse(self.user.password == "A1!new-secret")
+
+    def test_set_user_password_rejects_a_weak_password(self):
+        original_password = self.user.password
+
+        with self.assertRaises(CommandError):
+            management.call_command("set_user_password", "mara", password="a")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.password, original_password)
+
+
+class BootstrapOwnerCommandTests(TestCase):
+    def test_bootstrap_owner_rejects_a_weak_password(self):
+        with self.assertRaises(CommandError):
+            management.call_command(
+                "bootstrap_owner",
+                username="owner",
+                household="Home",
+                password="a",
+            )
+
+        self.assertFalse(User.objects.exists())

@@ -1,5 +1,7 @@
 from getpass import getpass
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -22,8 +24,16 @@ class Command(BaseCommand):
         password = options["password"] or getpass("Password: ")
         if not password:
             raise CommandError("A password is required.")
+        owner = User(
+            username=options["username"],
+            display_name=options["display_name"],
+        )
+        try:
+            validate_password(password, user=owner)
+        except ValidationError as exc:
+            raise CommandError(str(exc)) from exc
         owner = User.objects.create_user(
-            username=options["username"], password=password, display_name=options["display_name"]
+            username=owner.username, password=password, display_name=owner.display_name
         )
         household = Household.objects.create(name=options["household"])
         HouseholdMembership.objects.create(
