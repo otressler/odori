@@ -101,6 +101,15 @@ def recipe_collection(request):
 def recipe_detail(request, recipe_id):
     recipe = visible_recipe(request.user, recipe_id)
     if request.method == "GET":
+        from recommendations.models import RecommendationFeedback
+        from recommendations.services import record_feedback_safely
+
+        record_feedback_safely(
+            user=request.user,
+            run_id=request.GET.get("recommendationRunId"),
+            recipe_id=recipe.id,
+            outcome=RecommendationFeedback.Outcome.OPENED,
+        )
         return JsonResponse(recipe_json(recipe, request.user, request.GET.get("servings")))
     if request.method == "DELETE":
         data = read_json(request)

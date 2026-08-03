@@ -2791,3 +2791,146 @@ body.kitchen main {
     background: #fff;
   }
 }
+
+/* ---------- Recommendations ---------- */
+
+.mobile-recommendations-link {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.55rem;
+    border-radius: var(--radius-sm);
+    background: var(--olive-soft);
+    color: var(--olive-deep);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  @media (min-width: 56rem) {
+    .mobile-recommendations-link {
+      display: none;
+    }
+  }
+
+  .recommendation-head {
+    margin-bottom: 1.5rem;
+  }
+
+  .recommendation-filters form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 1rem;
+  }
+
+  .recommendation-filters fieldset {
+    flex: 1 1 28rem;
+    border: 0;
+    padding: 0;
+  }
+
+  .recommendation-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .recommendation-tags label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: var(--tap);
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 99rem;
+    background: var(--surface);
+  }
+
+  .recommendation-list {
+    list-style: none;
+    display: grid;
+    gap: 1.25rem;
+    margin: 1.25rem 0 0;
+    padding: 0;
+  }
+
+  .recommendation-card {
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .recommendation-card > header {
+    display: flex;
+    gap: 0.9rem;
+    align-items: start;
+  }
+
+  .recommendation-rank {
+    display: grid;
+    place-items: center;
+    flex: 0 0 2.4rem;
+    min-height: 2.4rem;
+    border-radius: 50%;
+    background: var(--terracotta);
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .recommendation-reasons {
+    margin-top: 0.35rem;
+  }
+
+  .recommendation-ingredients {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0;
+  }
+
+  .recommendation-ingredients section {
+    padding: 0.8rem;
+    border-radius: var(--radius);
+    background: var(--surface-sunk);
+  }
+
+  .recommendation-ingredients h3 {
+    font-size: 1rem;
+  }
+
+  .recommendation-ingredients ul {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+
+  .recommendation-actions,
+  .recommendation-feedback {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .recommendation-feedback {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .recommendation-feedback select {
+    width: auto;
+  }
+
+  @media (max-width: 42rem) {
+    .recommendation-ingredients {
+      grid-template-columns: 1fr;
+    }
+
+    .recommendation-feedback select,
+    .recommendation-feedback button {
+      width: 100%;
+    }
+  }

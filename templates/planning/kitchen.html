@@ -86,6 +86,7 @@
 <form class="panel" method="post" action="{% url 'slot-cook' slot.id %}">
   {% csrf_token %}
   <input type="hidden" name="slot_version" value="{{ slot.version }}">
+  {% if recommendation_run %}<input type="hidden" name="recommendation_run" value="{{ recommendation_run }}">{% endif %}
   <h2>Fertig gekocht</h2>
   <p class="muted">
     Odori nimmt nicht an, dass alle Zutaten aufgebraucht sind. Wähle nur aus, was jetzt wirklich

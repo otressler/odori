@@ -35,7 +35,8 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 | `GET/POST /shopping-lists[/{id}]` | List/create lists and retrieve one list. |
 | `POST/PATCH/DELETE /shopping-lists/{id}/items[/{itemId}]` | Add, alter state, or remove entries. |
 | `POST /shopping-lists/{id}/items/{itemId}/purchase` | Mark purchased and update inventory atomically. |
-| `POST /recommendations` | Return ranked catalog suggestions and optional generated drafts. |
+| `POST /recommendations` | Return deterministic ranked catalog suggestions. |
+| `POST /recommendations/{runId}/feedback` | Record an idempotent recommendation outcome. |
 | `POST /meal-slots/{id}/mark-cooked` | Record a cook event. |
 
 ## Planned-stock confirmation
@@ -87,23 +88,71 @@ The job response includes safe progress data (`queued`, `extracting`, `normalizi
 
 ## Recommendation response
 
+The request is bounded to 20 tags and 20 results:
+
 ```json
 {
-  "inventorySnapshotAt": "2026-07-18T17:00:00Z",
+  "weekStart": "2026-07-20",
+  "preferredTagIds": ["tag_uuid"],
+  "limit": 10
+}
+```
+
+The response contains a reproducible run and catalog-only suggestions:
+
+```json
+{
+  "run": {
+    "id": "run_uuid",
+    "asOf": "2026-07-18T17:00:00Z",
+    "targetWeek": "2026-07-20",
+    "scoringVersion": "catalog-v1",
+    "inventorySnapshotAt": "2026-07-18T16:55:00Z",
+    "candidateCount": 42,
+    "candidateSetTruncated": false,
+    "queryDurationMs": 8,
+    "scoringDurationMs": 1
+  },
   "suggestions": [
     {
       "recipeId": "recipe_uuid",
+      "recipeVersion": 3,
       "title": "Pasta al Pomodoro",
-      "matchedIngredients": ["tomato", "pasta"],
-      "missingIngredients": ["basil"],
-      "reasons": ["Uses 4 ingredients marked in stock", "Not cooked in the last 21 days"],
-      "score": 0.84
+      "scoreBp": 9000,
+      "components": {
+        "inventoryCoverageBp": 6500,
+        "missingPenaltyBp": 0,
+        "unknownPenaltyBp": 0,
+        "cookRecencyBp": 1500,
+        "preferredTagsBp": 1000,
+        "alreadyPlannedPenaltyBp": 0,
+        "negativeFeedbackPenaltyBp": 0
+      },
+      "matchedIngredients": [
+        {"canonicalIngredientId": "ingredient_uuid", "name": "Tomato", "unresolved": false}
+      ],
+      "missingIngredients": [],
+      "unknownIngredients": [],
+      "unresolvedCount": 0,
+      "reasons": [{"code": "inventory_coverage"}, {"code": "cook_recency"}]
     }
   ]
 }
 ```
 
-`score` is ranking metadata, not a statement of nutritional suitability. A generated recipe uses the same recipe-draft schema but has `status: "draft"` and `source.type: "generated"`.
+`catalog-v1` uses integer basis points. Inventory coverage contributes up to 6,500,
+missing ingredients subtract up to 2,000, unknown ingredients subtract up to 1,000,
+cook recency contributes up to 1,500 over 21 local-calendar days, selected tags contribute
+up to 1,000, an already-planned recipe subtracts 1,500, and active hidden/`not_again`
+feedback subtracts 2,500. The result is clamped to 0–10,000 and ties sort by lexical recipe
+UUID. Reason codes have stable order:
+`inventory_coverage`, `missing_ingredients`, `unknown_ingredients`, `cook_recency`,
+`preferred_tags`, `already_planned`, `negative_feedback`.
+
+Feedback accepts `recipeId`, an outcome (`opened`, `planned`, `cooked`, `dismissed`, or
+`hidden`), and an optional bounded reason. It is scoped to the requesting user, household,
+run, and a recipe present in that run. `scoreBp` is ranking metadata, not a statement of
+nutritional suitability.
 
 ## Concurrency
 

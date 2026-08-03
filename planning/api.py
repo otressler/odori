@@ -80,6 +80,15 @@ def meal_plan_slots(request, week_start):
         )
     except ValueError as exc:
         return error("validation_failed", str(exc))
+    from recommendations.models import RecommendationFeedback
+    from recommendations.services import record_feedback_safely
+
+    record_feedback_safely(
+        user=request.user,
+        run_id=data.get("recommendationRunId"),
+        recipe_id=slot.recipe_id,
+        outcome=RecommendationFeedback.Outcome.PLANNED,
+    )
     return JsonResponse(slot_json(slot), status=201)
 
 
@@ -143,6 +152,15 @@ def meal_slot_mark_cooked(request, slot_id):
         return error("invalid_state", str(exc), 409)
     except ValueError as exc:
         return error("validation_failed", str(exc))
+    from recommendations.models import RecommendationFeedback
+    from recommendations.services import record_feedback_safely
+
+    record_feedback_safely(
+        user=request.user,
+        run_id=data.get("recommendationRunId"),
+        recipe_id=slot.recipe_id,
+        outcome=RecommendationFeedback.Outcome.COOKED,
+    )
     return JsonResponse(slot_json(slot))
 
 

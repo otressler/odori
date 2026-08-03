@@ -31,7 +31,7 @@
       <label for="entry-recipe">Rezept</label>
       <select id="entry-recipe" name="recipe_id">
         <option value="">— bitte wählen —</option>
-        {% for recipe in recipes %}<option value="{{ recipe.id }}">{{ recipe.title }}</option>{% endfor %}
+        {% for recipe in recipes %}<option value="{{ recipe.id }}"{% if recipe.is_preselected %} selected{% endif %}>{{ recipe.title }}</option>{% endfor %}
       </select>
     </div>
     <div class="field">
@@ -55,6 +55,7 @@
       <input id="entry-notes" name="notes" maxlength="300" placeholder="z. B. Reste vom Sonntag">
     </div>
     <div class="button-row">
+      {% if recommendation_run %}<input type="hidden" name="recommendation_run" value="{{ recommendation_run }}">{% endif %}
       <button class="primary" type="submit">Einplanen</button>
       <span class="muted">Nur veröffentlichte Rezepte lassen sich einplanen.</span>
     </div>

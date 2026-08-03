@@ -49,6 +49,7 @@ urlpatterns = [
     path("pantry/", include("pantry.urls")),
     path("plan/", include("planning.urls")),
     path("shopping/", include("shopping.urls")),
+    path("recommendations/", include("recommendations.urls")),
     path("api/v1/", include("core.api_urls")),
 ]
 

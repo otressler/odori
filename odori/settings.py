@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "recipes",
     "planning",
     "shopping",
+    "recommendations",
 ]
 MIDDLEWARE = [
     "orbit.middleware.OrbitMiddleware",

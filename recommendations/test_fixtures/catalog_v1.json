@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "scoringVersion": "catalog-v1",
+  "asOf": "2026-08-03T20:00:00+00:00",
+  "inventorySnapshotAt": "2026-08-03T19:00:00+00:00",
+  "targetWeek": "2026-08-03",
+  "selectedTagIds": ["00000000-0000-0000-0000-000000000099"],
+  "candidateSetTruncated": false,
+  "candidates": [
+    {
+      "recipeId": "00000000-0000-0000-0000-000000000001",
+      "recipeVersion": 1,
+      "matched": 2,
+      "missing": 0,
+      "unknown": 0,
+      "daysSinceCook": 21,
+      "preferredTagMatches": 1,
+      "plannedOccurrences": 0,
+      "feedbackState": null
+    },
+    {
+      "recipeId": "00000000-0000-0000-0000-000000000002",
+      "recipeVersion": 3,
+      "matched": 0,
+      "missing": 1,
+      "unknown": 1,
+      "daysSinceCook": 7,
+      "preferredTagMatches": 0,
+      "plannedOccurrences": 1,
+      "feedbackState": "not_again"
+    },
+    {
+      "recipeId": "00000000-0000-0000-0000-000000000003",
+      "recipeVersion": 2,
+      "matched": 1,
+      "missing": 0,
+      "unknown": 0,
+      "daysSinceCook": 0,
+      "preferredTagMatches": 0,
+      "plannedOccurrences": 0,
+      "feedbackState": null
+    }
+  ],
+  "expected": [
+    {
+      "recipeId": "00000000-0000-0000-0000-000000000001",
+      "scoreBp": 9000,
+      "reasons": ["inventory_coverage", "cook_recency", "preferred_tags"]
+    },
+    {
+      "recipeId": "00000000-0000-0000-0000-000000000003",
+      "scoreBp": 6500,
+      "reasons": ["inventory_coverage"]
+    },
+    {
+      "recipeId": "00000000-0000-0000-0000-000000000002",
+      "scoreBp": 0,
+      "reasons": [
+        "missing_ingredients",
+        "unknown_ingredients",
+        "cook_recency",
+        "already_planned",
+        "negative_feedback"
+      ]
+    }
+  ]
+}

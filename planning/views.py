@@ -51,6 +51,19 @@ def plan_page(request, week_start=None):
             for entry in cell["entries"]:
                 entry.is_duplicate = entry.recipe_id in duplicates
                 entry.is_recent_repeat = entry.recipe_id in recent
+    recipes = list(
+        Recipe.objects.filter(
+            household=household, status=Recipe.Status.APPROVED
+        ).order_by("title")
+    )
+    preselected_recipe_id = request.GET.get("recipe", "")
+    for recipe in recipes:
+        recipe.is_preselected = str(recipe.id) == preselected_recipe_id
+    recommendation_run = (
+        request.GET.get("recommendation_run", "")
+        if any(recipe.is_preselected for recipe in recipes)
+        else ""
+    )
     return render(
         request,
         "planning/week.html",
@@ -59,15 +72,14 @@ def plan_page(request, week_start=None):
             "days": days,
             "slot_choices": [(key, MealSlot.Slot(key).label) for key in SLOT_SEQUENCE],
             "entry_types": MealSlot.EntryType.choices,
-            "recipes": Recipe.objects.filter(
-                household=household, status=Recipe.Status.APPROVED
-            ).order_by("title"),
+            "recipes": recipes,
             "previous_week": start - timedelta(days=7),
             "next_week": start + timedelta(days=7),
             "this_week": current_week_start(),
             "week_end": start + timedelta(days=6),
             "default_date": request.GET.get("date", "") or start.isoformat(),
             "default_slot": request.GET.get("slot", "dinner"),
+            "recommendation_run": recommendation_run,
         },
     )
 
@@ -89,7 +101,7 @@ def read_version(request, field="version"):
 def slot_create_page(request, week_start):
     start = parse_week_start(week_start)
     try:
-        add_slot(
+        entry = add_slot(
             user=request.user,
             week_start=start,
             date=read_date(request.POST.get("date")),
@@ -102,6 +114,15 @@ def slot_create_page(request, week_start):
     except ValueError as exc:
         messages.error(request, str(exc))
     else:
+        from recommendations.models import RecommendationFeedback
+        from recommendations.services import record_feedback_safely
+
+        record_feedback_safely(
+            user=request.user,
+            run_id=request.POST.get("recommendation_run"),
+            recipe_id=entry.recipe_id,
+            outcome=RecommendationFeedback.Outcome.PLANNED,
+        )
         messages.success(request, "Mahlzeit eingeplant.")
     return redirect(week_url(start))
 
@@ -187,6 +208,7 @@ def kitchen_page(request, slot_id):
             "lines": lines,
             "steps": recipe.steps.all(),
             "status_choices": InventoryItem.Status.choices,
+            "recommendation_run": request.GET.get("recommendation_run", ""),
         },
     )
 
@@ -218,6 +240,15 @@ def slot_cook_page(request, slot_id):
     except (ValueError, SlotNotCookable) as exc:
         messages.error(request, str(exc))
     else:
+        from recommendations.models import RecommendationFeedback
+        from recommendations.services import record_feedback_safely
+
+        record_feedback_safely(
+            user=request.user,
+            run_id=request.POST.get("recommendation_run"),
+            recipe_id=entry.recipe_id,
+            outcome=RecommendationFeedback.Outcome.COOKED,
+        )
         messages.success(request, "Guten Appetit! Die Mahlzeit ist im Kochbuch vermerkt.")
     return redirect(week_url(week))
 

@@ -181,6 +181,15 @@ def recipe_detail_page(request, recipe_id):
     )
     if not recipe:
         raise Http404
+    from recommendations.models import RecommendationFeedback
+    from recommendations.services import record_feedback_safely
+
+    record_feedback_safely(
+        user=request.user,
+        run_id=request.GET.get("recommendation_run"),
+        recipe_id=recipe.id,
+        outcome=RecommendationFeedback.Outcome.OPENED,
+    )
     requested_servings = recipe.servings
     if request.GET.get("servings"):
         try:

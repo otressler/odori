@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Empfehlungen · Odori{% endblock %}
+
+{% block content %}
+<header class="recommendation-head">
+  <div>
+    <p class="hero__eyebrow">Was passt heute?</p>
+    <h1>Empfehlungen aus deinem Rezeptbuch</h1>
+    <p class="muted">Deterministisch sortiert nach Vorrat, Kochhistorie, Wochenplan und deinen Vorlieben.</p>
+  </div>
+</header>
+
+<section class="panel recommendation-filters" aria-labelledby="recommendation-filter-title">
+  <h2 id="recommendation-filter-title">Auswahl anpassen</h2>
+  <form method="get">
+    <div class="field">
+      <label for="recommendation-week">Zielwoche</label>
+      <input id="recommendation-week" name="weekStart" type="date" value="{{ week_start|date:'Y-m-d' }}">
+    </div>
+    {% if tags %}
+      <fieldset>
+        <legend>Bevorzugte Kategorien</legend>
+        <div class="recommendation-tags">
+          {% for tag in tags %}
+            <label>
+              <input type="checkbox" name="tag" value="{{ tag.id }}"{% if tag.id|stringformat:"s" in selected_tag_ids %} checked{% endif %}>
+              <span>{{ tag.name }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    {% endif %}
+    <button class="primary" type="submit">Neu sortieren</button>
+  </form>
+</section>
+
+{% if page_error %}
+  <p class="message message--error" role="alert">{{ page_error }}</p>
+{% elif result.candidate_set_truncated %}
+  <p class="message message--warning">Es werden die ersten 250 veröffentlichten Rezepte berücksichtigt.</p>
+{% endif %}
+
+{% if cards %}
+  <ol class="recommendation-list" aria-label="Sortierte Rezeptempfehlungen">
+    {% for card in cards %}
+      <li>
+        <article class="recommendation-card">
+          <header>
+            <span class="recommendation-rank" aria-label="Rang {{ forloop.counter }}">{{ forloop.counter }}</span>
+            <div>
+              <h2>{{ card.candidate.title|default:"Unbenanntes Rezept" }}</h2>
+              <p class="muted">Bewertung {{ card.suggestion.score_bp }} von 10.000 Punkten</p>
+            </div>
+          </header>
+
+          <section aria-labelledby="why-{{ card.candidate.recipe_id }}">
+            <h3 id="why-{{ card.candidate.recipe_id }}">Warum dieses Rezept?</h3>
+            <ul class="recommendation-reasons">
+              {% for label in card.reason_labels %}<li>{{ label }}</li>{% empty %}<li>Keine besonderen Bewertungssignale.</li>{% endfor %}
+            </ul>
+          </section>
+
+          <div class="recommendation-ingredients">
+            <section>
+              <h3>Vorrätig ({{ card.candidate.matched }})</h3>
+              <ul>{% for item in card.candidate.matched_ingredients %}<li>{{ item.name }}</li>{% empty %}<li class="muted">Keine</li>{% endfor %}</ul>
+            </section>
+            <section>
+              <h3>Nachkaufen ({{ card.candidate.missing }})</h3>
+              <ul>{% for item in card.candidate.missing_ingredients %}<li>{{ item.name }}</li>{% empty %}<li class="muted">Keine</li>{% endfor %}</ul>
+            </section>
+            <section>
+              <h3>Unklar ({{ card.candidate.unknown }})</h3>
+              <ul>
+                {% for item in card.candidate.unknown_ingredients %}
+                  <li>{{ item.name }}{% if item.unresolved %} <span class="flag">nicht zugeordnet</span>{% endif %}</li>
+                {% empty %}<li class="muted">Keine</li>{% endfor %}
+              </ul>
+            </section>
+          </div>
+
+          <div class="recommendation-actions">
+            <a class="button" href="{{ card.detail_url }}">Rezept öffnen</a>
+            <a class="button primary" href="{{ card.planner_url }}">Für diese Woche einplanen</a>
+          </div>
+          <form class="recommendation-feedback" method="post" action="{% url 'recommendation-feedback' %}">
+            {% csrf_token %}
+            <input type="hidden" name="run_id" value="{{ result.run_id }}">
+            <input type="hidden" name="recipe_id" value="{{ card.candidate.recipe_id }}">
+            <input type="hidden" name="outcome" value="dismissed">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <label for="reason-{{ card.candidate.recipe_id }}">Nicht nützlich, weil</label>
+            <select id="reason-{{ card.candidate.recipe_id }}" name="reason">
+              {% for value, label in feedback_reasons %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+            <button type="submit">Rückmeldung senden</button>
+          </form>
+        </article>
+      </li>
+    {% endfor %}
+  </ol>
+{% elif not page_error %}
+  <section class="panel empty-state">
+    <h2>Noch keine Vorschläge</h2>
+    <p>Veröffentliche mindestens ein Rezept, damit Odori es berücksichtigen kann.</p>
+    <a class="button primary" href="{% url 'recipe-create' %}">Rezept anlegen</a>
+  </section>
+{% endif %}
+{% endblock %}

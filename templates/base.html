@@ -25,12 +25,14 @@
       <nav class="site-nav" aria-label="Hauptnavigation">
         <a href="/"{% if request.path == "/" %} aria-current="page"{% endif %}>Start</a>
         <a href="/recipes/"{% if "/recipes/" in request.path %} aria-current="page"{% endif %}>Rezepte</a>
+        <a href="/recommendations/"{% if "/recommendations/" in request.path %} aria-current="page"{% endif %}>Empfehlungen</a>
         <a href="/plan/"{% if "/plan/" in request.path %} aria-current="page"{% endif %}>Wochenplan</a>
         <a href="/shopping/"{% if "/shopping/" in request.path %} aria-current="page"{% endif %}>Einkauf</a>
         <a href="/pantry/"{% if "/pantry/" in request.path %} aria-current="page"{% endif %}>Vorrat</a>
         {% if is_household_owner %}<a href="{% url 'operations' %}"{% if "/admin/operations" in request.path %} aria-current="page"{% endif %}>Betrieb</a>{% endif %}
       </nav>
       <div class="header-actions">
+        <a class="mobile-recommendations-link" href="/recommendations/"{% if "/recommendations/" in request.path %} aria-current="page"{% endif %}>Vorschläge</a>
         {% if current_household %}
           <form method="post" action="{% url 'household-switch' %}" class="household-switcher">
             {% csrf_token %}

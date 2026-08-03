@@ -3,6 +3,7 @@ from django.urls import path
 from pantry import api as pantry_api
 from planning import api as planning_api
 from recipes import api as recipes_api
+from recommendations import api as recommendations_api
 from shopping import api as shopping_api
 
 urlpatterns = [
@@ -21,6 +22,11 @@ urlpatterns = [
     path("meal-slots/<uuid:slot_id>", planning_api.meal_slot_detail),
     path("meal-slots/<uuid:slot_id>/mark-cooked", planning_api.meal_slot_mark_cooked),
     path("cook-events", planning_api.cook_history),
+    path("recommendations", recommendations_api.recommendations),
+    path(
+        "recommendations/<uuid:run_id>/feedback",
+        recommendations_api.recommendation_feedback,
+    ),
     path("shopping-lists", shopping_api.shopping_lists),
     path("shopping-lists/<uuid:list_id>", shopping_api.shopping_list_detail),
     path("shopping-lists/<uuid:list_id>/items", shopping_api.shopping_items),
