@@ -78,3 +78,13 @@ class AbsoluteSessionExpiryMiddleware:
                     now + timedelta(seconds=60 * 60 * 24 * 7)
                 ).timestamp()
         return self.get_response(request)
+
+
+class ActiveHouseholdMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.user.is_authenticated:
+            request.user._active_household_id = request.session.get("active_household_id")
+        return self.get_response(request)

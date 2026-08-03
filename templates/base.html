@@ -31,10 +31,27 @@
         {% if is_household_owner %}<a href="{% url 'operations' %}"{% if "/admin/operations" in request.path %} aria-current="page"{% endif %}>Betrieb</a>{% endif %}
       </nav>
       <div class="header-actions">
+        {% if current_household %}
+          <form method="post" action="{% url 'household-switch' %}" class="household-switcher">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <label class="sr-only" for="household-switch">Aktueller Haushalt</label>
+            <select id="household-switch" name="household_id" onchange="this.form.submit()">
+              {% for membership in household_memberships %}
+                <option value="{{ membership.household_id }}"{% if membership.household_id == current_household.id %} selected{% endif %}>{{ membership.household.name }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% if is_household_owner %}<a class="icon-button ghost household-settings-link" href="{% url 'household-settings' %}" aria-label="Haushalt verwalten" title="Haushalt verwalten"><svg aria-hidden="true"><use href="#i-settings"></use></svg></a>{% endif %}
+        {% endif %}
         <span class="sr-only">Angemeldet als {{ user.name_for_display }}</span>
         <form method="post" action="/accounts/logout/">{% csrf_token %}
           <button class="ghost" type="submit">Abmelden</button>
         </form>
+      </div>
+    {% else %}
+      <div class="header-actions">
+        <a class="button ghost" href="{% url 'login' %}">Anmelden</a>
       </div>
     {% endif %}
   </div>

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Haushalt beitreten · Odori{% endblock %}
+{% block body_class %}onboarding-page{% endblock %}
+{% block tabbar %}{% endblock %}
+
+{% block content %}
+<section class="panel onboarding-heading">
+  <p class="section-kicker">Haushaltseinladung</p>
+  <h1>{{ invitation.household.name }} beitreten?</h1>
+  <p>Du erhältst Zugriff auf die gemeinsame Planung, Rezepte und Einkaufsliste dieses Haushalts.</p>
+  <form method="post" class="button-row">
+    {% csrf_token %}
+    <button class="primary" type="submit">Haushalt beitreten</button>
+    <a class="button secondary" href="{% url 'household-onboarding' %}">Abbrechen</a>
+  </form>
+</section>
+{% endblock %}

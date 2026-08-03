@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load static socialaccount %}
+{% block title %}Odori · Deine private Küche{% endblock %}
+{% block body_class %}landing-page{% endblock %}
+
+{% block content %}
+<section class="landing-hero">
+  <img
+    class="landing-hero__image"
+    src="{% static 'tuscany-kitchen-window.png' %}"
+    alt="Blick aus einer toskanischen Küche auf Olivenhaine in der Abendsonne"
+  >
+  <div class="landing-hero__shade"></div>
+  <div class="landing-hero__body">
+    <p class="hero__eyebrow">La cucina di casa</p>
+    <h1>Deine private Küche, gut organisiert.</h1>
+    <p>
+      Odori bringt Rezepte, Wochenplan, Vorräte und Einkauf in einem geschützten
+      Zuhause für deinen Haushalt zusammen.
+    </p>
+    <div class="hero__actions">
+      <a class="button google-button" href="{% provider_login_url 'google' %}">
+        <span class="google-mark" aria-hidden="true">G</span>
+        Mit Google anmelden
+      </a>
+      <a class="button" href="{% url 'login' %}">Mit Passwort anmelden</a>
+    </div>
+  </div>
+</section>
+
+<section class="landing-intro" aria-labelledby="landing-about">
+  <div>
+    <p class="section-kicker">Ein gemeinsamer Ort</p>
+    <h2 id="landing-about">Vom Rezept bis zum gedeckten Tisch</h2>
+  </div>
+  <p>
+    Sammle Lieblingsrezepte, plane eure Woche und behalte im Blick, was im Vorrat
+    liegt. Odori leitet daraus eine Einkaufsliste ab, die alle im Haushalt teilen.
+  </p>
+</section>
+
+<section class="feature-grid" aria-label="Was Odori für deinen Haushalt tut">
+  <article><span>01</span><h3>Rezepte bewahren</h3><p>Links und eigene Gerichte werden zu eurem privaten, durchsuchbaren Kochbuch.</p></article>
+  <article><span>02</span><h3>Gemeinsam planen</h3><p>Ordnet Mahlzeiten einer Woche zu und seht sofort, was als Nächstes ansteht.</p></article>
+  <article><span>03</span><h3>Vorrat nutzen</h3><p>Haltet Verfügbarkeit bewusst einfach fest und plant mit dem, was schon da ist.</p></article>
+  <article><span>04</span><h3>Gezielt einkaufen</h3><p>Aus dem Wochenplan entsteht eine gemeinsame Liste ohne doppelte Einträge.</p></article>
+</section>
+{% endblock %}

@@ -1,7 +1,9 @@
 import json
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.http import Http404
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -9,6 +11,7 @@ from django.urls import reverse
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient
 
+from .images import recipe_image_prompt
 from .models import Recipe, RecipeImageJob, RecipeIngredient, RecipeSource
 from .services import create_or_update_recipe, create_recipe_revision
 
@@ -161,6 +164,61 @@ class RecipeLifecycleTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_recipe_save_only_queues_image_when_its_computed_prompt_changes(self):
+        response = self.create_recipe()
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        original_job = RecipeImageJob.objects.get(recipe=recipe)
+        recipe.image = "recipes/existing.png"
+        recipe.image_status = "ready"
+        recipe.image_prompt = recipe_image_prompt(recipe)
+        recipe.save(update_fields=["image", "image_status", "image_prompt"])
+
+        create_or_update_recipe(user=self.user, recipe=recipe, data={"servings": 4})
+
+        self.assertEqual(RecipeImageJob.objects.filter(recipe=recipe).count(), 1)
+        original_job.refresh_from_db()
+        self.assertEqual(original_job.state, RecipeImageJob.State.QUEUED)
+
+        create_or_update_recipe(user=self.user, recipe=recipe, data={"title": "Pasta neu"})
+
+        original_job.refresh_from_db()
+        self.assertEqual(original_job.state, RecipeImageJob.State.SUPERSEDED)
+        self.assertEqual(
+            RecipeImageJob.objects.filter(recipe=recipe, state=RecipeImageJob.State.QUEUED).count(),
+            1,
+        )
+
+    def test_embedding_work_happens_outside_recipe_write_transaction(self):
+        transaction_states = []
+        outer_savepoint_ids = list(connection.savepoint_ids)
+
+        def record_best_match(*args):
+            transaction_states.append(list(connection.savepoint_ids))
+            return None
+
+        def record_search_embedding(*args):
+            transaction_states.append(list(connection.savepoint_ids))
+            return False
+
+        with (
+            patch("recipes.services.best_match", side_effect=record_best_match),
+            patch("recipes.services.update_search_embedding", side_effect=record_search_embedding),
+        ):
+            create_or_update_recipe(
+                user=self.user,
+                data={"title": "Suppe", "ingredients": [{"sourceText": "Linsen"}]},
+            )
+
+        self.assertEqual(transaction_states, [outer_savepoint_ids, outer_savepoint_ids])
+
+    def test_servings_only_update_does_not_refresh_the_search_embedding(self):
+        recipe = Recipe.objects.get(id=self.create_recipe().json()["id"])
+
+        with patch("recipes.services.update_search_embedding") as update_embedding:
+            create_or_update_recipe(user=self.user, recipe=recipe, data={"servings": 4})
+
+        update_embedding.assert_not_called()
 
     def test_recipe_mutation_pages_reject_get_requests(self):
         response = self.create_recipe()

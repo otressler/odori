@@ -7,13 +7,8 @@ from django.utils import timezone
 
 from core.models import WorkerHeartbeat
 from core.observability import log_event
-from pantry.images import (
-    queue_missing_ingredient_icons,
-    recover_interrupted_ingredient_icon_jobs,
-    run_next_ingredient_icon_job,
-)
+from pantry.images import recover_interrupted_ingredient_icon_jobs, run_next_ingredient_icon_job
 from pantry.jobs import recover_interrupted_category_jobs, run_next_category_job
-from pantry.models import CanonicalIngredient
 from recipes.images import recover_interrupted_recipe_image_jobs, run_next_recipe_image_job
 
 logger = logging.getLogger(__name__)
@@ -87,12 +82,6 @@ class Command(BaseCommand):
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted ingredient icon job(s).")
             log_event(logger, "worker.jobs_requeued", job_type="ingredient_icon", count=recovered)
-        queued = queue_missing_ingredient_icons(
-            CanonicalIngredient.objects.filter(active=True).iterator()
-        )
-        if queued:
-            self.stdout.write(f"Queued {queued} missing ingredient icon(s).")
-            log_event(logger, "worker.jobs_queued", job_type="ingredient_icon", count=queued)
         recovered = recover_interrupted_category_jobs()
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted pantry categorization job(s).")

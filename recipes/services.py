@@ -7,7 +7,7 @@ from core.services import household_for
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
-from .images import queue_recipe_image
+from .images import queue_recipe_image, queue_recipe_image_if_needed
 from .models import (
     Recipe,
     RecipeFavorite,
@@ -33,65 +33,76 @@ class StaleRecipeVersion(Exception):
     pass
 
 
-@transaction.atomic
 def create_or_update_recipe(*, user, data, recipe=None):
     household = household_for(user)
-    if recipe is None:
-        source = RecipeSource.objects.create(household=household)
-        recipe = Recipe.objects.create(household=household, source=source, created_by=user)
-    if recipe.status == Recipe.Status.ARCHIVED:
-        raise ValueError("Archived recipes cannot be edited.")
-    for key in ("title", "description", "servings"):
-        if key in data:
-            value = data[key] or ("" if key == "description" else None)
-            if key == "servings" and value is not None:
-                try:
-                    value = int(value)
-                except (TypeError, ValueError) as exc:
-                    raise ValueError("servings must be a positive whole number") from exc
-                if value < 1:
-                    raise ValueError("servings must be a positive whole number")
-            setattr(recipe, key, value)
-    recipe.version += 1
-    recipe.save()
+    is_new_recipe = recipe is None
+    matched_ingredients = {}
     if "ingredients" in data:
-        RecipeIngredient.objects.filter(recipe=recipe).delete()
-        active_ingredients = CanonicalIngredient.objects.filter(household=household, active=True)
+        active_ingredients = list(
+            CanonicalIngredient.objects.filter(household=household, active=True)
+        )
         for index, line in enumerate(data["ingredients"]):
-            ingredient = None
-            if line.get("canonicalIngredientId"):
-                ingredient = CanonicalIngredient.objects.filter(
-                    id=line["canonicalIngredientId"], household=household
-                ).first()
-                if not ingredient:
-                    raise ValueError("Ingredient does not belong to this household.")
-            elif line.get("sourceText"):
-                ingredient = best_match(active_ingredients, line["sourceText"])
-            RecipeIngredient.objects.create(
-                recipe=recipe,
-                canonical_ingredient=ingredient,
-                source_text=line.get("sourceText", "").strip(),
-                amount=as_decimal(line.get("amount")),
-                unit=line.get("unit", "").strip(),
-                optional=bool(line.get("optional", False)),
-                sort_order=index,
-                match_state=RecipeIngredient.MatchState.MATCHED
-                if ingredient
-                else RecipeIngredient.MatchState.UNRESOLVED,
-            )
-    if "steps" in data:
-        RecipeStep.objects.filter(recipe=recipe).delete()
-        for index, step in enumerate(data["steps"]):
-            body = step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
-            if body:
-                RecipeStep.objects.create(recipe=recipe, body=body, sort_order=index)
-    if "tags" in data:
-        RecipeTagAssignment.objects.filter(recipe=recipe).delete()
-        for name in data["tags"]:
-            tag, _ = RecipeTag.objects.get_or_create(household=household, name=name.strip().lower())
-            RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
-    queue_recipe_image(recipe)
-    update_search_embedding(recipe)
+            if not line.get("canonicalIngredientId") and line.get("sourceText"):
+                matched_ingredients[index] = best_match(active_ingredients, line["sourceText"])
+    with transaction.atomic():
+        if recipe is None:
+            source = RecipeSource.objects.create(household=household)
+            recipe = Recipe.objects.create(household=household, source=source, created_by=user)
+        if recipe.status == Recipe.Status.ARCHIVED:
+            raise ValueError("Archived recipes cannot be edited.")
+        for key in ("title", "description", "servings"):
+            if key in data:
+                value = data[key] or ("" if key == "description" else None)
+                if key == "servings" and value is not None:
+                    try:
+                        value = int(value)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError("servings must be a positive whole number") from exc
+                    if value < 1:
+                        raise ValueError("servings must be a positive whole number")
+                setattr(recipe, key, value)
+        recipe.version += 1
+        recipe.save()
+        if "ingredients" in data:
+            RecipeIngredient.objects.filter(recipe=recipe).delete()
+            for index, line in enumerate(data["ingredients"]):
+                ingredient = matched_ingredients.get(index)
+                if line.get("canonicalIngredientId"):
+                    ingredient = CanonicalIngredient.objects.filter(
+                        id=line["canonicalIngredientId"], household=household
+                    ).first()
+                    if not ingredient:
+                        raise ValueError("Ingredient does not belong to this household.")
+                RecipeIngredient.objects.create(
+                    recipe=recipe,
+                    canonical_ingredient=ingredient,
+                    source_text=line.get("sourceText", "").strip(),
+                    amount=as_decimal(line.get("amount")),
+                    unit=line.get("unit", "").strip(),
+                    optional=bool(line.get("optional", False)),
+                    sort_order=index,
+                    match_state=RecipeIngredient.MatchState.MATCHED
+                    if ingredient
+                    else RecipeIngredient.MatchState.UNRESOLVED,
+                )
+        if "steps" in data:
+            RecipeStep.objects.filter(recipe=recipe).delete()
+            for index, step in enumerate(data["steps"]):
+                body = (
+                    step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
+                )
+                if body:
+                    RecipeStep.objects.create(recipe=recipe, body=body, sort_order=index)
+        if "tags" in data:
+            RecipeTagAssignment.objects.filter(recipe=recipe).delete()
+            for name in data["tags"]:
+                tag, _ = RecipeTag.objects.get_or_create(
+                    household=household, name=name.strip().lower()
+                )
+                RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
+        queue_recipe_image_if_needed(recipe)
+    if is_new_recipe or {"title", "description", "ingredients", "tags"} & data.keys():
+        update_search_embedding(recipe)
     return recipe
 
 

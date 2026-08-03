@@ -1,10 +1,10 @@
 import json
 from datetime import timedelta
-from tempfile import TemporaryDirectory
+from io import BytesIO
 from unittest.mock import patch
 
 from django.conf import settings
-from django.core.files.base import ContentFile
+from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
@@ -22,7 +22,8 @@ from .models import (
     InventoryItem,
     PantryCategorizationJob,
 )
-from .services import classify_category
+from .semantic import query_embedding
+from .services import classify_category, similar_ingredient_recommendations
 
 
 class PantryApiTests(TestCase):
@@ -117,6 +118,16 @@ class PantryApiTests(TestCase):
         self.assertEqual(result[0]["id"], str(self.ingredient.id))
         self.assertGreaterEqual(result[0]["matchScore"], 0.84)
 
+    @patch("pantry.semantic.embed", return_value=[1.0, 0.0])
+    def test_query_embeddings_are_cached(self, embed):
+        query = "unique cached query"
+        cache.clear()
+
+        self.assertEqual(query_embedding(query), [1.0, 0.0])
+        self.assertEqual(query_embedding(query.upper()), [1.0, 0.0])
+
+        embed.assert_called_once_with(query)
+
     def test_category_scores_expose_text_and_embedding_usage(self):
         IngredientCategory.objects.create(
             household=self.household, name="Trockenwaren", sort_order=50
@@ -146,6 +157,19 @@ class PantryApiTests(TestCase):
         )
         self.ingredient.refresh_from_db()
         self.assertEqual(self.ingredient.name, "Tomate")
+
+    def test_ingredient_creation_rejects_invalid_aliases(self):
+        response = self.client.post(
+            "/api/v1/ingredients",
+            json.dumps({"name": "Basilikum", "aliases": [1]}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("aliases", response.json()["error"]["fields"])
+        self.assertFalse(
+            CanonicalIngredient.objects.filter(household=self.household, name="Basilikum").exists()
+        )
 
     def test_ingredient_patch_normalizes_valid_text_fields(self):
         response = self.client.patch(
@@ -441,9 +465,14 @@ class PantryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context["items"]), [matching])
 
-    def test_ingredient_icon_is_limited_to_its_household(self):
-        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
-            self.ingredient.icon.save("tomate.png", ContentFile(b"icon"), save=True)
+    @override_settings(DEBUG=False)
+    def test_ingredient_icon_is_served_only_to_its_household(self):
+        self.ingredient.icon.name = "pantry-icons/tomate.png"
+        self.ingredient.save(update_fields=["icon"])
+        with patch(
+            "django.db.models.fields.files.FieldFile.open",
+            return_value=BytesIO(b"icon"),
+        ):
             response = self.client.get(f"/pantry/icons/{self.ingredient.id}/")
 
             self.assertEqual(response.status_code, 200)
@@ -468,6 +497,23 @@ class PantryApiTests(TestCase):
         self.assertContains(response, "Tomate")
         plural.refresh_from_db()
         self.assertTrue(plural.active)
+
+    @patch("pantry.semantic.embed")
+    def test_condense_uses_persisted_embeddings_without_provider_calls(self, embed):
+        self.ingredient.embedding = [1.0, 0.0]
+        self.ingredient.save(update_fields=["embedding"])
+        plural = CanonicalIngredient.objects.create(
+            household=self.household,
+            name="Tomaten",
+            embedding=[0.99, 0.01],
+        )
+
+        recommendations = similar_ingredient_recommendations(user=self.user)
+
+        self.assertEqual(recommendations[0]["source"], plural)
+        self.assertEqual(recommendations[0]["target"], self.ingredient)
+        self.assertTrue(recommendations[0]["semantic"])
+        embed.assert_not_called()
 
     def test_condense_merges_only_after_user_confirmation(self):
         plural = CanonicalIngredient.objects.create(household=self.household, name="Tomaten")

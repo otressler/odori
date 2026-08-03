@@ -11,6 +11,11 @@ services:
     environment: !reset []
     env_file: .env
     networks: !override [net]
+  odori-migrate:
+    build: .
+    environment: !reset []
+    env_file: .env
+    networks: !override [net]
   postgres:
     environment: !reset []
     env_file: .env

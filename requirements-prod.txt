@@ -1,4 +1,5 @@
 Django==5.2.16
+django-allauth[socialaccount]==65.11.1
 django-orbit[mcp]==0.12.0
 dj-database-url==2.3.0
 psycopg[binary]==3.2.13

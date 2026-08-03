@@ -301,6 +301,17 @@ a {
   margin-left: 0.5rem;
 }
 
+.household-switcher select {
+  width: auto;
+  max-width: 12rem;
+  min-height: 2.6rem;
+  padding-right: 2rem;
+}
+
+.household-settings-link {
+  font-size: 1.1rem;
+}
+
 @media (min-width: 56rem) {
   .site-nav {
     display: flex;
@@ -2491,6 +2502,170 @@ body.kitchen main {
 
 /* ---------- 15. Sign-in ---------- */
 
+.landing-page main {
+  max-width: none;
+  padding: 0 0 5rem;
+}
+
+.landing-hero {
+  position: relative;
+  min-height: min(78vh, 48rem);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.landing-hero__image,
+.landing-hero__shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-hero__image {
+  z-index: -2;
+  object-fit: cover;
+  object-position: center;
+}
+
+.landing-hero__shade {
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(28, 15, 8, 0.9) 0%, rgba(28, 15, 8, 0.68) 44%, rgba(28, 15, 8, 0.12) 78%);
+}
+
+.landing-hero__body {
+  width: min(100%, var(--shell));
+  margin: 0 auto;
+  padding: clamp(3rem, 7vw, 7rem) 1.25rem;
+}
+
+.landing-hero__body h1 {
+  max-width: 42rem;
+  margin: 0 0 1rem;
+  color: #fffaf0;
+  font-size: clamp(2.8rem, 7vw, 5.8rem);
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.landing-hero__body > p:not(.hero__eyebrow) {
+  max-width: 37rem;
+  color: #fff4de;
+  font-size: 1.2rem;
+  text-shadow: 0 1px 12px rgba(16, 7, 3, 0.7);
+}
+
+.google-button {
+  background: #fff;
+  color: #332a24;
+}
+
+.google-mark {
+  color: #4285f4;
+  font-weight: 800;
+}
+
+.landing-intro,
+.feature-grid,
+.onboarding-heading,
+.onboarding-grid {
+  width: min(calc(100% - 2.5rem), var(--shell));
+  margin-inline: auto;
+}
+
+.landing-intro {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: end;
+  padding: 3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.section-kicker {
+  margin-bottom: 0.45rem;
+  color: var(--terracotta-deep);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.landing-intro h2,
+.onboarding-heading h1 {
+  margin: 0;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  padding-top: 2.5rem;
+}
+
+.feature-grid article {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 1.25rem;
+  border-left: 1px solid var(--line);
+}
+
+.feature-grid article:first-child {
+  border-left: 0;
+}
+
+.feature-grid article > span {
+  color: var(--terracotta-deep);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+}
+
+.feature-grid h3 {
+  margin: 1.5rem 0 0.5rem;
+}
+
+.onboarding-heading {
+  max-width: 46rem;
+  margin-top: 3rem;
+  text-align: center;
+}
+
+.onboarding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  max-width: 58rem;
+  margin-top: 2rem;
+}
+
+.code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+
+.invitation-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.invitation-row {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 1rem;
+  align-items: end;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.invitation-row strong {
+  display: block;
+  font-size: 1.45rem;
+  letter-spacing: 0.12em;
+}
+
 .narrow {
   max-width: 26rem;
   margin: 3rem auto;
@@ -2534,6 +2709,50 @@ body.kitchen main {
 }
 
 @media (max-width: 40rem) {
+  .landing-hero {
+    min-height: 35rem;
+    align-items: end;
+  }
+
+  .landing-hero__shade {
+    background: linear-gradient(0deg, rgba(28, 15, 8, 0.92), rgba(28, 15, 8, 0.2) 90%);
+  }
+
+  .landing-hero__body h1 {
+    font-size: 2.6rem;
+  }
+
+  .landing-hero__body > p:not(.hero__eyebrow) {
+    font-size: 1.05rem;
+  }
+
+  .landing-intro,
+  .onboarding-grid,
+  .invitation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-intro {
+    padding: 1rem 0 2rem;
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .feature-grid article:nth-child(3) {
+    border-left: 0;
+  }
+
+  .household-switcher select {
+    max-width: 8rem;
+  }
+
+  .header-actions > form:last-child,
+  .household-settings-link {
+    display: none;
+  }
+
   .ingredient-row {
     grid-template-columns: 1fr;
   }

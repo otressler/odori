@@ -5,10 +5,12 @@ import re
 import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from hashlib import sha256
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.core.cache import cache
 
 from core.observability import bind_context, current_context, log_event, record_provider_diagnostic
 
@@ -160,6 +162,19 @@ def embed(text):
     return embed_with_diagnostics(text).vector
 
 
+def query_embedding(query):
+    normalized_query = normalized_text(query)
+    cache_key = "query-embedding:" + sha256(
+        f"{settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT}:{normalized_query}".encode()
+    ).hexdigest()
+    vector = cache.get(cache_key)
+    if vector is None:
+        vector = embed(query)
+        if vector is not None:
+            cache.set(cache_key, vector, timeout=3600)
+    return vector
+
+
 def ingredient_embedding_text(ingredient):
     return " ".join([ingredient.name, *ingredient.aliases])
 
@@ -186,7 +201,7 @@ def update_embedding(ingredient, *, job_id=None, correlation_id=None):
 
 
 def rank_ingredients(ingredients, query):
-    query_vector = embed(query)
+    query_vector = query_embedding(query)
     ranked = []
     for ingredient in ingredients:
         vector_score = _cosine(query_vector, ingredient.embedding) if query_vector else None

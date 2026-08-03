@@ -2,8 +2,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from core.api import error, read_json
 from core.services import household_for
-from pantry.api import error, payload
 from planning.services import parse_week_start
 
 from .models import ShoppingList
@@ -80,7 +80,7 @@ def generate(request, week_start):
 @login_required
 @require_http_methods(["POST"])
 def shopping_items(request, list_id):
-    data = payload(request)
+    data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected a JSON object.", 400)
     try:
@@ -99,7 +99,7 @@ def shopping_items(request, list_id):
 @require_http_methods(["PATCH", "DELETE"])
 def shopping_item_detail(request, list_id, item_id):
     if request.method == "DELETE":
-        data = payload(request)
+        data = read_json(request)
         if not isinstance(data, dict):
             return error("malformed_input", "Expected a JSON object.", 400)
         try:
@@ -112,7 +112,7 @@ def shopping_item_detail(request, list_id, item_id):
                 fields={"version": conflict.item.version},
             )
         return JsonResponse({}, status=204)
-    data = payload(request)
+    data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected a JSON object.", 400)
     try:
@@ -137,7 +137,7 @@ def shopping_item_detail(request, list_id, item_id):
 @login_required
 @require_http_methods(["POST"])
 def purchase(request, list_id, item_id):
-    data = payload(request) or {}
+    data = read_json(request) or {}
     try:
         item = purchase_item(user=request.user, item_id=item_id, version=data.get("version"))
     except StaleItemVersion as conflict:

@@ -30,6 +30,9 @@ class ShoppingList(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    def __str__(self):
+        return self.name
+
 
 class ShoppingItem(models.Model):
     class Source(models.TextChoices):
@@ -63,6 +66,11 @@ class ShoppingItem(models.Model):
 
     class Meta:
         ordering = ["state", "label"]
+        indexes = [
+            models.Index(
+                fields=["shopping_list", "state"], name="shopping_item_list_state_idx"
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["shopping_list", "grouping_key"],
@@ -103,6 +111,9 @@ class ShoppingItem(models.Model):
     def earliest_recipe_requirement(self):
         requirements = self.recipe_requirements
         return requirements[0] if requirements else None
+
+    def __str__(self):
+        return self.label
 
 
 def component_text(component):

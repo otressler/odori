@@ -26,6 +26,9 @@ class IngredientCategory(models.Model):
         ]
         ordering = ["sort_order", "name"]
 
+    def __str__(self):
+        return self.name
+
 
 class IngredientCategoryExample(models.Model):
     class Source(models.TextChoices):
@@ -72,6 +75,9 @@ class IngredientCategoryExample(models.Model):
         ]
         ordering = ["category__sort_order", "category__name", "text"]
 
+    def __str__(self):
+        return self.text
+
 
 class PantryCategorizationJob(models.Model):
     class State(models.TextChoices):
@@ -104,6 +110,13 @@ class PantryCategorizationJob(models.Model):
             )
         ]
 
+    @classmethod
+    def for_household(cls, household):
+        return cls.objects.filter(household=household)
+
+    def __str__(self):
+        return f"Categorization for {self.household} ({self.get_state_display()})"
+
 
 class CanonicalIngredient(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -132,6 +145,9 @@ class CanonicalIngredient(models.Model):
         ]
         ordering = ["name"]
 
+    def __str__(self):
+        return self.name
+
 
 class IngredientIconJob(models.Model):
     class State(models.TextChoices):
@@ -152,11 +168,19 @@ class IngredientIconJob(models.Model):
     error_code = models.CharField(max_length=80, blank=True)
     correlation_id = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    available_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
+
+    @classmethod
+    def for_household(cls, household):
+        return cls.objects.filter(ingredient__household=household)
+
+    def __str__(self):
+        return f"Icon for {self.ingredient} ({self.get_state_display()})"
 
 
 class InventoryItem(models.Model):
@@ -180,6 +204,12 @@ class InventoryItem(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["household", "ingredient"], name="one_inventory_item")
         ]
+        indexes = [
+            models.Index(fields=["household", "status"], name="inventory_household_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.ingredient} ({self.get_status_display()})"
 
 
 class InventoryEvent(models.Model):
@@ -202,3 +232,9 @@ class InventoryEvent(models.Model):
         related_name="inventory_events",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return (
+            f"{self.item}: {self.get_previous_status_display()} → "
+            f"{self.get_new_status_display()}"
+        )

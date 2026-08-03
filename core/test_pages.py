@@ -5,7 +5,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from core.models import Household, HouseholdMembership, User
+from core.models import Household, HouseholdInvitation, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryItem
 from planning.models import MealPlan, MealSlot
 from planning.services import add_slot, current_week_start
@@ -183,6 +183,82 @@ class PageRenderTests(TestCase):
         self.client.logout()
         response = self.client.get("/accounts/login/")
         self.assertContains(response, "Willkommen zurück")
+
+    def test_anonymous_home_is_the_landing_page(self):
+        self.client.logout()
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Deine private Küche")
+        self.assertContains(response, "toskanischen Küche")
+
+    def test_user_without_household_is_sent_to_onboarding(self):
+        newcomer = User.objects.create_user(username="newcomer", password="pass")
+        self.client.force_login(newcomer)
+
+        response = self.client.get("/")
+
+        self.assertRedirects(response, "/households/new/")
+
+    def test_user_can_create_a_household(self):
+        newcomer = User.objects.create_user(username="newcomer", password="pass")
+        self.client.force_login(newcomer)
+
+        response = self.client.post("/households/new/", {"name": "Casa Nuova"})
+
+        membership = HouseholdMembership.objects.get(user=newcomer)
+        self.assertEqual(membership.household.name, "Casa Nuova")
+        self.assertEqual(membership.role, HouseholdMembership.Role.OWNER)
+        self.assertRedirects(response, "/")
+
+    def test_user_can_join_with_registration_code(self):
+        invitation = HouseholdInvitation.objects.create(
+            household=self.household,
+            created_by=self.user,
+        )
+        newcomer = User.objects.create_user(username="newcomer", password="pass")
+        self.client.force_login(newcomer)
+
+        response = self.client.post(
+            "/households/new/", {"registration_code": invitation.registration_code}
+        )
+
+        self.assertTrue(
+            HouseholdMembership.objects.filter(user=newcomer, household=self.household).exists()
+        )
+        self.assertRedirects(response, "/")
+
+    def test_invitation_link_requires_a_post_confirmation(self):
+        invitation = HouseholdInvitation.objects.create(
+            household=self.household,
+            created_by=self.user,
+        )
+        newcomer = User.objects.create_user(username="newcomer", password="pass")
+        self.client.force_login(newcomer)
+
+        response = self.client.get(f"/households/join/{invitation.token}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            HouseholdMembership.objects.filter(user=newcomer, household=self.household).exists()
+        )
+
+        response = self.client.post(f"/households/join/{invitation.token}/")
+
+        self.assertTrue(
+            HouseholdMembership.objects.filter(user=newcomer, household=self.household).exists()
+        )
+        self.assertRedirects(response, "/")
+
+    def test_user_can_switch_current_household(self):
+        second = Household.objects.create(name="Casa Due")
+        HouseholdMembership.objects.create(user=self.user, household=second, role="member")
+
+        response = self.client.post("/households/switch/", {"household_id": second.id})
+
+        self.assertRedirects(response, "/")
+        self.assertEqual(self.client.get("/").context["household"], second)
 
     def test_signing_in_lands_on_the_home_page(self):
         self.client.logout()

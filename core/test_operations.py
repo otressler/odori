@@ -7,10 +7,11 @@ from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
-from pantry.models import PantryCategorizationJob
+from pantry.models import CanonicalIngredient, IngredientIconJob, PantryCategorizationJob
+from recipes.models import Recipe, RecipeImageJob, RecipeSource
 
 from .models import Household, HouseholdMembership, ProviderDiagnostic, User, WorkerHeartbeat
-from .views import operations_page, retry_category_job, worker_readiness
+from .views import job_state_counts, operations_page, retry_category_job, worker_readiness
 
 
 class OperationsPageTests(TestCase):
@@ -66,6 +67,26 @@ class OperationsPageTests(TestCase):
 
         with self.assertRaises(PermissionDenied):
             operations_page(request)
+
+    def test_job_state_counts_uses_each_model_household_query(self):
+        ingredient = CanonicalIngredient.objects.create(household=self.household, name="Tomate")
+        IngredientIconJob.objects.create(
+            ingredient=ingredient, prompt="A tomato", state=IngredientIconJob.State.FAILED
+        )
+        source = RecipeSource.objects.create(household=self.household)
+        recipe = Recipe.objects.create(
+            household=self.household, created_by=self.owner, source=source, title="Soup"
+        )
+        RecipeImageJob.objects.create(
+            recipe=recipe, prompt="A soup", state=RecipeImageJob.State.SUCCEEDED
+        )
+
+        self.assertEqual(
+            job_state_counts(IngredientIconJob, household=self.household)["failed"], 1
+        )
+        self.assertEqual(
+            job_state_counts(RecipeImageJob, household=self.household)["succeeded"], 1
+        )
 
     def test_failed_category_job_can_be_requeued_by_owner(self):
         job = PantryCategorizationJob.objects.create(

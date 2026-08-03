@@ -24,6 +24,9 @@ class MealPlan(models.Model):
         ]
         ordering = ["-week_start_date"]
 
+    def __str__(self):
+        return f"{self.household}: week of {self.week_start_date}"
+
 
 class MealSlot(models.Model):
     class Slot(models.TextChoices):
@@ -55,6 +58,9 @@ class MealSlot(models.Model):
 
     class Meta:
         ordering = ["date", "created_at"]
+        indexes = [
+            models.Index(fields=["plan", "date"], name="meal_slot_plan_date_idx"),
+        ]
 
     @property
     def is_cooked(self):
@@ -65,6 +71,9 @@ class MealSlot(models.Model):
         if self.entry_type == self.EntryType.RECIPE and self.recipe:
             return self.recipe.title or "Unbenannter Entwurf"
         return self.notes
+
+    def __str__(self):
+        return f"{self.date} {self.get_slot_display()}: {self.display_label or 'Empty'}"
 
 
 class CookEvent(models.Model):
@@ -79,3 +88,6 @@ class CookEvent(models.Model):
 
     class Meta:
         ordering = ["-cooked_at"]
+
+    def __str__(self):
+        return f"{self.recipe} cooked on {self.cooked_at:%Y-%m-%d}"

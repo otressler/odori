@@ -2,20 +2,25 @@
 
 ## Target topology
 
-Odori runs on a Raspberry Pi 5 under Docker Compose and is managed in Portainer. Traefik provides HTTPS routing on a shared Docker `web` network. Tailscale limits access to the tailnet; the application and database must not publish host ports.
+Odori runs on a Raspberry Pi 5 under Docker Compose and is managed in Portainer. Traefik provides HTTPS routing on a shared external Docker `proxy` network. Tailscale limits access to the tailnet; the application and database must not publish host ports.
 
 Use ARM64-compatible images and pin image versions/digests for releases. Build a multi-architecture image if development or CI runs on x86_64.
 
 ## Compose shape
 
+This is a topology overview; `docker-compose.yml` is authoritative for the complete environment
+mapping and the worker healthcheck command.
+
 ```yaml
 services:
   odori-web:
     image: ghcr.io/otressler/odori:${ODORI_VERSION}
-    env_file: .env
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --access-logfile - --error-logfile - --capture-output odori.wsgi:application
     depends_on:
       postgres:
         condition: service_healthy
+      odori-migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/data/uploads
     labels:
@@ -24,28 +29,43 @@ services:
       - traefik.http.routers.odori.entrypoints=websecure
       - traefik.http.routers.odori.tls=true
       - traefik.http.services.odori.loadbalancer.server.port=8000
-    networks: [web, internal]
+    networks: [proxy, internal]
 
   odori-worker:
     image: ghcr.io/otressler/odori:${ODORI_VERSION}
-    command: ./bin/worker
-    env_file: .env
+    command: python manage.py worker
     depends_on:
       postgres:
         condition: service_healthy
+      odori-migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/data/uploads
     networks: [internal, egress]
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "shell", "-c", "<checks the default WorkerHeartbeat is fresh>"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  odori-migrate:
+    image: ghcr.io/otressler/odori:${ODORI_VERSION}
+    command: python manage.py migrate --noinput
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
 
   postgres:
-    image: postgres:16-alpine
-    env_file: .env
+    image: postgres:18.4-alpine
     environment:
       POSTGRES_DB: odori
       POSTGRES_USER: odori
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U odori -d odori"]
       interval: 10s
@@ -54,7 +74,7 @@ services:
     networks: [internal]
 
 networks:
-  web:
+  proxy:
     external: true
   internal:
     internal: true
@@ -65,45 +85,61 @@ volumes:
   uploads:
 ```
 
-The router name deliberately remains `cucina` to match the supplied Traefik requirement; it can be renamed to `odori` only after updating dependent routing configuration. The worker needs `egress` for recipe URLs and Azure while retaining `internal` access to PostgreSQL. A Docker egress network does not itself restrict destinations; enforce an outbound allow/deny policy with the host firewall or an explicit proxy if destination-level filtering is required.
+The router is named `odori`. The worker needs `egress` for recipe URLs and Azure while retaining
+`internal` access to PostgreSQL. A Docker egress network does not itself restrict destinations;
+enforce an outbound allow/deny policy with the host firewall or an explicit proxy if
+destination-level filtering is required.
 
-The example uses `.env` for readability. Compose variable substitution for `${POSTGRES_PASSWORD}` comes from the shell or project-level `.env`, not another service's `env_file`. In production, prefer Docker secrets or an equivalent mounted secret and adapt the image entrypoint to read the secret file.
+The checked-in Compose file maps application variables explicitly; a project-level `.env` supplies
+values for Compose substitution but is not automatically injected into a container. Keep the
+mapping and `.env.example` in sync when adding a runtime setting. In production, prefer Docker
+secrets or an equivalent mounted secret and adapt the application configuration to read the secret
+file.
 
 ## Required configuration
 
 | Variable | Purpose |
-| `INGREDIENT_EMBEDDINGS_ENABLED` | Enables Azure OpenAI semantic ingredient matching; disable to use local fuzzy matching only. |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Azure OpenAI embedding deployment name used for ingredient vectors. |
-| `AZURE_OPENAI_IMAGE_DEPLOYMENT` | Microsoft Foundry `gpt-image-2` deployment name used by the worker for recipe-card images. Defaults to `gpt-image-2` and may be overridden for a differently named deployment. |
-| `AZURE_OPENAI_IMAGE_API_VERSION` | Image generation API version; defaults to `2025-04-01-preview`. |
-| `AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS` | Maximum image-generation request duration; defaults to `60`. |
-| `WORKER_HEARTBEAT_MAX_AGE_SECONDS` | Maximum age of a worker heartbeat before `/health/worker` and the owner operations page report it as unavailable. Defaults to `30`. |
 | --- | --- |
-| `ODORI_VERSION` | Immutable application release tag. |
-| `DATABASE_URL` | PostgreSQL connection string on the internal Docker network. |
-| `POSTGRES_PASSWORD` | Database password, supplied via Docker secret where practical. |
-| `SESSION_SECRET` | High-entropy secret used to sign/encrypt sessions. |
-| `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` | Azure Document Intelligence endpoint. |
-| `AZURE_DOCUMENT_INTELLIGENCE_KEY` | Provider credential. |
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint. |
-| `AZURE_OPENAI_API_KEY` | Provider credential. |
-| `AZURE_OPENAI_DEPLOYMENT` | Approved model deployment name. |
-| `UPLOAD_MAX_BYTES` | Enforced document upload limit. |
-| `ALLOWED_TAILNET_HOST` | Expected host for origin checks and URLs. |
-| `IMPORT_WORKER_CONCURRENCY` | Concurrent import jobs; default `1` on the Pi. |
-| `AI_IMPORT_ENABLED` | Emergency/operational switch for billable document and normalization calls. |
-| `AI_GENERATION_ENABLED` | Independent switch for generated recipe calls. |
-| `AI_DAILY_JOB_LIMIT` | Per-household daily billable-job guardrail. |
-| `AI_MAX_INPUT_CHARS` | Maximum text sent to a language model per job. |
-| `AI_MAX_OUTPUT_TOKENS` | Maximum model output tokens per request. |
+| `ODORI_VERSION` | Required immutable GHCR image tag. Use a release or `sha-<commit>` tag, not `latest`. |
+| `DATABASE_URL` | Required PostgreSQL connection string using the internal `postgres` hostname. |
+| `POSTGRES_PASSWORD` | Required database password. |
+| `SESSION_SECRET` | Required high-entropy Django signing secret. |
+| `DEBUG` | Keep `false` in production; it defaults to `false` if omitted. |
+| `ALLOWED_TAILNET_HOST`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` | Required public hostname and HTTPS origin configuration for Traefik/Tailscale. |
+| `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SECURE_HSTS_PRELOAD` | Production transport-security settings; the supplied defaults enable redirect and one-year HSTS. |
+| `INGREDIENT_EMBEDDINGS_ENABLED` | Enables Azure OpenAI semantic ingredient matching; leave `false` for local fuzzy matching only. |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Azure OpenAI endpoint, credential, and embedding deployment used when embeddings are enabled. |
+| `AZURE_OPENAI_IMAGE_DEPLOYMENT`, `AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT` | Image deployment names used by the worker; the former defaults to `gpt-image-2`, while the latter is optional. |
+| `AZURE_OPENAI_IMAGE_API_VERSION`, `AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS`, `AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS` | Image API version, request timeout (default `60`), and minimum interval between image requests in the worker (default `12`). |
+| `WORKER_HEARTBEAT_MAX_AGE_SECONDS` | Heartbeat freshness threshold for `/health/worker`, the operations page, and the worker container healthcheck (default `30`). |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Optional Google sign-in credentials for the web service; see [Google sign-in](google-sign-in.md). |
+
+`ORBIT_DATABASE_URL`, `ORBIT_STORAGE_LIMIT`, `ORBIT_ENABLED`, and related `ORBIT_*` settings are
+recognized by Django but deliberately are not mapped by the supplied Compose file. Add them only
+with the dedicated telemetry database and migration procedure described below.
+
+### Planned, not current configuration
+
+The following names appear in older planning material but are not read by the application or mapped
+by Compose: `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, `AZURE_DOCUMENT_INTELLIGENCE_KEY`,
+`AZURE_OPENAI_DEPLOYMENT`, `UPLOAD_MAX_BYTES`, `IMPORT_WORKER_CONCURRENCY`,
+`AI_IMPORT_ENABLED`, `AI_GENERATION_ENABLED`, `AI_DAILY_JOB_LIMIT`, `AI_MAX_INPUT_CHARS`, and
+`AI_MAX_OUTPUT_TOKENS`. They are planned controls, not operational switches; do not set them
+expecting enforcement.
 
 Do not store `.env`, provider keys, database dumps, or uploaded source recipes in Git or public container registries.
 
 ## Resource and cost controls
 
-- Set container memory limits appropriate to an 8 GB Pi and leave at least 2 GB for the host, Traefik, Tailscale, Portainer, and filesystem cache. Start with one web process, one worker, worker concurrency `1`, and a bounded PostgreSQL connection pool.
-- Configure Azure Cost Management monthly budget alerts at USD 20 and USD 35. Alerts do not stop spending, so keep document import and generated recipes behind independent switches that an operator can disable before the USD 50 ceiling.
-- Target less than USD 15/month in normal Azure usage. Set per-household page, job, input-token, output-token, and retry limits; review regional provider prices before enabling production deployments.
+- Set container memory limits appropriate to an 8 GB Pi and leave at least 2 GB for the host,
+  Traefik, Tailscale, Portainer, and filesystem cache. Start with one web process and one worker;
+  the current worker processes jobs serially.
+- Configure Azure Cost Management monthly budget alerts at USD 20 and USD 35. Alerts do not stop
+  spending. The `AI_*` emergency switches and per-household spend limits are not implemented yet,
+  so use provider credential rotation or provider-side limits for an emergency stop.
+- Target less than USD 15/month in normal Azure usage. Per-household page, job, input-token,
+  output-token, and retry limits remain planned work; review regional provider prices before
+  enabling production deployments.
 - Do not provision always-on Azure compute. If Flex Consumption is later justified by measurements, configure zero always-ready instances and retain local feature fallbacks.
 - Cache provider work by source content hash and processing version. Report cache hits, pages/characters/tokens submitted, retries, and estimated cost by provider without logging recipe content.
 - Recipe creation and manual regeneration enqueue a durable image job. The `odori-worker` service is the only component that calls the Microsoft Foundry image deployment; a queued card continues to show its placeholder until the worker persists a generated image.
@@ -111,7 +147,10 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 
 ## Operations
 
-- Apply schema migrations as a release step before rolling web and worker containers to a version that requires them.
+- `odori-migrate` is the sole migration runner. On `docker compose up -d`, it runs
+  `python manage.py migrate --noinput` after PostgreSQL is healthy; web and worker wait for it to
+  finish successfully. This avoids migration races even if either application service is later
+  scaled. A migration failure intentionally prevents the new web and worker containers starting.
 - Back up the PostgreSQL volume and uploads volume together daily; encrypt backups and test a restore at least quarterly.
 - Provide an authenticated recipe export (structured JSON plus optionally printable recipes) so a household can retain its approved catalog independently of infrastructure backups.
 - Monitor container health, database free space, failed/retried job counts, upload volume consumption, and Azure API errors/latency.
@@ -123,7 +162,8 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 ## Recovery and updates
 
 1. Put the current immutable image tag and database backup aside.
-2. Pull the release image, run migrations, and deploy web/worker through Portainer or Compose.
+2. Set the release image tag, deploy through Portainer or Compose, and confirm `odori-migrate`
+   completed successfully before accepting web and worker traffic.
 3. Verify authenticated access through the Tailscale hostname, a recipe read, and a database health check.
 4. Roll back the image only if its migrations are backward-compatible; otherwise restore the paired database and uploads backup.
 
@@ -148,6 +188,9 @@ For automated checks, use:
 - `/health/ready` for database readiness; and
 - `/health/worker` for worker-heartbeat readiness.
 
+The worker's Compose healthcheck runs the same freshness test directly against its `WorkerHeartbeat`
+row. It does not depend on the web container or on external proxy DNS.
+
 The category test at `/admin/categories` reports its embedding outcome, model deployment,
 dimensions, text similarity, cosine similarity, and final score. The final score is the greater of
 the text and cosine scores; no hidden weights are applied.
@@ -166,8 +209,8 @@ Orbit keeps at most `ORBIT_STORAGE_LIMIT` entries (default `5000`). Set
 python manage.py migrate orbit --database=orbit
 ```
 
-Without `ORBIT_DATABASE_URL`, apply the Orbit migrations to the default database with the normal
-release migration command. In production, leave `ORBIT_MCP_ENABLED` unset or `false`; local
+Without `ORBIT_DATABASE_URL`, `odori-migrate` applies the Orbit migrations to the default database.
+In production, leave `ORBIT_MCP_ENABLED` unset or `false`; local
 development enables metadata-only MCP access by default. Never enable payload access or loosen
 the configured masking without an explicit data-retention review.
 
@@ -179,8 +222,8 @@ python scripts/check_embedding_connectivity.py
 
 ## Network policy
 
-- Traefik is the only service connected to `web`; it terminates HTTPS for the tailnet hostname.
-- Configure Traefik to support standard HTTPS WebSocket upgrades on the same `cucina` router; no additional public port or separate socket hostname is needed.
+- Traefik is the only service connected to `proxy`; it terminates HTTPS for the tailnet hostname.
+- Configure Traefik to support standard HTTPS WebSocket upgrades on the `odori` router; no additional public port or separate socket hostname is needed.
 - `postgres` and `odori-worker` have no Traefik labels and no published ports.
 - Outbound application access is limited to Azure provider endpoints and explicitly permitted URL-import destinations.
 - Tailscale ACLs should allow only the household's devices/users to reach the Pi service.

@@ -13,6 +13,7 @@
 .credentials.md
 db.sqlite3
 staticfiles/
+data/uploads/
 .pytest_cache/
 __pycache__/
 *.py[cod]

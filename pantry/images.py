@@ -1,13 +1,14 @@
 import logging
-import time
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
-from core.observability import bind_context, current_context, log_event
-from recipes.images import RecipeImageGenerationError, _generate_image_bytes
+from core.jobs import run_next_job
+from core.observability import current_context
+from providers.foundry_images import generate_image_bytes
 
 from .models import IngredientIconJob
 
@@ -32,16 +33,32 @@ def queue_ingredient_icon(ingredient):
     ingredient.icon_status = "pending"
     ingredient.icon_prompt = prompt
     ingredient.save(update_fields=["icon", "icon_status", "icon_prompt"])
+    latest_started_at = (
+        IngredientIconJob.objects.filter(started_at__isnull=False)
+        .order_by("-started_at")
+        .values_list("started_at", flat=True)
+        .first()
+    )
+    available_at = timezone.now()
+    if latest_started_at:
+        available_at = max(
+            available_at,
+            latest_started_at
+            + timedelta(seconds=settings.AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS),
+        )
     return IngredientIconJob.objects.create(
         ingredient=ingredient,
         prompt=prompt,
         correlation_id=current_context().get("request_id"),
+        available_at=available_at,
     )
 
 
-def queue_missing_ingredient_icons(ingredients):
+def queue_missing_ingredient_icons(ingredients, *, limit=None):
     queued = 0
     for ingredient in ingredients:
+        if limit is not None and queued >= limit:
+            break
         if ingredient.icon or ingredient.icon_status == "failed":
             continue
         active_job_exists = IngredientIconJob.objects.filter(
@@ -63,108 +80,58 @@ def recover_interrupted_ingredient_icon_jobs():
     )
 
 
-def run_next_ingredient_icon_job():
-    with transaction.atomic():
-        job = (
-            IngredientIconJob.objects.select_for_update()
-            .select_related("ingredient")
-            .filter(state=IngredientIconJob.State.QUEUED)
-            .order_by("created_at")
-            .first()
-        )
-        if job is None:
-            return False
-        job.state = IngredientIconJob.State.RUNNING
-        job.started_at = timezone.now()
-        job.attempt_count += 1
-        job.error_message = ""
-        job.error_code = ""
-        job.save(
-            update_fields=[
-                "state",
-                "started_at",
-                "attempt_count",
-                "error_message",
-                "error_code",
-            ]
-        )
-
-    try:
-        with bind_context(
-            request_id=job.correlation_id,
-            job_id=job.id,
-            household_id=job.ingredient.household_id,
-        ):
-            image_bytes = _generate_image_bytes(
-                job.prompt,
-                household_id=job.ingredient.household_id,
-                job_id=job.id,
-                correlation_id=job.correlation_id,
-                operation="ingredient_icon_generation",
-                background="transparent",
-                output_format="png",
-                deployment=settings.AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT,
-            )
-    except RecipeImageGenerationError as exc:
-        error_message, error_code = str(exc), exc.error_code
-    except Exception as exc:
-        error_message, error_code = str(exc)[:500], type(exc).__name__
-        logger.exception("Unexpected ingredient icon job failure")
-    else:
-        with transaction.atomic():
-            job = (
-                IngredientIconJob.objects.select_for_update()
-                .select_related("ingredient")
-                .get(id=job.id)
-            )
-            if job.ingredient.icon_prompt != job.prompt:
-                job.state = IngredientIconJob.State.SUPERSEDED
-                job.finished_at = timezone.now()
-                job.save(update_fields=["state", "finished_at"])
-                return True
-            job.ingredient.icon.save(
-                f"{job.ingredient.id}.png", ContentFile(image_bytes), save=False
-            )
-            job.ingredient.icon_status = "ready"
-            job.ingredient.save(update_fields=["icon", "icon_status"])
-            job.state = IngredientIconJob.State.SUCCEEDED
-            job.finished_at = timezone.now()
-            job.save(update_fields=["state", "finished_at"])
-        log_event(
-            logger,
-            "job.completed",
-            job_type="ingredient_icon",
-            job_id=job.id,
-            ingredient_id=job.ingredient_id,
-            household_id=job.ingredient.household_id,
-            attempt_count=job.attempt_count,
-        )
-        time.sleep(settings.AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS)
-        return True
-
-    with transaction.atomic():
-        job = (
-            IngredientIconJob.objects.select_for_update()
-            .select_related("ingredient")
-            .get(id=job.id)
-        )
-        job.state = IngredientIconJob.State.FAILED
-        job.error_message = error_message
-        job.error_code = error_code
-        job.finished_at = timezone.now()
-        job.save(update_fields=["state", "error_message", "error_code", "finished_at"])
-        if job.ingredient.icon_prompt == job.prompt:
-            job.ingredient.icon_status = "failed"
-            job.ingredient.save(update_fields=["icon_status"])
-    log_event(
-        logger,
-        "job.failed",
-        level=logging.ERROR,
-        job_type="ingredient_icon",
-        job_id=job.id,
-        ingredient_id=job.ingredient_id,
-        household_id=job.ingredient.household_id,
-        error_code=job.error_code,
+def _defer_queued_icon_jobs(job):
+    IngredientIconJob.objects.filter(state=IngredientIconJob.State.QUEUED).filter(
+        Q(available_at__isnull=True) | Q(available_at__lt=job.started_at)
+    ).update(
+        available_at=job.started_at
+        + timedelta(seconds=settings.AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS)
     )
-    time.sleep(settings.AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS)
+
+
+def _generate_ingredient_icon(job):
+    return generate_image_bytes(
+        job.prompt,
+        household_id=job.ingredient.household_id,
+        job_id=job.id,
+        correlation_id=job.correlation_id,
+        operation="ingredient_icon_generation",
+        background="transparent",
+        output_format="png",
+        deployment=settings.AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT,
+    )
+
+
+def _complete_ingredient_icon_job(job, image_bytes):
+    if job.ingredient.icon_prompt != job.prompt:
+        return False
+    job.ingredient.icon.save(f"{job.ingredient.id}.png", ContentFile(image_bytes), save=False)
+    job.ingredient.icon_status = "ready"
+    job.ingredient.save(update_fields=["icon", "icon_status"])
     return True
+
+
+def _fail_ingredient_icon_job(job, exc):
+    if job.ingredient.icon_prompt == job.prompt:
+        job.ingredient.icon_status = "failed"
+        job.ingredient.save(update_fields=["icon_status"])
+
+
+def _ready_icon_jobs(queryset):
+    return queryset.filter(Q(available_at__isnull=True) | Q(available_at__lte=timezone.now()))
+
+
+def run_next_ingredient_icon_job():
+    return run_next_job(
+        IngredientIconJob,
+        "ingredient_icon",
+        select_related=("ingredient",),
+        household_id_for=lambda job: job.ingredient.household_id,
+        process=_generate_ingredient_icon,
+        succeed=_complete_ingredient_icon_job,
+        fail=_fail_ingredient_icon_job,
+        ready=_ready_icon_jobs,
+        claimed=_defer_queued_icon_jobs,
+        log_fields=lambda job: {"ingredient_id": job.ingredient_id},
+        logger=logger,
+    )

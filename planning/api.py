@@ -4,8 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from core.api import error, read_json
 from core.services import household_for
-from pantry.api import error, payload
 
 from .models import CookEvent, MealSlot
 from .services import (
@@ -64,7 +64,7 @@ def meal_plan(request, week_start):
 @login_required
 @require_http_methods(["POST"])
 def meal_plan_slots(request, week_start):
-    data = payload(request)
+    data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected a JSON object.", 400)
     try:
@@ -89,7 +89,7 @@ def meal_slot_detail(request, slot_id):
     if request.method == "DELETE":
         delete_slot(user=request.user, slot_id=slot_id)
         return JsonResponse({}, status=204)
-    data = payload(request)
+    data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected a JSON object.", 400)
     try:
@@ -117,7 +117,7 @@ def meal_slot_detail(request, slot_id):
 @login_required
 @require_http_methods(["POST"])
 def meal_slot_mark_cooked(request, slot_id):
-    data = payload(request) or {}
+    data = read_json(request) or {}
     changes = data.get("inventoryChanges", [])
     if not isinstance(changes, list):
         return error(

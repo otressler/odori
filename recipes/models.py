@@ -17,6 +17,9 @@ class RecipeSource(models.Model):
     attribution = models.CharField(max_length=255, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return self.attribution or self.get_type_display()
+
 
 class Recipe(models.Model):
     class Status(models.TextChoices):
@@ -46,6 +49,14 @@ class Recipe(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["household", "status"], name="recipe_household_status_idx"),
+        ]
+
+    def __str__(self):
+        return self.title or "Untitled recipe"
+
 
 class RecipeImageJob(models.Model):
     class State(models.TextChoices):
@@ -69,6 +80,13 @@ class RecipeImageJob(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    @classmethod
+    def for_household(cls, household):
+        return cls.objects.filter(recipe__household=household)
+
+    def __str__(self):
+        return f"Image for {self.recipe} ({self.get_state_display()})"
 
 
 class RecipeIngredient(models.Model):
@@ -98,6 +116,9 @@ class RecipeIngredient(models.Model):
     class Meta:
         ordering = ["sort_order"]
 
+    def __str__(self):
+        return self.source_text
+
 
 class RecipeStep(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -108,6 +129,9 @@ class RecipeStep(models.Model):
 
     class Meta:
         ordering = ["sort_order"]
+
+    def __str__(self):
+        return self.body[:80]
 
 
 class RecipeTag(models.Model):
@@ -120,6 +144,9 @@ class RecipeTag(models.Model):
             models.UniqueConstraint(fields=["household", "name"], name="unique_recipe_tag")
         ]
 
+    def __str__(self):
+        return self.name
+
 
 class RecipeTagAssignment(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="tag_assignments")
@@ -129,6 +156,9 @@ class RecipeTagAssignment(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["recipe", "tag"], name="unique_recipe_tag_assignment")
         ]
+
+    def __str__(self):
+        return f"{self.recipe}: {self.tag}"
 
 
 class RecipeFavorite(models.Model):
@@ -140,3 +170,6 @@ class RecipeFavorite(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["recipe", "user"], name="unique_recipe_favorite")
         ]
+
+    def __str__(self):
+        return f"{self.user} likes {self.recipe}"

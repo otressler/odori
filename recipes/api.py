@@ -1,10 +1,10 @@
-import json
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from core.api import error, read_json
 from core.services import household_for
 
 from .models import Recipe
@@ -16,17 +16,6 @@ from .services import (
     create_or_update_recipe,
     toggle_favorite,
 )
-
-
-def read_json(request):
-    try:
-        return json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return None
-
-
-def error(code, message, status=422):
-    return JsonResponse({"error": {"code": code, "message": message}}, status=status)
 
 
 def ingredient_json(line, factor):

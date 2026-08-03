@@ -3,7 +3,6 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
-from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 
 from core.models import Household, HouseholdMembership, User
@@ -301,9 +300,21 @@ class ShoppingPageTests(ShoppingTestCase):
         self.assertContains(response, "Mehl")
         self.assertContains(response, "500")
 
+    def test_viewing_a_list_does_not_queue_paid_icon_generation(self):
+        from pantry.models import IngredientIconJob
+
+        self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
+        shopping_list = self.generate()
+
+        response = self.client.get(f"/shopping/{shopping_list.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(IngredientIconJob.objects.exists())
+
     @override_settings(DEBUG=False)
     def test_generated_list_renders_icons_through_the_authenticated_endpoint(self):
-        self.flour.icon.save("mehl.png", ContentFile(b"icon"), save=True)
+        self.flour.icon.name = "pantry-icons/mehl.png"
+        self.flour.save(update_fields=["icon"])
         self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
         shopping_list = self.generate()
 

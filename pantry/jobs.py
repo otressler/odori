@@ -1,9 +1,6 @@
 import logging
 
-from django.db import transaction
-from django.utils import timezone
-
-from core.observability import bind_context, log_event
+from core.jobs import run_next_job
 
 from .models import PantryCategorizationJob
 from .services import categorize_household
@@ -22,84 +19,37 @@ def recover_interrupted_category_jobs():
     )
 
 
-def run_next_category_job():
-    with transaction.atomic():
-        job = (
-            PantryCategorizationJob.objects.select_for_update()
-            .select_related("household")
-            .filter(state=PantryCategorizationJob.State.QUEUED)
-            .order_by("created_at")
-            .first()
-        )
-        if job is None:
-            return False
-        job.state = PantryCategorizationJob.State.RUNNING
-        job.started_at = timezone.now()
-        job.attempt_count += 1
-        job.error_message = ""
-        job.error_code = ""
-        job.save(
-            update_fields=[
-                "state",
-                "started_at",
-                "attempt_count",
-                "error_message",
-                "error_code",
-            ]
-        )
-        log_event(
-            logger,
-            "job.started",
-            job_type="pantry_category",
-            job_id=job.id,
-            household_id=job.household_id,
-            attempt_count=job.attempt_count,
-        )
-
-    try:
-        with bind_context(
-            request_id=job.correlation_id,
-            job_id=job.id,
-            household_id=job.household_id,
-        ):
-            assigned_count = categorize_household(
-                household=job.household,
-                job_id=job.id,
-                correlation_id=job.correlation_id,
-            )
-    except Exception as exc:
-        with transaction.atomic():
-            job = PantryCategorizationJob.objects.select_for_update().get(id=job.id)
-            job.state = PantryCategorizationJob.State.FAILED
-            job.error_message = str(exc)[:500]
-            job.error_code = type(exc).__name__
-            job.finished_at = timezone.now()
-            job.save(update_fields=["state", "error_message", "error_code", "finished_at"])
-        log_event(
-            logger,
-            "job.failed",
-            level=logging.ERROR,
-            job_type="pantry_category",
-            job_id=job.id,
-            household_id=job.household_id,
-            error_code=job.error_code,
-        )
-        logger.exception("Pantry categorization job failed")
-        return True
-
-    with transaction.atomic():
-        job = PantryCategorizationJob.objects.select_for_update().get(id=job.id)
-        job.state = PantryCategorizationJob.State.SUCCEEDED
-        job.assigned_count = assigned_count
-        job.finished_at = timezone.now()
-        job.save(update_fields=["state", "assigned_count", "finished_at"])
-    log_event(
-        logger,
-        "job.completed",
-        job_type="pantry_category",
+def _categorize(job):
+    return categorize_household(
+        household=job.household,
         job_id=job.id,
-        household_id=job.household_id,
-        assigned_count=assigned_count,
-        attempt_count=job.attempt_count,
+        correlation_id=job.correlation_id,
     )
+
+
+def _complete_category_job(job, assigned_count):
+    job.assigned_count = assigned_count
+    job.save(update_fields=["assigned_count"])
     return True
+
+
+def _fail_category_job(job, exc):
+    return None
+
+
+def _category_log_fields(job):
+    return {"assigned_count": job.assigned_count} if job.state == job.State.SUCCEEDED else {}
+
+
+def run_next_category_job():
+    return run_next_job(
+        PantryCategorizationJob,
+        "pantry_category",
+        select_related=("household",),
+        household_id_for=lambda job: job.household_id,
+        process=_categorize,
+        succeed=_complete_category_job,
+        fail=_fail_category_job,
+        log_fields=_category_log_fields,
+        logger=logger,
+    )

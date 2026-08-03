@@ -7,7 +7,11 @@ from .models import HouseholdMembership
 
 
 def household_for(user):
-    membership = HouseholdMembership.objects.select_related("household").filter(user=user).first()
+    memberships = HouseholdMembership.objects.select_related("household").filter(user=user)
+    active_household_id = getattr(user, "_active_household_id", None)
+    membership = memberships.filter(household_id=active_household_id).first()
+    if not membership:
+        membership = memberships.first()
     if not membership:
         raise Http404("No household is available for this account.")
     return membership.household
@@ -18,11 +22,10 @@ def scoped(queryset, user):
 
 
 def owner_household_for(user):
-    membership = (
-        HouseholdMembership.objects.select_related("household")
-        .filter(user=user, role=HouseholdMembership.Role.OWNER)
-        .first()
-    )
+    household = household_for(user)
+    membership = HouseholdMembership.objects.filter(
+        user=user, household=household, role=HouseholdMembership.Role.OWNER
+    ).first()
     if not membership:
         raise PermissionDenied("Owner access is required.")
     return membership.household

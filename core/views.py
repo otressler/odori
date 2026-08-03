@@ -1,13 +1,14 @@
 import logging
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
 from django.db.models import Count
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from pantry.models import (
     CanonicalIngredient,
@@ -20,7 +21,13 @@ from planning.services import current_week_start
 from recipes.models import Recipe, RecipeImageJob
 from shopping.models import ShoppingItem, ShoppingList
 
-from .models import ProviderDiagnostic, WorkerHeartbeat
+from .models import (
+    Household,
+    HouseholdInvitation,
+    HouseholdMembership,
+    ProviderDiagnostic,
+    WorkerHeartbeat,
+)
 from .observability import log_event
 from .services import household_for, owner_household_for
 
@@ -57,10 +64,7 @@ def worker_readiness(request):
 
 def job_state_counts(model, *, household):
     counts = {state: 0 for state, _ in model.State.choices}
-    if model is RecipeImageJob:
-        queryset = model.objects.filter(recipe__household=household)
-    else:
-        queryset = model.objects.filter(household=household)
+    queryset = model.for_household(household)
     for row in queryset.values("state").annotate(count=Count("id")):
         counts[row["state"]] = row["count"]
     return counts
@@ -177,8 +181,11 @@ def retry_image_job(request, job_id):
     return redirect("operations")
 
 
-@login_required
 def home(request):
+    if not request.user.is_authenticated:
+        return render(request, "landing.html")
+    if not HouseholdMembership.objects.filter(user=request.user).exists():
+        return redirect("household-onboarding")
     household = household_for(request.user)
     today = timezone.localdate()
     plan = MealPlan.objects.filter(
@@ -240,5 +247,85 @@ def home(request):
             "uncategorized_count": CanonicalIngredient.objects.filter(
                 household=household, active=True, category__isnull=True
             ).count(),
+        },
+    )
+
+
+@login_required
+def household_onboarding(request):
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        code = request.POST.get("registration_code", "").strip().upper()
+        if name:
+            with transaction.atomic():
+                household = Household.objects.create(name=name)
+                HouseholdMembership.objects.create(
+                    household=household,
+                    user=request.user,
+                    role=HouseholdMembership.Role.OWNER,
+                )
+            request.session["active_household_id"] = str(household.id)
+            messages.success(request, f"{household.name} ist bereit.")
+            return redirect("home")
+        if code:
+            invitation = HouseholdInvitation.objects.filter(
+                registration_code=code, active=True
+            ).first()
+            if invitation:
+                return join_household(request, invitation=invitation)
+            messages.error(request, "Dieser Haushaltscode ist nicht gültig.")
+        else:
+            messages.error(request, "Gib einen Namen oder einen Haushaltscode ein.")
+    return render(request, "core/household_onboarding.html")
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def join_household(request, token=None, invitation=None):
+    invitation = invitation or HouseholdInvitation.objects.filter(
+        token=token, active=True
+    ).first()
+    if not invitation:
+        messages.error(request, "Diese Einladung ist nicht mehr gültig.")
+        return redirect("household-onboarding")
+    if request.method == "GET":
+        return render(request, "core/household_join.html", {"invitation": invitation})
+    HouseholdMembership.objects.get_or_create(
+        household=invitation.household,
+        user=request.user,
+        defaults={"role": HouseholdMembership.Role.MEMBER},
+    )
+    request.session["active_household_id"] = str(invitation.household_id)
+    messages.success(request, f"Du bist jetzt Teil von {invitation.household.name}.")
+    return redirect("home")
+
+
+@login_required
+@require_POST
+def switch_household(request):
+    membership = HouseholdMembership.objects.filter(
+        user=request.user, household_id=request.POST.get("household_id")
+    ).first()
+    if not membership:
+        raise Http404
+    request.session["active_household_id"] = str(membership.household_id)
+    return redirect(request.POST.get("next") or "home")
+
+
+@login_required
+def household_settings(request):
+    household = owner_household_for(request.user)
+    if request.method == "POST":
+        HouseholdInvitation.objects.create(household=household, created_by=request.user)
+        messages.success(request, "Einladung erstellt.")
+        return redirect("household-settings")
+    return render(
+        request,
+        "core/household_settings.html",
+        {
+            "household": household,
+            "invitations": HouseholdInvitation.objects.filter(
+                household=household, active=True
+            ).order_by("-created_at"),
         },
     )

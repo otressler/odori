@@ -18,10 +18,10 @@ class IdentityAndIsolationTests(TestCase):
         )
         self.other = Household.objects.create(name="Other")
 
-    def test_unauthenticated_pages_redirect_to_login(self):
+    def test_unauthenticated_home_is_public(self):
         response = self.client.get("/")
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("/accounts/login/", response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Deine private Küche")
 
     def test_csrf_blocks_mutating_api_request(self):
         client = Client(enforce_csrf_checks=True)

@@ -1,11 +1,10 @@
-import json
-
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from core.api import error, read_json
 from core.services import household_for
 
 from .catalog import sync_starter_catalog
@@ -32,20 +31,6 @@ MAX_INGREDIENT_ALIAS_LENGTH = 120
 class InventoryBatchError(Exception):
     def __init__(self, response):
         self.response = response
-
-
-def payload(request):
-    try:
-        return json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return None
-
-
-def error(code, message, status=422, fields=None):
-    body = {"error": {"code": code, "message": message}}
-    if fields:
-        body["error"]["fields"] = fields
-    return JsonResponse(body, status=status)
 
 
 def ingredient_json(ingredient):
@@ -106,9 +91,14 @@ def ingredients(request):
                 ]
             }
         )
-    data = payload(request)
-    if not data or not isinstance(data.get("name"), str) or not data["name"].strip():
+    data = read_json(request)
+    if not isinstance(data, dict):
+        return error("malformed_input", "Expected a JSON object.", 400)
+    if not isinstance(data.get("name"), str) or not data["name"].strip():
         return error("validation_failed", "A name is required.", fields={"name": "Required."})
+    fields = ingredient_update_error(data)
+    if fields:
+        return error("validation_failed", "Invalid ingredient data.", fields=fields)
     category = None
     if data.get("categoryId"):
         category = IngredientCategory.objects.filter(
@@ -141,7 +131,7 @@ def ingredients(request):
 @login_required
 @require_http_methods(["PATCH"])
 def ingredient_detail(request, ingredient_id):
-    data = payload(request)
+    data = read_json(request)
     if not isinstance(data, dict) or not data:
         return error("malformed_input", "Expected a JSON object.", 400)
     household = household_for(request.user)
@@ -325,7 +315,7 @@ def inventory(request):
             .order_by("ingredient__name")
         )
         return JsonResponse({"items": [inventory_json(item) for item in items]})
-    data = payload(request)
+    data = read_json(request)
     changes = data.get("items") if data else None
     if not isinstance(changes, list):
         return error("validation_failed", "items must be an array.", fields={"items": "Required."})
@@ -366,7 +356,7 @@ def inventory(request):
 def change_status(request, ingredient_id):
     """Two-step availability change: `confirmPlannedUse` is an explicit user decision."""
 
-    data = payload(request)
+    data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected a JSON object.", 400)
     if data.get("status") not in InventoryItem.Status.values:

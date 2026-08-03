@@ -4,7 +4,6 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from core.services import household_for
-from pantry.images import queue_missing_ingredient_icons
 from pantry.models import CanonicalIngredient
 from planning.services import current_week_start, parse_week_start
 
@@ -72,9 +71,6 @@ def shopping_detail(request, list_id):
     buckets = {"open": [], "purchased": [], "skipped": []}
     for item in items:
         buckets[item.state].append(item)
-    queue_missing_ingredient_icons(
-        {item.canonical_ingredient for item in items if item.canonical_ingredient_id}
-    )
     return render(
         request,
         "shopping/detail.html",

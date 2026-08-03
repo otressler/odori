@@ -259,54 +259,47 @@ like a leftover from an earlier layout — remove it so nobody assumes it's live
 
 ## 6. Deployment and docs
 
-### [ ] 6.1 Docs have drifted from the code
+### [x] 6.1 Reconcile deployment documentation
 
-[docs/deployment-operations.md](docs/deployment-operations.md) documents required variables that
-don't exist anywhere in settings: `AZURE_DOCUMENT_INTELLIGENCE_*`, `AZURE_OPENAI_DEPLOYMENT`,
-`UPLOAD_MAX_BYTES`, `IMPORT_WORKER_CONCURRENCY`, `AI_IMPORT_ENABLED`, `AI_GENERATION_ENABLED`,
-`AI_DAILY_JOB_LIMIT`, `AI_MAX_INPUT_CHARS`, `AI_MAX_OUTPUT_TOKENS`. It also documents
-`command: ./bin/worker` (actual: `python manage.py worker`), `postgres:16-alpine` (actual: `18.4`),
-`/var/lib/postgresql/data` (actual: `/var/lib/postgresql`), and a `web` network (actual: `proxy`).
+`deployment-operations.md` now reflects the current Compose services, PostgreSQL image and volume
+path, `proxy` network, `odori` router, mapped settings, and immutable image tag. Settings from
+older plans that are not implemented are explicitly marked as planned rather than listed as usable
+controls.
 
-Either trim the doc to what exists, or mark the missing switches explicitly as "planned". As written
-it's a trap for future-you.
+### [x] 6.2 Add a race-free migration deployment step
 
-Worth noting: several of those documented switches (`AI_DAILY_JOB_LIMIT`, `AI_GENERATION_ENABLED`)
-are exactly the guardrails section 3 says are missing. The design was right; it just wasn't built.
+`odori-migrate` is a one-shot Compose service. Web and worker wait for its successful completion,
+so migrations run once after PostgreSQL is healthy rather than once per application replica.
 
-### [ ] 6.2 No migration step in the deployment path
+### [x] 6.3 Use explicit production settings for image-time static collection
 
-Neither `docker-compose.yml` nor the image entrypoint runs `manage.py migrate`; the docs list it as
-a manual release step. For a Pi you update by hand a few times a year that's defensible, but an
-entrypoint that runs `migrate` before `gunicorn` (single web replica, so no race) would remove a
-whole class of "the site is 500ing after I pulled" evenings.
+The Dockerfile now runs `collectstatic` with `DEBUG=false` and a build-only `SESSION_SECRET`.
 
-### [ ] 6.3 `collectstatic` runs at image build with development settings
+### [x] 6.4 Add a worker healthcheck
 
-The Dockerfile runs `collectstatic` before any runtime env exists, so it builds the manifest under
-`DEBUG=true` and the fallback secret key. It works, but it's fragile — if any static handling ever
-becomes settings-dependent it will fail silently. Passing explicit env vars on that `RUN` line makes
-the intent visible.
-
-### [ ] 6.4 No worker healthcheck in Compose
-
-`/health/worker` exists and is good. The `odori-worker` service has no `healthcheck`, so a wedged
-worker looks healthy to Docker. Add one that checks the heartbeat row, or scrape `/health/worker`
-from the web container.
+The worker performs a direct database check that its default heartbeat is within the configured
+freshness window. It avoids coupling worker health to the web container or proxy networking.
 
 ---
 
 ## 7. Testing
 
-Coverage is genuinely good — ~135 tests, and the important invariants are covered: household
-isolation, optimistic-locking conflicts, shopping-list regeneration stability, cook-event
-idempotency, provider-failure diagnostics. Notable gaps:
+Coverage is genuinely good — the important invariants are covered: household isolation,
+optimistic-locking conflicts, shopping-list regeneration stability, cook-event idempotency, and
+provider-failure diagnostics. The identified regression gaps are now covered:
 
-- [ ] Pantry inventory **search** (`?q=`) — would have caught bug 1.1.
-- [ ] Icon/media URL rendering under `DEBUG=false` — would have caught bug 1.2.
-- [ ] HTTP-method enforcement on pantry/recipe mutations — would have caught 2.1.
-- [ ] No `manage.py check --deploy` step in [.github/workflows/ci.yml](.github/workflows/ci.yml).
-      Adding it catches 2.2/2.3/2.5 automatically and permanently.
+- [x] Pantry inventory **search** (`?q=`) — `PantryApiTests.test_inventory_page_filters_by_query`
+  verifies the query is applied before the queryset is materialised.
+- [x] Icon rendering and authenticated serving under `DEBUG=false` —
+  `ShoppingPageTests.test_generated_list_renders_icons_through_the_authenticated_endpoint` verifies
+  the rendered URL, and `PantryApiTests.test_ingredient_icon_is_served_only_to_its_household`
+  verifies its authenticated response and household isolation without writing test media.
+- [x] HTTP-method enforcement on pantry/recipe mutations —
+  `test_pantry_mutation_pages_reject_get_requests` and
+  `test_recipe_mutation_pages_reject_get_requests` assert `GET` returns `405` for every protected
+  HTML mutation route.
+- [x] [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `manage.py check --deploy` with
+  production-like security settings, making deployment-setting regressions fail CI.
 
 CI itself is solid (migration drift check, ruff, collectstatic, pytest, arm64 build). Consider
 pinning `pip install` with a hash-checking lockfile if you want reproducible Pi deploys, though

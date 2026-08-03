@@ -14,11 +14,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.10" }
       - run: pip install -r requirements.txt
-      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py makemigrations --check --dry-run core pantry recipes planning shopping
       - run: python -m ruff check .
       - run: python manage.py collectstatic --noinput
       - run: DEBUG=false SESSION_SECRET=ci-secret-value-with-more-than-fifty-characters-and-unique-123 SECURE_SSL_REDIRECT=true SECURE_HSTS_SECONDS=31536000 SECURE_HSTS_PRELOAD=true python manage.py check --deploy
       - run: python -m pytest
+      - run: docker compose --env-file .env.example config --quiet
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - run: docker build --platform linux/arm64 -t odori:${{ github.sha }} .

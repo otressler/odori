@@ -1,3 +1,4 @@
+import secrets
 import uuid
 
 from django.contrib.auth.models import AbstractUser
@@ -9,6 +10,9 @@ class Household(models.Model):
     name = models.CharField(max_length=120)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return self.name
+
 
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -18,6 +22,9 @@ class User(AbstractUser):
     @property
     def name_for_display(self):
         return self.display_name or self.get_username()
+
+    def __str__(self):
+        return self.name_for_display
 
 
 class HouseholdMembership(models.Model):
@@ -35,14 +42,26 @@ class HouseholdMembership(models.Model):
             models.UniqueConstraint(fields=["household", "user"], name="unique_membership")
         ]
 
+    def __str__(self):
+        return f"{self.user} in {self.household}"
 
-class AuditContext(models.Model):
-    """Minimal request audit metadata; domain events remain in owning modules."""
 
-    request_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    action = models.CharField(max_length=100)
+def registration_code():
+    return secrets.token_hex(3).upper()
+
+
+class HouseholdInvitation(models.Model):
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    registration_code = models.CharField(
+        max_length=6, default=registration_code, unique=True, editable=False
+    )
+    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="invitations")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="invitations")
     created_at = models.DateTimeField(auto_now_add=True)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Invitation {self.registration_code} for {self.household}"
 
 
 class WorkerHeartbeat(models.Model):
@@ -57,6 +76,9 @@ class WorkerHeartbeat(models.Model):
     last_heartbeat_at = models.DateTimeField()
     last_job_completed_at = models.DateTimeField(null=True, blank=True)
     last_error_message = models.CharField(max_length=500, blank=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_state_display()})"
 
 
 class ProviderDiagnostic(models.Model):
@@ -79,3 +101,6 @@ class ProviderDiagnostic(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.operation} ({self.get_state_display()})"

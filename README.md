@@ -12,9 +12,12 @@ and `python manage.py bootstrap_owner --username mara --household "Unser Haushal
 the standard checks. In Windows PowerShell, use `python -m ruff check .`, `python -m pytest`, and
 `docker build --platform linux/arm64 -t odori:local .` instead.
 
+To enable Google authentication, follow the [Google sign-in integration guide](docs/google-sign-in.md).
+
 Production uses `docker-compose.yml` behind Traefik. Copy `.env.example` to `.env`, provide unique
-secrets, run migrations, bootstrap the initial owner exactly once, and use `python scripts/smoke.py`
-with `ODORI_SMOKE_URL` after deployment.
+secrets, start the stack (the one-shot `odori-migrate` service applies migrations before web and
+worker start), bootstrap the initial owner exactly once, and use `python scripts/smoke.py` with
+`ODORI_SMOKE_URL` after deployment.
 
 Household owners can inspect worker, queue, provider, and embedding diagnostics at
 `/admin/operations`. See [deployment operations](docs/deployment-operations.md#observability-and-troubleshooting)

@@ -18,8 +18,8 @@ from .semantic import (
     cosine_similarity,
     embed_with_diagnostics,
     embedding_needs_refresh,
+    fuzzy_similarity,
     normalized_text,
-    rank_ingredients,
     update_embedding,
 )
 
@@ -150,9 +150,20 @@ def similar_ingredient_recommendations(*, user, minimum_score=0.96):
     retained = []
     recommendations = []
     for ingredient in ingredients:
-        candidates = rank_ingredients(retained, ingredient.name)
-        if candidates and candidates[0][1] >= minimum_score:
-            target, score, semantic = candidates[0]
+        candidates = []
+        for candidate in retained:
+            vector_score = cosine_similarity(ingredient.embedding, candidate.embedding)
+            if vector_score is None:
+                candidates.append(
+                    (candidate, fuzzy_similarity(ingredient.name, candidate.name), False)
+                )
+            else:
+                candidates.append((candidate, vector_score, True))
+        if candidates:
+            target, score, semantic = min(
+                candidates, key=lambda candidate: (-candidate[1], candidate[0].name.casefold())
+            )
+        if candidates and score >= minimum_score:
             recommendations.append(
                 {
                     "source": ingredient,

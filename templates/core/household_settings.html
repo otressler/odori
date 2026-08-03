@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ household.name }} verwalten · Odori{% endblock %}
+
+{% block content %}
+<header class="page-heading split">
+  <div><p class="section-kicker">Haushalt</p><h1>{{ household.name }}</h1></div>
+  <form method="post">{% csrf_token %}<button class="primary" type="submit">Einladung erstellen</button></form>
+</header>
+
+<section class="panel">
+  <div class="panel__head"><h2>Einladungen</h2></div>
+  {% if invitations %}
+    <div class="invitation-list">
+      {% for invitation in invitations %}
+        <article class="invitation-row">
+          <div><span class="muted">Registrierungscode</span><strong>{{ invitation.registration_code }}</strong></div>
+          <div class="invitation-link">
+            <label for="invite-{{ invitation.id }}">Einladungslink</label>
+            <input id="invite-{{ invitation.id }}" readonly value="{{ request.scheme }}://{{ request.get_host }}{% url 'household-join' invitation.token %}">
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Noch keine aktiven Einladungen. Erstelle eine, um Link und Code zu teilen.</p>
+  {% endif %}
+</section>
+{% endblock %}

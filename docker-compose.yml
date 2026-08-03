@@ -1,6 +1,6 @@
 services:
   odori-web:
-    image: ghcr.io/otressler/odori:latest
+    image: ghcr.io/otressler/odori:${ODORI_VERSION}
     environment:
       INGREDIENT_EMBEDDINGS_ENABLED: "${INGREDIENT_EMBEDDINGS_ENABLED}"
       AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT}"
@@ -10,6 +10,7 @@ services:
       AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT: "${AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT}"
       AZURE_OPENAI_IMAGE_API_VERSION: "${AZURE_OPENAI_IMAGE_API_VERSION:-2025-04-01-preview}"
       AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS: "${AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS:-60}"
+      WORKER_HEARTBEAT_MAX_AGE_SECONDS: "${WORKER_HEARTBEAT_MAX_AGE_SECONDS:-30}"
       DEBUG: "${DEBUG}"
       DATABASE_URL: "${DATABASE_URL}"
       SESSION_SECRET: "${SESSION_SECRET}"
@@ -19,10 +20,14 @@ services:
       ALLOWED_TAILNET_HOST: "${ALLOWED_TAILNET_HOST}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS}"
       CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS}"
+      GOOGLE_OAUTH_CLIENT_ID: "${GOOGLE_OAUTH_CLIENT_ID:-}"
+      GOOGLE_OAUTH_CLIENT_SECRET: "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
     command: gunicorn --bind 0.0.0.0:8000 --workers 1 --access-logfile - --error-logfile - --capture-output odori.wsgi:application
     depends_on:
       postgres:
         condition: service_healthy
+      odori-migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/data/uploads
     networks: [proxy, internal]
@@ -46,7 +51,7 @@ services:
       timeout: 5s
       retries: 3
   odori-worker:
-    image: ghcr.io/otressler/odori:latest
+    image: ghcr.io/otressler/odori:${ODORI_VERSION}
     environment:
       INGREDIENT_EMBEDDINGS_ENABLED: "${INGREDIENT_EMBEDDINGS_ENABLED}"
       AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT}"
@@ -56,6 +61,8 @@ services:
       AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT: "${AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT}"
       AZURE_OPENAI_IMAGE_API_VERSION: "${AZURE_OPENAI_IMAGE_API_VERSION:-2025-04-01-preview}"
       AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS: "${AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS:-60}"
+      AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS: "${AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS:-12}"
+      WORKER_HEARTBEAT_MAX_AGE_SECONDS: "${WORKER_HEARTBEAT_MAX_AGE_SECONDS:-30}"
       DEBUG: "${DEBUG}"
       DATABASE_URL: "${DATABASE_URL}"
       SESSION_SECRET: "${SESSION_SECRET}"
@@ -63,9 +70,37 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      odori-migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/data/uploads
     networks: [internal, egress]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "manage.py",
+          "shell",
+          "-c",
+          "from django.conf import settings; from django.utils import timezone; from core.models import WorkerHeartbeat; heartbeat = WorkerHeartbeat.objects.filter(name='default').first(); raise SystemExit(not (heartbeat and timezone.now() - heartbeat.last_heartbeat_at <= timezone.timedelta(seconds=settings.WORKER_HEARTBEAT_MAX_AGE_SECONDS)))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+  odori-migrate:
+    image: ghcr.io/otressler/odori:${ODORI_VERSION}
+    environment:
+      DEBUG: "${DEBUG}"
+      DATABASE_URL: "${DATABASE_URL}"
+      SESSION_SECRET: "${SESSION_SECRET}"
+    command: python manage.py migrate --noinput
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
   postgres:
     image: postgres:18.4-alpine
     environment:

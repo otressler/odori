@@ -1,6 +1,12 @@
 from django.conf import settings
 
-from pantry.semantic import cosine_similarity, embed, fuzzy_similarity, normalized_text
+from pantry.semantic import (
+    cosine_similarity,
+    embed,
+    fuzzy_similarity,
+    normalized_text,
+    query_embedding,
+)
 
 
 def recipe_search_text(recipe):
@@ -30,7 +36,7 @@ def _text_score(query, recipe):
 
 
 def rank_recipes(recipes, query):
-    query_vector = embed(query)
+    query_vector = query_embedding(query)
     ranked = []
     for recipe in recipes:
         vector_score = (

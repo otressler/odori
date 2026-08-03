@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Haushalt einrichten · Odori{% endblock %}
+{% block body_class %}onboarding-page{% endblock %}
+{% block tabbar %}{% endblock %}
+
+{% block content %}
+<header class="onboarding-heading">
+  <p class="section-kicker">Willkommen bei Odori</p>
+  <h1>Wo kocht ihr zusammen?</h1>
+  <p>Erstelle einen neuen privaten Haushalt oder tritt mit einer Einladung bei.</p>
+</header>
+
+<div class="onboarding-grid">
+  <section class="panel">
+    <h2>Neuen Haushalt gründen</h2>
+    <p class="muted">Du wirst Eigentümer und kannst danach weitere Personen einladen.</p>
+    <form method="post" class="stack">
+      {% csrf_token %}
+      <div class="field">
+        <label for="household-name">Name des Haushalts</label>
+        <input id="household-name" name="name" maxlength="120" required placeholder="Zum Beispiel Casa Rossi">
+      </div>
+      <button class="primary" type="submit">Haushalt erstellen</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Mit Code beitreten</h2>
+    <p class="muted">Den sechsstelligen Code erhältst du von einem Haushaltsmitglied.</p>
+    <form method="post" class="stack">
+      {% csrf_token %}
+      <div class="field">
+        <label for="registration-code">Haushaltscode</label>
+        <input id="registration-code" class="code-input" name="registration_code" maxlength="6" required autocomplete="one-time-code" placeholder="A1B2C3">
+      </div>
+      <button class="secondary" type="submit">Haushalt beitreten</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
