@@ -8,7 +8,13 @@ from planning.services import current_week_start, parse_week_start
 from recipes.models import RecipeTag
 
 from .contracts import RecommendationOptions
-from .models import RecommendationFeedback
+from .generation import (
+    GenerationAdmissionError,
+    generation_configuration,
+    queue_generated_recipe,
+    retry_generated_recipe,
+)
+from .models import GeneratedRecipeJob, RecommendationFeedback
 from .services import recommend, record_feedback
 
 REASON_LABELS = {
@@ -74,6 +80,7 @@ def recommendation_page(request):
             "tags": RecipeTag.objects.filter(household=household).order_by("name"),
             "selected_tag_ids": set(selected_tag_ids),
             "feedback_reasons": RecommendationFeedback.Reason.choices,
+            "generation": generation_configuration(),
         },
     )
 
@@ -95,3 +102,38 @@ def feedback_page(request):
     else:
         messages.success(request, "Danke für deine Rückmeldung.")
     return redirect(next_url)
+
+
+def queue_generation_page(request, run_id):
+    try:
+        servings = int(request.POST.get("servings", "4"))
+        job, _ = queue_generated_recipe(
+            user=request.user, run_id=run_id, requested_servings=servings
+        )
+    except (GenerationAdmissionError, ValueError):
+        messages.error(request, "Der Rezeptentwurf konnte nicht gestartet werden.")
+        return redirect("recommendations")
+    return redirect("generation-status", job_id=job.id)
+
+
+def generation_status_page(request, job_id):
+    job = (
+        GeneratedRecipeJob.objects.select_related("recipe")
+        .filter(id=job_id, household=household_for(request.user))
+        .first()
+    )
+    if not job:
+        from django.http import Http404
+
+        raise Http404
+    return render(request, "recommendations/generation_status.html", {"job": job})
+
+
+def retry_generation_page(request, job_id):
+    try:
+        job = retry_generated_recipe(user=request.user, job_id=job_id)
+    except GenerationAdmissionError:
+        messages.error(request, "Dieser Auftrag kann nicht erneut ausgeführt werden.")
+        return redirect("generation-status", job_id=job_id)
+    messages.success(request, "Der Auftrag wurde erneut eingereiht.")
+    return redirect("generation-status", job_id=job.id)

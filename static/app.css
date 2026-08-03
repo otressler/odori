@@ -2886,7 +2886,7 @@ body.kitchen main {
 
   .recommendation-ingredients {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.75rem;
     margin: 1rem 0;
   }
@@ -2922,6 +2922,12 @@ body.kitchen main {
 
   .recommendation-feedback select {
     width: auto;
+  }
+
+  @media (max-width: 64rem) {
+    .recommendation-ingredients {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   @media (max-width: 42rem) {

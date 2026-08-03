@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 
 from core.models import Household
 from recipes.models import Recipe
@@ -126,3 +127,100 @@ class RecommendationFeedback(models.Model):
 
     def __str__(self):
         return f"{self.user}: {self.recipe} {self.outcome}"
+
+
+class GenerationDailyUsage(models.Model):
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="recipe_generation_usage"
+    )
+    date = models.DateField()
+    reserved_calls = models.PositiveIntegerField(default=0)
+    reserved_input_tokens = models.PositiveIntegerField(default=0)
+    reserved_output_tokens = models.PositiveIntegerField(default=0)
+    used_calls = models.PositiveIntegerField(default=0)
+    used_input_tokens = models.PositiveIntegerField(default=0)
+    used_output_tokens = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "date"], name="unique_generation_usage_day"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["household", "-date"], name="gen_usage_household_day_idx")
+        ]
+
+
+class GeneratedRecipeJob(models.Model):
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        SUPERSEDED = "superseded", "Superseded"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="generated_recipe_jobs"
+    )
+    recommendation_run = models.ForeignKey(
+        RecommendationRun, on_delete=models.PROTECT, related_name="generation_jobs"
+    )
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="generated_recipe_jobs",
+    )
+    recipe = models.OneToOneField(
+        Recipe,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="generation_job",
+    )
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    requested_servings = models.PositiveSmallIntegerField(default=4)
+    prompt_version = models.CharField(max_length=40, default="recipe-generation-v1")
+    schema_version = models.PositiveSmallIntegerField(default=1)
+    provider = models.CharField(max_length=40, default="azure_openai")
+    deployment_version = models.CharField(max_length=120)
+    input_hash = models.CharField(max_length=64)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    available_at = models.DateTimeField(default=timezone.now)
+    retryable = models.BooleanField(default=False)
+    error_code = models.CharField(max_length=80, blank=True)
+    error_message = models.CharField(max_length=240, blank=True)
+    validation_issue_codes = models.JSONField(default=list, blank=True)
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    reserved_input_tokens = models.PositiveIntegerField(default=0)
+    reserved_output_tokens = models.PositiveIntegerField(default=0)
+    reservation_date = models.DateField(null=True, blank=True)
+    correlation_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recommendation_run"],
+                condition=Q(state__in=["queued", "running"]),
+                name="unique_active_generation_per_run",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["household", "-created_at"], name="gen_job_household_recent_idx"),
+            models.Index(fields=["state", "available_at"], name="gen_job_ready_idx"),
+        ]
+
+    @classmethod
+    def for_household(cls, household):
+        return cls.objects.filter(household=household)
+
+    def __str__(self):
+        return f"Generated recipe ({self.get_state_display()})"

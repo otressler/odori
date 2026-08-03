@@ -34,6 +34,19 @@
   </form>
 </section>
 
+{% if result and generation.available and result.generation_eligible %}
+<section class="panel">
+  <h2>Neuen Rezeptentwurf erstellen</h2>
+  <p>Nur auf ausdrücklichen Wunsch wird aus dem begrenzten Vorrats- und Empfehlungskontext ein prüfpflichtiger Entwurf erstellt.</p>
+  <form method="post" action="{% url 'queue-generation' result.run_id %}">
+    {% csrf_token %}
+    <label for="generation-servings">Portionen</label>
+    <input id="generation-servings" name="servings" type="number" min="1" max="100" value="4">
+    <button class="primary" type="submit">Entwurf generieren</button>
+  </form>
+</section>
+{% endif %}
+
 {% if page_error %}
   <p class="message message--error" role="alert">{{ page_error }}</p>
 {% elif result.candidate_set_truncated %}
@@ -73,6 +86,14 @@
               <h3>Unklar ({{ card.candidate.unknown }})</h3>
               <ul>
                 {% for item in card.candidate.unknown_ingredients %}
+                  <li>{{ item.name }}{% if item.unresolved %} <span class="flag">nicht zugeordnet</span>{% endif %}</li>
+                {% empty %}<li class="muted">Keine</li>{% endfor %}
+              </ul>
+            </section>
+            <section>
+              <h3>Optional ({{ card.candidate.optional_ingredients|length }})</h3>
+              <ul>
+                {% for item in card.candidate.optional_ingredients %}
                   <li>{{ item.name }}{% if item.unresolved %} <span class="flag">nicht zugeordnet</span>{% endif %}</li>
                 {% empty %}<li class="muted">Keine</li>{% endfor %}
               </ul>

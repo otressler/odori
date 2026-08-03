@@ -96,6 +96,8 @@ class ProviderDiagnostic(models.Model):
     http_status = models.PositiveSmallIntegerField(null=True, blank=True)
     deployment = models.CharField(max_length=120, blank=True)
     vector_dimensions = models.PositiveIntegerField(null=True, blank=True)
+    input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    output_tokens = models.PositiveIntegerField(null=True, blank=True)
     duration_ms = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

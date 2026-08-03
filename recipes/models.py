@@ -10,6 +10,7 @@ from pantry.models import CanonicalIngredient
 class RecipeSource(models.Model):
     class Type(models.TextChoices):
         MANUAL = "manual", "Manual"
+        GENERATED = "generated", "Generated"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(Household, on_delete=models.CASCADE)

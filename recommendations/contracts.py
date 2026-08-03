@@ -24,6 +24,7 @@ class CandidateFeatures:
     matched_ingredients: tuple[IngredientDetail, ...] = ()
     missing_ingredients: tuple[IngredientDetail, ...] = ()
     unknown_ingredients: tuple[IngredientDetail, ...] = ()
+    optional_ingredients: tuple[IngredientDetail, ...] = ()
     unresolved_count: int = 0
 
     @property
@@ -86,3 +87,5 @@ class RecommendationResult:
     query_duration_ms: int
     scoring_duration_ms: int
     suggestions: tuple[RecommendationSuggestion, ...]
+    generation_eligible: bool = False
+    generation_ineligibility_reason: str = ""

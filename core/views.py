@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import DatabaseError, connection, transaction
-from django.db.models import Count
+from django.db.models import Count, Sum
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -19,6 +19,12 @@ from pantry.models import (
 from planning.models import MealPlan, MealSlot
 from planning.services import current_week_start
 from recipes.models import Recipe, RecipeImageJob
+from recommendations.generation import (
+    GenerationAdmissionError,
+    generation_configuration,
+    retry_generated_recipe,
+)
+from recommendations.models import GeneratedRecipeJob, GenerationDailyUsage
 from shopping.models import ShoppingItem, ShoppingList
 
 from .models import (
@@ -80,6 +86,17 @@ def operations_page(request):
     )
     categories = list(IngredientCategory.objects.filter(household=household))
     ingredients = list(CanonicalIngredient.objects.filter(household=household, active=True))
+    today = timezone.localdate()
+    generation_usage = GenerationDailyUsage.objects.filter(
+        household=household, date__year=today.year, date__month=today.month
+    ).aggregate(
+        reserved_calls=Sum("reserved_calls"),
+        used_calls=Sum("used_calls"),
+        reserved_input_tokens=Sum("reserved_input_tokens"),
+        used_input_tokens=Sum("used_input_tokens"),
+        reserved_output_tokens=Sum("reserved_output_tokens"),
+        used_output_tokens=Sum("used_output_tokens"),
+    )
     return render(
         request,
         "core/operations.html",
@@ -94,6 +111,15 @@ def operations_page(request):
             "provider_diagnostics": ProviderDiagnostic.objects.filter(household=household)[:20],
             "category_queue_counts": job_state_counts(PantryCategorizationJob, household=household),
             "image_queue_counts": job_state_counts(RecipeImageJob, household=household),
+            "generation_queue_counts": job_state_counts(
+                GeneratedRecipeJob, household=household
+            ),
+            "generation_jobs": GeneratedRecipeJob.objects.filter(household=household)
+            .select_related("recommendation_run", "recipe")[:20],
+            "generation_config": generation_configuration(),
+            "generation_usage": {
+                key: value or 0 for key, value in generation_usage.items()
+            },
             "category_embedding_count": sum(bool(category.embedding) for category in categories),
             "category_count": len(categories),
             "ingredient_embedding_count": sum(
@@ -178,6 +204,19 @@ def retry_image_job(request, job_id):
             job_id=job.id,
             household_id=household.id,
         )
+    return redirect("operations")
+
+
+@login_required
+@require_POST
+def retry_generation_job(request, job_id):
+    owner_household_for(request.user)
+    try:
+        retry_generated_recipe(user=request.user, job_id=job_id, owner=True)
+    except GenerationAdmissionError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "Generierungsauftrag wurde erneut eingereiht.")
     return redirect("operations")
 
 

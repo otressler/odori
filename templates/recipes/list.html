@@ -37,7 +37,7 @@
             {% endif %}
           </span>
           <span class="recipe-card__content">
-            <span class="recipe-card__title">{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
+            <span class="recipe-card__title">{{ recipe.title|default:"Unbenanntes Rezept" }}{% if recipe.source.type == "generated" %} <span class="tag">KI-Entwurf</span>{% endif %}</span>
             <span class="recipe-card__flavour">{{ recipe.card_flavour }}</span>
             {% if recipe.tag_assignments.all %}<span class="tag-row">{% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</span>{% endif %}
             <span class="recipe-card__meta"><span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>{% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}</span>
@@ -57,7 +57,7 @@
             <span class="recipe-card__image-status">Bild wird zubereitet</span>
           </span>
           <span class="recipe-card__content">
-            <span class="recipe-card__title">{{ recipe.title|default:"Unbenannter Entwurf" }}</span>
+            <span class="recipe-card__title">{{ recipe.title|default:"Unbenannter Entwurf" }}{% if recipe.source.type == "generated" %} <span class="tag">KI-Entwurf</span>{% endif %}</span>
             <span class="recipe-card__flavour">{{ recipe.card_flavour }}</span>
             {% if recipe.tag_assignments.all %}<span class="tag-row">{% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</span>{% endif %}
             <span class="recipe-card__meta"><span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>{% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}</span>

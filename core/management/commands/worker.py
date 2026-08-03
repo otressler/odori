@@ -10,6 +10,10 @@ from core.observability import log_event
 from pantry.images import recover_interrupted_ingredient_icon_jobs, run_next_ingredient_icon_job
 from pantry.jobs import recover_interrupted_category_jobs, run_next_category_job
 from recipes.images import recover_interrupted_recipe_image_jobs, run_next_recipe_image_job
+from recommendations.generation import (
+    recover_interrupted_generation_jobs,
+    run_next_generated_recipe_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +26,7 @@ class Command(BaseCommand):
             ("pantry_category", run_next_category_job),
             ("recipe_image", run_next_recipe_image_job),
             ("ingredient_icon", run_next_ingredient_icon_job),
+            ("generated_recipe", run_next_generated_recipe_job),
         )
         for job_type, runner in runners:
             started = time.monotonic()
@@ -74,6 +79,18 @@ class Command(BaseCommand):
         self.stdout.write("Worker is ready.")
         log_event(logger, "worker.started")
         self.heartbeat(state=WorkerHeartbeat.State.IDLE)
+        recovered = recover_interrupted_generation_jobs()
+        if recovered:
+            self.stdout.write(
+                f"Failed {recovered} interrupted generated recipe job(s); explicit retry required."
+            )
+            log_event(
+                logger,
+                "worker.jobs_failed",
+                job_type="generated_recipe",
+                count=recovered,
+                error_code="interrupted_unknown",
+            )
         recovered = recover_interrupted_recipe_image_jobs()
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted recipe image job(s).")

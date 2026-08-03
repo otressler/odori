@@ -5,8 +5,8 @@ from datetime import datetime
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.utils import DatabaseError
 from django.db.models import Count, Max, Prefetch, Q
+from django.db.utils import DatabaseError
 from django.utils import timezone
 
 from core.services import household_for
@@ -20,6 +20,7 @@ from .contracts import (
     RecommendationOptions,
     RecommendationResult,
 )
+from .generation import catalog_generation_eligibility
 from .models import MAX_SNAPSHOT_BYTES, RecommendationFeedback, RecommendationRun
 from .scoring import CATALOG_V1, score_candidate
 
@@ -59,8 +60,24 @@ def _local_days_since(value, as_of):
 def _ingredient_features(recipe, inventory_statuses):
     canonical = {}
     unresolved = []
+    optional = []
     for line in recipe.recommendation_ingredients:
         if line.optional:
+            optional.append(
+                IngredientDetail(
+                    canonical_id=(
+                        str(line.canonical_ingredient_id)
+                        if line.canonical_ingredient_id
+                        else None
+                    ),
+                    name=(
+                        line.canonical_ingredient.name
+                        if line.canonical_ingredient_id
+                        else line.source_text
+                    ),
+                    unresolved=not bool(line.canonical_ingredient_id),
+                )
+            )
             continue
         if line.canonical_ingredient_id:
             canonical.setdefault(line.canonical_ingredient_id, line.canonical_ingredient)
@@ -81,12 +98,15 @@ def _ingredient_features(recipe, inventory_statuses):
             missing.append(detail)
         else:
             unknown.append(detail)
-    key = lambda item: (item.name.casefold(), item.canonical_id or "")
+    def key(item):
+        return (item.name.casefold(), item.canonical_id or "")
+
     return (
         tuple(sorted(matched, key=key)),
         tuple(sorted(missing, key=key)),
         tuple(sorted(unknown, key=key)),
         len(unresolved),
+        tuple(sorted(optional, key=key)),
     )
 
 
@@ -218,9 +238,13 @@ def recommend(*, user, options):
     scoring_started = time.perf_counter_ns()
     candidates = []
     for recipe in recipes:
-        matched_items, missing_items, unknown_items, unresolved_count = _ingredient_features(
-            recipe, inventory_statuses
-        )
+        (
+            matched_items,
+            missing_items,
+            unknown_items,
+            unresolved_count,
+            optional_items,
+        ) = _ingredient_features(recipe, inventory_statuses)
         preferred_matches = sum(
             assignment.tag_id in selected_tag_uuid_set
             for assignment in recipe.recommendation_tag_assignments
@@ -240,6 +264,7 @@ def recommend(*, user, options):
                 matched_ingredients=matched_items,
                 missing_ingredients=missing_items,
                 unknown_ingredients=unknown_items,
+                optional_ingredients=optional_items,
                 unresolved_count=unresolved_count,
             )
         )
@@ -262,6 +287,9 @@ def recommend(*, user, options):
         truncated=truncated,
         candidates=candidates,
     )
+    generation_eligible, generation_reason = catalog_generation_eligibility(
+        [_snapshot_candidate(candidate) for candidate in candidates]
+    )
     run = RecommendationRun(
         household=household,
         requester=user,
@@ -272,8 +300,8 @@ def recommend(*, user, options):
         candidate_count=len(candidates),
         query_duration_ms=query_duration_ms,
         scoring_duration_ms=scoring_duration_ms,
-        generation_eligible=False,
-        generation_ineligibility_reason="generation_not_available",
+        generation_eligible=generation_eligible,
+        generation_ineligibility_reason=generation_reason,
     )
     run.full_clean()
     run.save()
@@ -289,6 +317,8 @@ def recommend(*, user, options):
         query_duration_ms=query_duration_ms,
         scoring_duration_ms=scoring_duration_ms,
         suggestions=tuple(suggestions[: options.limit]),
+        generation_eligible=generation_eligible,
+        generation_ineligibility_reason=generation_reason,
     )
 
 
@@ -322,6 +352,9 @@ def replay_snapshot(snapshot):
         for candidate in candidates
     ]
     suggestions.sort(key=lambda item: (-item.score_bp, item.candidate.recipe_id))
+    generation_eligible, generation_reason = catalog_generation_eligibility(
+        snapshot.get("candidates", [])
+    )
     return RecommendationResult(
         run_id=None,
         scoring_version=scoring_version,
@@ -333,6 +366,8 @@ def replay_snapshot(snapshot):
         query_duration_ms=0,
         scoring_duration_ms=0,
         suggestions=tuple(suggestions),
+        generation_eligible=generation_eligible,
+        generation_ineligibility_reason=generation_reason,
     )
 
 

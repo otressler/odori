@@ -31,6 +31,7 @@ def recipe_list(request):
     recipes = list(
         Recipe.objects.filter(household=household)
         .exclude(status=Recipe.Status.ARCHIVED)
+        .select_related("source")
         .prefetch_related("ingredients", "tag_assignments__tag")
         .order_by("title")
     )
@@ -121,14 +122,15 @@ def recipe_form_data(request):
         for index in step_indexes
         if request.POST.get(f"step-{index}", "").strip()
     ]
-    return {
+    data = {
         "title": request.POST.get("title", "").strip(),
         "description": request.POST.get("description", "").strip(),
-        "servings": request.POST.get("servings", "").strip() or None,
+        "servings": int(request.POST.get("servings", "").strip() or 1),
         "ingredients": ingredients,
         "steps": steps,
         "tags": [tag.strip() for tag in request.POST.get("tags", "").split(",") if tag.strip()],
     }
+    return data
 
 
 def save_recipe_form(request, recipe=None):
@@ -155,7 +157,9 @@ def recipe_create_page(request):
 def recipe_edit_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source").prefetch_related(
+            "ingredients", "steps", "tag_assignments__tag"
+        )
         .filter(id=recipe_id, household=household)
         .first()
     )

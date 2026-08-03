@@ -70,6 +70,8 @@ def record_provider_diagnostic(
     http_status=None,
     deployment="",
     vector_dimensions=None,
+    input_tokens=None,
+    output_tokens=None,
     duration_ms=0,
 ):
     from .models import ProviderDiagnostic
@@ -84,6 +86,8 @@ def record_provider_diagnostic(
         http_status=http_status,
         deployment=deployment,
         vector_dimensions=vector_dimensions,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         duration_ms=duration_ms,
     )
     if household_id:

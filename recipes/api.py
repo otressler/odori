@@ -54,6 +54,10 @@ def recipe_json(recipe, user, servings=None):
         ],
         "favorite": recipe.favorites.filter(user=user).exists(),
         "imageStatus": recipe.image_status,
+        "source": {
+            "type": recipe.source.type,
+            "attribution": recipe.source.attribution or None,
+        },
     }
 
 

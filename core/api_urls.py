@@ -27,6 +27,15 @@ urlpatterns = [
         "recommendations/<uuid:run_id>/feedback",
         recommendations_api.recommendation_feedback,
     ),
+    path(
+        "recommendations/<uuid:run_id>/generated-recipes",
+        recommendations_api.queue_generation,
+    ),
+    path("generated-recipes/<uuid:job_id>", recommendations_api.generation_status),
+    path(
+        "generated-recipes/<uuid:job_id>/retry",
+        recommendations_api.retry_generation,
+    ),
     path("shopping-lists", shopping_api.shopping_lists),
     path("shopping-lists/<uuid:list_id>", shopping_api.shopping_list_detail),
     path("shopping-lists/<uuid:list_id>/items", shopping_api.shopping_items),

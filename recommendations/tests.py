@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import timedelta
+from io import StringIO
 from pathlib import Path
 
 from django.core.exceptions import ValidationError
@@ -9,7 +10,6 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from io import StringIO
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryItem
@@ -173,6 +173,10 @@ class FeatureAssemblyTests(RecommendationTestCase):
         self.assertEqual((candidate.matched, candidate.missing, candidate.unknown), (1, 1, 1))
         self.assertEqual(candidate.unresolved_count, 1)
         self.assertEqual(candidate.total, 3)
+        self.assertEqual(
+            [(item.name, item.unresolved) for item in candidate.optional_ingredients],
+            [("Optional", True)],
+        )
 
     def test_features_include_recency_tags_plan_and_negative_feedback(self):
         recipe = self.recipe()
@@ -296,6 +300,9 @@ class PersistenceAndFeedbackTests(RecommendationTestCase):
             inventory_snapshot_at=timezone.now(),
             candidate_count=0,
         )
+        RecommendationRun.objects.filter(id=old_run.id).update(
+            created_at=timezone.now() - timedelta(seconds=1)
+        )
         feedback = RecommendationFeedback.objects.create(
             household=self.household,
             user=self.user,
@@ -393,6 +400,12 @@ class RecommendationApiAndUiTests(RecommendationTestCase):
             source_text="Basilikum",
             sort_order=0,
         )
+        RecipeIngredient.objects.create(
+            recipe=recipe,
+            source_text="Parmesan",
+            optional=True,
+            sort_order=1,
+        )
         InventoryItem.objects.create(
             household=self.household,
             ingredient=ingredient,
@@ -416,6 +429,16 @@ class RecommendationApiAndUiTests(RecommendationTestCase):
         self.assertEqual(body["run"]["scoringVersion"], "catalog-v1")
         self.assertEqual(body["suggestions"][0]["recipeId"], str(recipe.id))
         self.assertEqual(body["suggestions"][0]["matchedIngredients"][0]["name"], "Basilikum")
+        self.assertEqual(
+            body["suggestions"][0]["optionalIngredients"],
+            [
+                {
+                    "canonicalIngredientId": None,
+                    "name": "Parmesan",
+                    "unresolved": True,
+                }
+            ],
+        )
         self.assertIn("components", body["suggestions"][0])
         self.assertIn("reasons", body["suggestions"][0])
 
@@ -475,11 +498,18 @@ class RecommendationApiAndUiTests(RecommendationTestCase):
 
     def test_html_page_navigation_and_planner_preselection(self):
         recipe = self.recipe()
+        RecipeIngredient.objects.create(
+            recipe=recipe,
+            source_text="Frische Kräuter",
+            optional=True,
+            sort_order=0,
+        )
 
         page = self.client.get("/recommendations/")
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, recipe.title)
         self.assertContains(page, "Warum dieses Rezept?")
+        self.assertContains(page, "Frische Kräuter")
         run = RecommendationRun.objects.latest("created_at")
 
         planner = self.client.get(

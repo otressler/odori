@@ -133,6 +133,7 @@ The response contains a reproducible run and catalog-only suggestions:
       ],
       "missingIngredients": [],
       "unknownIngredients": [],
+      "optionalIngredients": [],
       "unresolvedCount": 0,
       "reasons": [{"code": "inventory_coverage"}, {"code": "cook_recency"}]
     }
@@ -148,6 +149,8 @@ feedback subtracts 2,500. The result is clamped to 0–10,000 and ties sort by l
 UUID. Reason codes have stable order:
 `inventory_coverage`, `missing_ingredients`, `unknown_ingredients`, `cook_recency`,
 `preferred_tags`, `already_planned`, `negative_feedback`.
+Optional ingredient lines are returned in `optionalIngredients` for display but never affect
+inventory counts, score components, or reason codes.
 
 Feedback accepts `recipeId`, an outcome (`opened`, `planned`, `cooked`, `dismissed`, or
 `hidden`), and an optional bounded reason. It is scoped to the requesting user, household,

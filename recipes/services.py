@@ -1,5 +1,3 @@
-from decimal import Decimal, InvalidOperation
-
 from django.db import transaction
 from django.utils import timezone
 
@@ -7,6 +5,7 @@ from core.services import household_for
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
+from .contracts import RecipeDraft, validate_recipe_draft
 from .images import queue_recipe_image, queue_recipe_image_if_needed
 from .models import (
     Recipe,
@@ -20,22 +19,27 @@ from .models import (
 from .semantic import update_search_embedding
 
 
-def as_decimal(value):
-    if value in (None, ""):
-        return None
-    try:
-        return Decimal(str(value))
-    except InvalidOperation:
-        raise ValueError("amount must be numeric")
-
-
 class StaleRecipeVersion(Exception):
     pass
 
 
-def create_or_update_recipe(*, user, data, recipe=None):
+def create_or_update_recipe(
+    *,
+    user,
+    data,
+    recipe=None,
+    source_type=RecipeSource.Type.MANUAL,
+    queue_image=True,
+    unmatched_state=RecipeIngredient.MatchState.UNRESOLVED,
+):
     household = household_for(user)
     is_new_recipe = recipe is None
+    draft = (
+        data
+        if isinstance(data, RecipeDraft)
+        else validate_recipe_draft(data, partial=True)
+    )
+    data = draft.as_data()
     matched_ingredients = {}
     if "ingredients" in data:
         active_ingredients = list(
@@ -46,21 +50,15 @@ def create_or_update_recipe(*, user, data, recipe=None):
                 matched_ingredients[index] = best_match(active_ingredients, line["sourceText"])
     with transaction.atomic():
         if recipe is None:
-            source = RecipeSource.objects.create(household=household)
+            source = RecipeSource.objects.create(household=household, type=source_type)
             recipe = Recipe.objects.create(household=household, source=source, created_by=user)
+        elif recipe.source.type != source_type:
+            source_type = recipe.source.type
         if recipe.status == Recipe.Status.ARCHIVED:
             raise ValueError("Archived recipes cannot be edited.")
         for key in ("title", "description", "servings"):
             if key in data:
-                value = data[key] or ("" if key == "description" else None)
-                if key == "servings" and value is not None:
-                    try:
-                        value = int(value)
-                    except (TypeError, ValueError) as exc:
-                        raise ValueError("servings must be a positive whole number") from exc
-                    if value < 1:
-                        raise ValueError("servings must be a positive whole number")
-                setattr(recipe, key, value)
+                setattr(recipe, key, data[key])
         recipe.version += 1
         recipe.save()
         if "ingredients" in data:
@@ -77,22 +75,27 @@ def create_or_update_recipe(*, user, data, recipe=None):
                     recipe=recipe,
                     canonical_ingredient=ingredient,
                     source_text=line.get("sourceText", "").strip(),
-                    amount=as_decimal(line.get("amount")),
+                    amount=line.get("amount"),
                     unit=line.get("unit", "").strip(),
                     optional=bool(line.get("optional", False)),
                     sort_order=index,
                     match_state=RecipeIngredient.MatchState.MATCHED
                     if ingredient
-                    else RecipeIngredient.MatchState.UNRESOLVED,
+                    else unmatched_state,
                 )
         if "steps" in data:
             RecipeStep.objects.filter(recipe=recipe).delete()
             for index, step in enumerate(data["steps"]):
                 body = (
-                    step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
+                    step.get("body", "").strip()
                 )
                 if body:
-                    RecipeStep.objects.create(recipe=recipe, body=body, sort_order=index)
+                    RecipeStep.objects.create(
+                        recipe=recipe,
+                        body=body,
+                        sort_order=index,
+                        timer_seconds=step.get("timerSeconds"),
+                    )
         if "tags" in data:
             RecipeTagAssignment.objects.filter(recipe=recipe).delete()
             for name in data["tags"]:
@@ -100,7 +103,8 @@ def create_or_update_recipe(*, user, data, recipe=None):
                     household=household, name=name.strip().lower()
                 )
                 RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
-        queue_recipe_image_if_needed(recipe)
+        if queue_image:
+            queue_recipe_image_if_needed(recipe)
     if is_new_recipe or {"title", "description", "ingredients", "tags"} & data.keys():
         update_search_embedding(recipe)
     return recipe
@@ -115,6 +119,15 @@ def regenerate_recipe_image(recipe):
 def approve_recipe(recipe):
     if not recipe.title.strip() or not recipe.steps.exists():
         raise ValueError("A title and at least one instruction are required before approval.")
+    if (
+        recipe.source.type == RecipeSource.Type.GENERATED
+        and recipe.ingredients.filter(optional=False)
+        .exclude(match_state=RecipeIngredient.MatchState.MATCHED)
+        .exists()
+    ):
+        raise ValueError(
+            "Generated recipes require every required ingredient to be matched before approval."
+        )
     recipe.status = Recipe.Status.APPROVED
     recipe.version += 1
     recipe.save(update_fields=["status", "version", "updated_at"])

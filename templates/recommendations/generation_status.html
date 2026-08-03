@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Rezeptentwurf · Odori{% endblock %}
+{% block content %}
+<section class="panel" data-generation-status data-status-url="/api/v1/generated-recipes/{{ job.id }}">
+  <p class="hero__eyebrow">Generierter Entwurf</p>
+  <h1>Status: <span data-job-state>{{ job.get_state_display }}</span></h1>
+  <p class="muted">Auftrag {{ job.id }} · Versuch {{ job.attempt_count }}</p>
+  {% if job.state == "succeeded" and job.recipe %}
+    <p><a class="button primary" href="{% url 'recipe-detail' job.recipe.id %}">Entwurf prüfen</a></p>
+  {% elif job.state == "failed" %}
+    <p class="message message--error">{{ job.error_message }}</p>
+    {% if job.retryable %}
+      <form method="post" action="{% url 'retry-generation' job.id %}">{% csrf_token %}
+        <button class="primary" type="submit">Explizit erneut versuchen</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <p class="message message--warning">Der Auftrag wird lokal und nacheinander verarbeitet. Diese Seite aktualisiert sich automatisch.</p>
+  {% endif %}
+  <p><a href="{% url 'recommendations' %}">Zurück zu den Empfehlungen</a></p>
+</section>
+{% if job.state == "queued" or job.state == "running" %}
+<script>
+(() => {
+  const root = document.querySelector("[data-generation-status]");
+  const poll = async () => {
+    const response = await fetch(root.dataset.statusUrl, {headers: {"Accept": "application/json"}});
+    if (!response.ok) return;
+    const job = await response.json();
+    root.querySelector("[data-job-state]").textContent = job.state;
+    if (job.state === "queued" || job.state === "running") setTimeout(poll, 2000);
+    else window.location.reload();
+  };
+  setTimeout(poll, 2000);
+})();
+</script>
+{% endif %}
+{% endblock %}

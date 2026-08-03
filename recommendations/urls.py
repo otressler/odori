@@ -11,4 +11,19 @@ urlpatterns = [
         login_required(require_POST(views.feedback_page)),
         name="recommendation-feedback",
     ),
+    path(
+        "<uuid:run_id>/generate/",
+        login_required(require_POST(views.queue_generation_page)),
+        name="queue-generation",
+    ),
+    path(
+        "generated/<uuid:job_id>/",
+        login_required(views.generation_status_page),
+        name="generation-status",
+    ),
+    path(
+        "generated/<uuid:job_id>/retry/",
+        login_required(require_POST(views.retry_generation_page)),
+        name="retry-generation",
+    ),
 ]
