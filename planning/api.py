@@ -67,7 +67,8 @@ def meal_plan(request, week_start):
         start = parse_week_start(week_start)
     except ValueError as exc:
         return error("validation_failed", str(exc), fields={"weekStart": "Invalid."})
-    return JsonResponse(plan_json(get_or_create_plan(user=request.user, week_start=start), request.user))
+    plan = get_or_create_plan(user=request.user, week_start=start)
+    return JsonResponse(plan_json(plan, request.user))
 
 
 @login_required
