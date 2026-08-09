@@ -13,15 +13,17 @@ from .services import (
     StaleSlotVersion,
     add_slot,
     delete_slot,
+    duplicate_recipe_ids,
     get_or_create_plan,
     mark_cooked,
     parse_week_start,
     plan_slots,
+    recently_cooked_recipe_ids,
     update_slot,
 )
 
 
-def slot_json(slot):
+def slot_json(slot, *, duplicate_ids=(), recent_ids=()):
     return {
         "id": str(slot.id),
         "date": slot.date.isoformat(),
@@ -32,15 +34,22 @@ def slot_json(slot):
         "notes": slot.notes,
         "cookedAt": slot.cooked_at.isoformat() if slot.cooked_at else None,
         "version": slot.version,
+        "isDuplicate": slot.recipe_id in duplicate_ids,
+        "isRecentRepeat": slot.recipe_id in recent_ids,
     }
 
 
-def plan_json(plan):
+def plan_json(plan, user):
+    duplicate_ids = duplicate_recipe_ids(plan)
+    recent_ids = recently_cooked_recipe_ids(household_for(user))
     return {
         "id": str(plan.id),
         "weekStart": plan.week_start_date.isoformat(),
         "version": plan.version,
-        "slots": [slot_json(slot) for slot in plan_slots(plan)],
+        "slots": [
+            slot_json(slot, duplicate_ids=duplicate_ids, recent_ids=recent_ids)
+            for slot in plan_slots(plan)
+        ],
     }
 
 
@@ -58,7 +67,8 @@ def meal_plan(request, week_start):
         start = parse_week_start(week_start)
     except ValueError as exc:
         return error("validation_failed", str(exc), fields={"weekStart": "Invalid."})
-    return JsonResponse(plan_json(get_or_create_plan(user=request.user, week_start=start)))
+    plan = get_or_create_plan(user=request.user, week_start=start)
+    return JsonResponse(plan_json(plan, request.user))
 
 
 @login_required
@@ -80,7 +90,14 @@ def meal_plan_slots(request, week_start):
         )
     except ValueError as exc:
         return error("validation_failed", str(exc))
-    return JsonResponse(slot_json(slot), status=201)
+    return JsonResponse(
+        slot_json(
+            slot,
+            duplicate_ids=duplicate_recipe_ids(slot.plan),
+            recent_ids=recently_cooked_recipe_ids(household_for(request.user)),
+        ),
+        status=201,
+    )
 
 
 @login_required
@@ -111,7 +128,13 @@ def meal_slot_detail(request, slot_id):
         )
     except (ValueError, SlotNotCookable) as exc:
         return error("validation_failed", str(exc))
-    return JsonResponse(slot_json(slot))
+    return JsonResponse(
+        slot_json(
+            slot,
+            duplicate_ids=duplicate_recipe_ids(slot.plan),
+            recent_ids=recently_cooked_recipe_ids(household_for(request.user)),
+        )
+    )
 
 
 @login_required
@@ -143,7 +166,13 @@ def meal_slot_mark_cooked(request, slot_id):
         return error("invalid_state", str(exc), 409)
     except ValueError as exc:
         return error("validation_failed", str(exc))
-    return JsonResponse(slot_json(slot))
+    return JsonResponse(
+        slot_json(
+            slot,
+            duplicate_ids=duplicate_recipe_ids(slot.plan),
+            recent_ids=recently_cooked_recipe_ids(household_for(request.user)),
+        )
+    )
 
 
 @login_required

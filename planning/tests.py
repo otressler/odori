@@ -139,6 +139,17 @@ class WeekStructureTests(PlanningTestCase):
         with self.assertRaises(StaleSlotVersion):
             shift_slot(user=self.user, slot_id=slot.id, version=slot.version, day_delta=1)
 
+    def test_plan_api_marks_duplicate_recipe_slots(self):
+        first = self.make_slot(day_offset=0)
+        second = self.make_slot(day_offset=1)
+
+        response = self.client.get(f"/api/v1/meal-plans/{self.week_start.isoformat()}")
+
+        self.assertEqual(response.status_code, 200)
+        slots = {slot["id"]: slot for slot in response.json()["slots"]}
+        self.assertTrue(slots[str(first.id)]["isDuplicate"])
+        self.assertTrue(slots[str(second.id)]["isDuplicate"])
+
 
 class CookingTests(PlanningTestCase):
     def test_kitchen_page_shows_a_ready_recipe_image(self):
@@ -165,6 +176,18 @@ class CookingTests(PlanningTestCase):
         with self.assertRaises(SlotNotCookable):
             mark_cooked(user=self.user, slot_id=slot.id, slot_version=slot.version)
         self.assertEqual(CookEvent.objects.count(), 1)
+
+    def test_plan_api_marks_recently_cooked_recipe_slots(self):
+        cooked = self.make_slot(day_offset=0)
+        planned = self.make_slot(day_offset=1)
+        mark_cooked(user=self.user, slot_id=cooked.id, slot_version=cooked.version)
+
+        response = self.client.get(f"/api/v1/meal-plans/{self.week_start.isoformat()}")
+
+        self.assertEqual(response.status_code, 200)
+        slots = {slot["id"]: slot for slot in response.json()["slots"]}
+        self.assertTrue(slots[str(cooked.id)]["isRecentRepeat"])
+        self.assertTrue(slots[str(planned.id)]["isRecentRepeat"])
 
     def test_cooking_does_not_infer_depletion(self):
         slot = self.make_slot()
