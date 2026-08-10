@@ -10,7 +10,7 @@ from PIL import Image
 
 from core.models import Household, HouseholdMembership, ProviderDiagnostic, User
 
-from .images import queue_ingredient_icon, run_next_ingredient_icon_job
+from .images import ingredient_icon_prompt, queue_ingredient_icon, run_next_ingredient_icon_job
 from .models import CanonicalIngredient, IngredientIconJob
 
 
@@ -28,6 +28,22 @@ class IngredientIconGenerationTests(TestCase):
             household=self.household,
             name="Tomate",
         )
+
+    @override_settings(AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY=True)
+    def test_native_transparency_prompt_requests_white_strokes(self):
+        prompt = ingredient_icon_prompt(self.ingredient)
+
+        self.assertIn("white hand-drawn strokes", prompt)
+        self.assertIn("transparent background", prompt)
+        self.assertNotIn("black hand-drawn strokes", prompt)
+
+    @override_settings(AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY=False)
+    def test_postprocessing_prompt_requests_black_strokes_on_white(self):
+        prompt = ingredient_icon_prompt(self.ingredient)
+
+        self.assertIn("black hand-drawn strokes", prompt)
+        self.assertIn("white background", prompt)
+        self.assertNotIn("transparent background", prompt)
 
     @override_settings(AZURE_OPENAI_ENDPOINT="", AZURE_OPENAI_API_KEY="")
     def test_missing_configuration_is_persisted_as_an_icon_diagnostic(self):
