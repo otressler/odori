@@ -39,7 +39,7 @@
       </span>
       {% with requirement=item.earliest_recipe_requirement %}
         {% if requirement %}
-          <span class="shopping-card__source">Benötigt am {{ requirement.date|date:"j.n." }} für {{ requirement.title }}</span>
+          <span class="shopping-card__source">Benötigt am {{ requirement.date|date:"j.n." }}</span>
         {% endif %}
       {% endwith %}
     {% elif item.source == "manual" %}
