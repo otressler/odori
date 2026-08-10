@@ -63,7 +63,11 @@
         {% for item in category_group.list %}
         <article class="inventory-card" data-status="{{ item.status }}">
           <div class="list-card__art" aria-hidden="true">
-            <img src="{% static 'images/pantry-outline.svg' %}" alt="">
+            {% if item.ingredient.icon %}
+              <img src="{% url 'ingredient-icon' item.ingredient.id %}" alt="">
+            {% else %}
+              <img src="{% static 'images/shopping-outline.svg' %}" alt="">
+            {% endif %}
           </div>
           <div class="inventory-card__identity">
             <span class="inventory-card__name">{{ item.ingredient.name }}</span>
