@@ -1858,16 +1858,16 @@ textarea:focus {
 .list-card__art {
   display: grid;
   flex: none;
-  width: 2.7rem;
-  height: 2.7rem;
+  width: 4.7rem;
+  height: 4.7rem;
   place-items: center;
   border-radius: var(--radius-sm);
   background: var(--surface-sunk);
 }
 
 .list-card__art img {
-  width: 2rem;
-  height: 2rem;
+  width: 4rem;
+  height: 4rem;
 }
 
 .inventory-card__identity {
