@@ -1,3 +1,4 @@
+from io import BytesIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -5,6 +6,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 
 from core.models import Household, HouseholdMembership, ProviderDiagnostic, User
 
@@ -59,6 +61,25 @@ class IngredientIconGenerationTests(TestCase):
             generate_image_bytes_mock.call_args.kwargs["deployment"],
             settings.AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT,
         )
+
+    @override_settings(AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY=False)
+    @patch("pantry.images.generate_image_bytes")
+    def test_non_native_transparency_removes_white_background(self, generate_image_bytes_mock):
+        source = Image.new("RGB", (2, 1), "white")
+        source.putpixel((0, 0), (0, 0, 0))
+        image_bytes = BytesIO()
+        source.save(image_bytes, format="PNG")
+        generate_image_bytes_mock.return_value = image_bytes.getvalue()
+
+        queue_ingredient_icon(self.ingredient)
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.assertTrue(run_next_ingredient_icon_job())
+            self.ingredient.refresh_from_db()
+            with Image.open(self.ingredient.icon.path) as result:
+                self.assertEqual(result.mode, "RGBA")
+                self.assertEqual(result.getpixel((0, 0))[3], 255)
+                self.assertEqual(result.getpixel((1, 0))[3], 0)
+        self.assertIsNone(generate_image_bytes_mock.call_args.kwargs["background"])
 
     def test_explicit_icon_backfill_respects_its_paid_work_limit(self):
         CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
