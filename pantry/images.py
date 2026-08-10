@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from io import BytesIO
 
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -16,10 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def ingredient_icon_prompt(ingredient):
+    background = (
+        "Transparent background"
+        if settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY
+        else "White background with bold black strokes"
+    )
     return (
         f"Low-resolution stylized pantry icon of {ingredient.name}. "
         "A simple white silhouette with a few clean carved details, centered and fully visible. "
-        "Transparent background, no coloured background, no text, logos, watermarks, border, "
+        f"{background}, no coloured background, no text, logos, watermarks, border, "
         "UI, shadows, or mockup chrome. Square composition for a small shopping-list icon."
     )
 
@@ -90,16 +96,42 @@ def _defer_queued_icon_jobs(job):
 
 
 def _generate_ingredient_icon(job):
-    return generate_image_bytes(
+    image_bytes = generate_image_bytes(
         job.prompt,
         household_id=job.ingredient.household_id,
         job_id=job.id,
         correlation_id=job.correlation_id,
         operation="ingredient_icon_generation",
-        background="transparent",
+        background=(
+            "transparent"
+            if settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY
+            else None
+        ),
         output_format="png",
         deployment=settings.AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT,
     )
+    if settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY:
+        return image_bytes
+    return _remove_white_background(image_bytes)
+
+
+def _remove_white_background(image_bytes):
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(image_bytes)) as source:
+        bmp = BytesIO()
+        source.convert("RGB").save(bmp, format="BMP")
+    bmp.seek(0)
+    with Image.open(bmp) as source:
+        image = ImageOps.invert(source.convert("RGB")).convert("RGBA")
+    pixels = image.load()
+    for y in range(image.height):
+        for x in range(image.width):
+            red, green, blue, _ = pixels[x, y]
+            pixels[x, y] = (red, green, blue, 0 if (red + green + blue) / 3 <= 100 else 255)
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
 
 
 def _complete_ingredient_icon_job(job, image_bytes):
