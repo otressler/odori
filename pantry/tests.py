@@ -466,6 +466,16 @@ class PantryApiTests(TestCase):
         self.assertEqual(list(response.context["items"]), [matching])
 
     @override_settings(DEBUG=False)
+    def test_inventory_page_renders_generated_icons_through_the_authenticated_endpoint(self):
+        self.ingredient.icon.name = "pantry-icons/tomate.png"
+        self.ingredient.save(update_fields=["icon"])
+        InventoryItem.objects.create(household=self.household, ingredient=self.ingredient)
+
+        response = self.client.get("/pantry/")
+
+        self.assertContains(response, f'/pantry/icons/{self.ingredient.id}/')
+
+    @override_settings(DEBUG=False)
     def test_ingredient_icon_is_served_only_to_its_household(self):
         self.ingredient.icon.name = "pantry-icons/tomate.png"
         self.ingredient.save(update_fields=["icon"])
