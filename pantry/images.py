@@ -17,15 +17,20 @@ logger = logging.getLogger(__name__)
 
 
 def ingredient_icon_prompt(ingredient):
-    background = (
-        "Transparent background"
-        if settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY
-        else "White background with bold black strokes"
-    )
+    if settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY:
+        style = (
+            "white hand-drawn strokes with a few clean carved details on a transparent "
+            "background"
+        )
+    else:
+        style = (
+            "bold black hand-drawn strokes with a few clean carved details on a plain "
+            "white background"
+        )
     return (
         f"Low-resolution stylized pantry icon of {ingredient.name}. "
-        "A simple white silhouette with a few clean carved details, centered and fully visible. "
-        f"{background}, no coloured background, no text, logos, watermarks, border, "
+        f"A simple centered and fully visible drawing with {style}. "
+        "No coloured background, no text, logos, watermarks, border, "
         "UI, shadows, or mockup chrome. Square composition for a small shopping-list icon."
     )
 
