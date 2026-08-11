@@ -8,6 +8,7 @@ from django.test.utils import CaptureQueriesContext
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryItem
 
+from .generation import run_next_recipe_generation_job
 from .models import (
     GeneratedRecipeRequest,
     Recipe,
@@ -16,7 +17,6 @@ from .models import (
     RecipeStep,
     RecommendationOutcome,
 )
-from .generation import run_next_recipe_generation_job
 from .recommendations import recommend_for_user
 
 
