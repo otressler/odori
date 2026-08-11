@@ -1,5 +1,7 @@
 import logging
+from io import BytesIO
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
 
@@ -68,12 +70,29 @@ def _generate_recipe_image(job):
     )
 
 
+def _recipe_thumbnail(image_bytes):
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(image_bytes)) as source:
+        image = ImageOps.fit(
+            source.convert("RGB"),
+            (settings.RECIPE_THUMBNAIL_SIZE, settings.RECIPE_THUMBNAIL_SIZE),
+            method=Image.Resampling.LANCZOS,
+        )
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=85, optimize=True)
+    return output.getvalue()
+
+
 def _complete_recipe_image_job(job, image_bytes):
     if job.recipe.image_prompt != job.prompt:
         return False
     job.recipe.image.save(f"{job.recipe.id}.png", ContentFile(image_bytes), save=False)
+    job.recipe.thumbnail.save(
+        f"{job.recipe.id}.jpg", ContentFile(_recipe_thumbnail(image_bytes)), save=False
+    )
     job.recipe.image_status = "ready"
-    job.recipe.save(update_fields=["image", "image_status"])
+    job.recipe.save(update_fields=["image", "thumbnail", "image_status"])
     return True
 
 

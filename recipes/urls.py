@@ -39,6 +39,11 @@ urlpatterns = [
         name="recipe-image",
     ),
     path(
+        "<uuid:recipe_id>/thumbnail/",
+        login_required(views.recipe_thumbnail),
+        name="recipe-thumbnail",
+    ),
+    path(
         "<uuid:recipe_id>/ingredients/<uuid:ingredient_id>/add-to-pantry/",
         login_required(require_POST(views.recipe_ingredient_to_pantry_page)),
         name="recipe-ingredient-to-pantry",

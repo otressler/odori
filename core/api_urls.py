@@ -10,7 +10,11 @@ urlpatterns = [
     path("ingredients/category-scores", pantry_api.ingredient_category_scores),
     path("ingredients/<uuid:ingredient_id>", pantry_api.ingredient_detail),
     path("inventory", pantry_api.inventory),
-    path("inventory/<uuid:ingredient_id>/change-status", pantry_api.change_status),
+    path(
+        "inventory/<uuid:ingredient_id>/change-status",
+        pantry_api.change_status,
+        name="api-v1-inventory-change-status",
+    ),
     path("recipes", recipes_api.recipe_collection),
     path("recipes/<uuid:recipe_id>", recipes_api.recipe_detail),
     path("recipes/<uuid:recipe_id>/approve", recipes_api.approve),
