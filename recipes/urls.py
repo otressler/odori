@@ -6,6 +6,11 @@ from . import views
 
 urlpatterns = [
     path("", login_required(views.recipe_list), name="recipe-list"),
+    path(
+        "recommendations/",
+        login_required(views.recommendation_list_page),
+        name="recipe-recommendations",
+    ),
     path("new/", login_required(views.recipe_create_page), name="recipe-create"),
     path("<uuid:recipe_id>/edit/", login_required(views.recipe_edit_page), name="recipe-edit"),
     path(

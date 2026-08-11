@@ -10,6 +10,7 @@ from pantry.models import CanonicalIngredient, InventoryItem
 from pantry.services import change_inventory_status
 
 from .models import Recipe, RecipeIngredient
+from .recommendations import recommend_for_user
 from .semantic import rank_recipes
 from .services import (
     StaleRecipeVersion,
@@ -52,6 +53,18 @@ def recipe_list(request):
             "published_recipes": published_recipes,
             "draft_recipes": draft_recipes,
             "query": query,
+        },
+    )
+
+
+def recommendation_list_page(request):
+    result = recommend_for_user(user=request.user)
+    return render(
+        request,
+        "recipes/recommendations.html",
+        {
+            "recommendations": result.suggestions,
+            "recommendation_run": result.run,
         },
     )
 

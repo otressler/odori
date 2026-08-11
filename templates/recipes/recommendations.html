@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Vorschläge · Odori{% endblock %}
+
+{% block content %}
+<div class="split" style="margin-bottom:1rem">
+  <div>
+    <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Was kochen wir heute?</p>
+    <h1 style="margin:0">Rezeptvorschläge</h1>
+  </div>
+  <a class="button ghost" href="{% url 'recipe-list' %}">Zum Rezeptbuch</a>
+</div>
+
+{% if recommendations %}
+  <div class="recipe-grid">
+    {% for recommendation in recommendations %}
+      <article class="recipe-card">
+        <div class="recipe-card__content">
+          <h2 class="recipe-card__title"><a href="{% url 'recipe-detail' recommendation.recipe.id %}">{{ recommendation.recipe.title|default:"Unbenanntes Rezept" }}</a></h2>
+          <p class="recipe-card__flavour">{{ recommendation.score|floatformat:0 }}% passend</p>
+          <ul>
+            {% for reason in recommendation.reasons %}<li>{{ reason }}</li>{% endfor %}
+          </ul>
+          {% if recommendation.matched_ingredients %}
+            <p><strong>Vorrätig:</strong> {{ recommendation.matched_ingredients|join:", " }}</p>
+          {% endif %}
+          {% if recommendation.missing_ingredients %}
+            <p><strong>Noch prüfen oder besorgen:</strong> {{ recommendation.missing_ingredients|join:", " }}</p>
+          {% endif %}
+          <form method="post" action="{% url 'recipe-favorite' recommendation.recipe.id %}">
+            {% csrf_token %}
+            <button class="ghost" type="submit">Als Favorit merken</button>
+          </form>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <h2>Noch keine Vorschläge</h2>
+    <p>Veröffentliche Rezepte und ordne Zutaten deinem Vorrat zu, damit Odori passende Ideen finden kann.</p>
+    <p><a class="button primary" href="{% url 'recipe-create' %}">Rezept anlegen</a></p>
+  </div>
+{% endif %}
+{% endblock %}

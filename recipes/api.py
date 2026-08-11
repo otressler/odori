@@ -8,6 +8,7 @@ from core.api import error, read_json
 from core.services import household_for
 
 from .models import Recipe
+from .recommendations import record_outcome, recommend_for_user
 from .semantic import rank_recipes
 from .services import (
     StaleRecipeVersion,
@@ -145,3 +146,48 @@ def approve(request, recipe_id):
 def favorite(request, recipe_id):
     recipe = visible_recipe(request.user, recipe_id)
     return JsonResponse({"favorite": toggle_favorite(recipe, request.user)})
+
+
+@login_required
+@require_http_methods(["GET"])
+def recommendations(request):
+    result = recommend_for_user(user=request.user)
+    return JsonResponse(
+        {
+            "runId": str(result.run.id),
+            "scoringVersion": result.run.scoring_version,
+            "inventorySnapshotAt": result.run.inventory_snapshot_at.isoformat(),
+            "suggestions": [
+                {
+                    "recipeId": str(suggestion.recipe.id),
+                    "title": suggestion.recipe.title,
+                    "matchedIngredients": suggestion.matched_ingredients,
+                    "missingIngredients": suggestion.missing_ingredients,
+                    "reasons": suggestion.reasons,
+                    "score": suggestion.score,
+                    "scoreComponents": suggestion.score_components,
+                }
+                for suggestion in result.suggestions
+            ],
+        }
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def recommendation_outcomes(request):
+    data = read_json(request)
+    if not isinstance(data, dict):
+        return error("malformed_input", "Expected JSON.", 400)
+    try:
+        outcome = record_outcome(
+            user=request.user,
+            recipe_id=data.get("recipeId"),
+            outcome=data.get("outcome"),
+            reason=data.get("reason", ""),
+            run_id=data.get("runId"),
+        )
+    except ValueError as exc:
+        code = str(exc)
+        return error(code, "The recommendation outcome could not be recorded.", 404 if code.endswith("not_found") else 422)
+    return JsonResponse({"id": str(outcome.id), "outcome": outcome.outcome}, status=201)
