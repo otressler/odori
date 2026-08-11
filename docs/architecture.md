@@ -10,31 +10,35 @@ Traefik reverse proxy ──► Odori web application ──► PostgreSQL
                                   │       │
                                   │       └────────► persistent upload volume
                                   │
-                                  ├────────► Azure AI Document Intelligence
-                                  └────────► Azure OpenAI
+                                  └────────► Azure OpenAI / Microsoft Foundry (optional)
 ```
 
-The initial architecture is a modular monolith: one web application container owns UI, authenticated HTTP API, domain logic, and background-job execution. PostgreSQL is the system of record. This is intentionally operationally small for a Raspberry Pi while keeping provider-specific AI code behind adapters.
+The implemented architecture is a modular monolith: the web container owns UI, authenticated HTTP
+API, and domain logic, while a separate worker process from the same image executes durable jobs.
+PostgreSQL is the system of record. This is intentionally operationally small for a Raspberry Pi
+while keeping provider-specific AI code behind adapters.
 
-Azure Document Intelligence and Azure OpenAI already perform the expensive OCR and model inference remotely; the Pi only validates, transfers, orchestrates, and persists jobs. Keep orchestration in the local worker initially. An Azure Functions Flex Consumption component is an optional later execution target, not a required service.
+The worker currently runs pantry categorization, ingredient-icon generation, recipe-image generation,
+and optional generated-recipe jobs. Assisted URL/file import, including Azure Document Intelligence,
+is planned work. Keep orchestration in the local worker initially. An Azure Functions Flex
+Consumption component is an optional later execution target, not a required service.
 
 ## Components
 
 | Component | Responsibility | Boundary |
 | --- | --- | --- |
-| Web UI | Responsive catalog, inventory, planner, shopping, cooking, import-review screens, and a secure WebSocket client. | Browser; never calls Azure directly. |
-| Application API | Authentication, validation, authorization, domain workflows, JSON/HTML responses, and real-time event publishing. | Only component exposed through Traefik. |
-| Realtime gateway | Authenticates WebSocket upgrades, authorizes household/resource channels, and sends entity-change events. | Runs in the application container initially. |
-| Job runner | Executes URL fetches, document extraction, LLM parsing, and retryable recommendation generation. | Can run as a worker process from the same image. |
-| PostgreSQL | Transactional domain records, jobs, import results, and audit metadata. | Internal Docker network only. |
-| File storage | Original uploaded PDF/images and optional extracted artifacts. | Named volume initially; backup with database. |
-| Azure adapters | Document Intelligence and OpenAI request/response mapping. | Server-side REST calls; inputs minimized and logged safely. |
+| Web UI | Responsive catalog, inventory, planner, shopping, cooking, and household-management screens. | Browser; never calls Azure directly. |
+| Application API | Authentication, validation, authorization, domain workflows, and JSON/HTML responses. | Only component exposed through Traefik. |
+| Job runner | Executes durable categorization, generated-draft, and image-generation jobs. | Separate worker process from the same image. |
+| PostgreSQL | Transactional domain records, durable jobs, and audit metadata. | Internal Docker network only. |
+| File storage | Generated recipe and ingredient images. | Named volume initially; backup with database. |
+| Azure adapters | Optional embedding, generated-draft, and image request/response mapping. | Server-side REST calls; inputs minimized and logged safely. |
 
 ## Module boundaries
 
 | Module | Owns |
 | --- | --- |
-| Recipes | Recipe drafts, approved recipes, ingredients, instructions, tags, sources, and imports. |
+| Recipes | Recipe drafts, approved recipes, ingredients, instructions, tags, sources, generated-draft requests, and recipe-image jobs. |
 | Pantry | Canonical ingredients, categories, inventory status, and inventory event history. |
 | Planning | Weeks, meal slots, planned recipe servings, and cook history. |
 | Shopping | Lists, calculated/manual list entries, purchase state, and inventory synchronization. |
@@ -45,7 +49,9 @@ Modules communicate through application services and transactions, not direct cr
 
 ## Key workflows
 
-### Import pipeline
+### Planned import pipeline
+
+URL and file imports are not implemented. The intended pipeline is:
 
 1. Validate source type, size, MIME type, and URL safety.
 2. Persist an `import_job` in `queued` state and store the source reference.
@@ -78,7 +84,10 @@ Modules communicate through application services and transactions, not direct cr
 3. Marking a recipe meal slot cooked may include explicit ingredient status changes selected in the cooking flow. The server verifies that each ingredient belongs to the recipe, applies those changes with origin `cook_recipe`, bypasses confirmation, and retains the meal-slot reference in each audit event. It never assumes all recipe ingredients were depleted.
 4. The resulting inventory change and any affected shopping-list updates publish real-time events.
 
-### Real-time collaboration
+### Planned real-time collaboration
+
+The current application has no WebSocket endpoint; clients refresh state through HTTP. The intended
+collaboration design is:
 
 1. After normal session authentication, a browser opens one same-origin WebSocket connection.
 2. It may subscribe only to its household inventory channel and shopping-list channels it is authorized to read.
@@ -93,7 +102,7 @@ Modules communicate through application services and transactions, not direct cr
 | Application shape | Server-rendered responsive web app with JSON endpoints | Fast local UX, simple deployment, and one authentication boundary. |
 | Database | PostgreSQL | Durable transactions, JSON support for provider artifacts, and reliable backup tooling. |
 | Background work | Database-backed job queue and separate worker command | No additional broker on the Pi; jobs survive application restart. |
-| Real-time transport | Same-origin WebSockets with database-backed event fan-out when running multiple app processes | Immediate shared-list updates without making socket messages a second write API. |
+| Real-time transport | HTTP refresh today; same-origin WebSockets remain planned | Keep HTTP as the mutation authority if a later collaboration decision justifies sockets. |
 | File storage | Docker named volume mounted outside the web root | Keeps sources private and simple to back up. |
 | AI integration | Azure REST adapters with typed schemas | Limits vendor coupling and makes failures/test doubles manageable. |
 | Authentication | App session authentication, with all ingress gated by Tailscale | Tailscale is network access, not sufficient application authorization. |
@@ -104,9 +113,10 @@ Modules communicate through application services and transactions, not direct cr
 | --- | --- | --- | --- |
 | HTTP, server rendering, and WebSockets | Pi web process | No planned move for household scale | One process; keep ordinary use independent of Azure. |
 | Domain logic and PostgreSQL transactions | Pi application/database | No planned move | Azure workers must not become a second domain-write implementation. |
-| Import job orchestration | Pi worker, concurrency 1 | Measured contention, ARM64 provider incompatibility, or repeated execution-reliability failure | Database-backed jobs remain authoritative. |
-| OCR/layout extraction | Azure Document Intelligence | Already remote | Apply page/job quotas and content-hash caching. |
-| Recipe normalization/generation | Azure OpenAI | Already remote | Use small approved deployments, strict token limits, and independent feature switches. |
+| Enrichment and generated-draft jobs | Pi worker, serial execution | Measured contention, ARM64 provider incompatibility, or repeated execution-reliability failure | Database-backed jobs remain authoritative. |
+| OCR/layout extraction | Planned Azure Document Intelligence integration | The assisted-import milestone is delivered | Apply page/job quotas and content-hash caching. |
+| Recipe normalization | Planned Azure OpenAI integration | The assisted-import milestone is delivered | Use small approved deployments, strict token limits, and independent feature switches. |
+| Generated recipe drafts | Pi worker plus optional Azure OpenAI deployment | Generated drafts are enabled | Explicit request, daily limit, and review before approval. |
 | Optional burst transformation | Flex Consumption function | A benchmark shows meaningful Pi CPU/memory pressure and the data handoff remains simpler than local execution | Zero always-ready instances; idempotent requests; no independent database ownership. |
 | Backups | Local encrypted staging plus optional low-cost off-device object storage | Off-device copy is strongly recommended | Retention/lifecycle policy; do not run a general-purpose Azure VM. |
 
@@ -116,17 +126,18 @@ Do not introduce a function merely as a proxy to Document Intelligence or Azure 
 
 - Size for a Raspberry Pi 5 with 8 GB RAM and reserve at least 2 GB for the host and shared infrastructure.
 - Use one web process, one worker process, and one PostgreSQL instance. Add process concurrency only after measurement.
-- Bound database pools, request bodies, result sets, WebSocket queues, upload sizes, job concurrency, provider retries, and log retention.
+- Bound database pools, request bodies, result sets, job concurrency, provider retries, and log retention. Bound upload and WebSocket queues when those planned features are introduced.
 - AI and URL imports are degradable features. Catalog, pantry, planning, shopping, and cooking remain available during provider or internet outages.
-- PostgreSQL and the uploads volume are one recovery unit. Real-time events are disposable notifications; REST and persisted versions restore truth after reconnect.
+- PostgreSQL and the uploads volume are one recovery unit. Persisted versions prevent stale writes;
+        future real-time notifications must remain disposable because HTTP reads restore truth.
 
 ## AI safety and quality controls
 
 - Treat URL and OCR content as untrusted data, never as instructions.
 - Require schema-constrained model output; validate types, maximum lengths, and referenced canonical IDs before persistence.
-- Preserve source text and model/version metadata for review and future reprocessing.
+- Preserve generated-draft request and model metadata for review. Preserve import source text and extraction metadata when assisted import is implemented.
 - Use confidence thresholds: low-confidence ingredient mappings and missing mandatory fields require human review.
-- Apply per-user/job size limits, retry only transient provider errors, and expose provider failure without leaking credentials.
+- Retry only transient provider errors and expose provider failure without leaking credentials. Apply input-size limits to the planned import workflow.
 - Cache only deterministic provider outputs keyed by source content hash and parsing schema version.
 
 ## Security considerations
@@ -136,6 +147,7 @@ Do not introduce a function merely as a proxy to Document Intelligence or Azure 
 - Validate file magic bytes, allow-list image/PDF types, cap upload size/pages, and store uploads outside public paths.
 - Keep Azure credentials in environment variables or Docker secrets, never client bundles or the database.
 - Use secure, HttpOnly, SameSite session cookies and CSRF protection for mutating browser requests.
-- Authenticate WebSocket upgrades using the established session; authorize every channel subscription and close/revalidate sockets when membership changes.
+- A future WebSocket transport must authenticate upgrades using the established session, authorize
+        every channel subscription, and close or revalidate sockets when membership changes.
 - Do not put secrets, full recipe content, or inventory snapshots into event payloads; send resource ID, version, actor display name where appropriate, and changed fields only.
 - Record actor, time, and source for recipe approval, inventory changes, purchases, and import retries.

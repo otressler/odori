@@ -2,7 +2,7 @@
 
 ## Decision
 
-Use Django 5.1 with server-rendered templates, Django's maintained authentication, CSRF middleware,
+Use Django 5.2 with server-rendered templates, Django's maintained authentication, CSRF middleware,
 PostgreSQL via `psycopg`, Django migrations, pytest/pytest-django, Ruff, and a small CSS stylesheet.
 The WSGI application runs under Gunicorn; a separate Django management command starts the worker.
 

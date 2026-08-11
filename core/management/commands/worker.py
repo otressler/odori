@@ -14,6 +14,7 @@ from recipes.generation import (
     run_next_recipe_generation_job,
 )
 from recipes.images import recover_interrupted_recipe_image_jobs, run_next_recipe_image_job
+from recipes.imports import recover_expired_imports, run_next_import_job
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class Command(BaseCommand):
             ("recipe_generation", run_next_recipe_generation_job),
             ("recipe_image", run_next_recipe_image_job),
             ("ingredient_icon", run_next_ingredient_icon_job),
+            ("recipe_import", run_next_import_job),
         )
         for job_type, runner in runners:
             started = time.monotonic()
@@ -79,6 +81,9 @@ class Command(BaseCommand):
         self.stdout.write("Worker is ready.")
         log_event(logger, "worker.started")
         self.heartbeat(state=WorkerHeartbeat.State.IDLE)
+        recovered = recover_expired_imports()
+        if recovered:
+            self.stdout.write(f"Requeued {recovered} expired recipe import(s).")
         recovered = recover_interrupted_recipe_image_jobs()
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted recipe image job(s).")

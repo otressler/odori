@@ -23,20 +23,27 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 | `GET/POST /recipes` | List/search recipes; create a manual draft. |
 | `GET/PATCH/DELETE /recipes/{id}` | Read, edit, or archive a recipe. |
 | `POST /recipes/{id}/approve` | Publish a reviewed draft to the catalog. |
-| `POST /recipe-imports` | Start URL or file import; returns `202` and job ID. |
-| `GET /recipe-imports/{id}` | Poll import state, stage, retryability, and review draft. |
-| `POST /recipe-imports/{id}/retry` | Retry a failed transient import. |
+| `POST /recipes/{id}/favorite` | Toggle the current user's favorite marker. |
 | `GET/POST /ingredients` | Search canonical tags; create a reviewed tag when permitted. |
+| `GET/PATCH /ingredients/{id}` | Read or update a canonical ingredient. |
+| `GET /ingredients/category-scores` | Return ingredient-category classification diagnostics. |
 | `GET/PATCH /inventory` | List and batch-update availability statuses. |
 | `POST /inventory/{ingredientId}/change-status` | Request or confirm an availability status change; returns planned-meal conflicts when confirmation is needed. |
-| `GET/PUT /meal-plans/{weekStart}` | Retrieve or replace week metadata. |
-| `POST/PATCH/DELETE /meal-plans/{weekStart}/slots[/{id}]` | Create, move/update, or remove planned meals. |
+| `GET/PUT /meal-plans/{weekStart}` | Retrieve a week plan, creating it when absent. `PUT` currently has the same behavior as `GET`; replacement is not implemented. |
+| `POST /meal-plans/{weekStart}/slots` | Create a planned meal. |
+| `PATCH/DELETE /meal-slots/{id}` | Move, update, or remove a planned meal. |
 | `POST /meal-plans/{weekStart}/shopping-lists` | Generate/refresh a list from the plan. |
-| `GET/POST /shopping-lists[/{id}]` | List/create lists and retrieve one list. |
-| `POST/PATCH/DELETE /shopping-lists/{id}/items[/{itemId}]` | Add, alter state, or remove entries. |
+| `GET /shopping-lists` | List shopping lists. |
+| `GET /shopping-lists/{id}` | Retrieve a shopping list and its items. |
+| `POST /shopping-lists/{id}/items` | Add a manual entry. |
+| `PATCH/DELETE /shopping-lists/{id}/items/{itemId}` | Alter state or remove an entry. |
 | `POST /shopping-lists/{id}/items/{itemId}/purchase` | Mark purchased and update inventory atomically. |
-| `POST /recommendations` | Return ranked catalog suggestions and optional generated drafts. |
+| `GET /recommendations` | Return ranked catalog suggestions. |
+| `POST /recommendation-outcomes` | Record a local recommendation outcome. |
+| `POST /generated-recipe-drafts` | Queue an explicit generated-draft request. |
+| `GET /generated-recipe-drafts/{requestId}` | Poll generated-draft status. |
 | `POST /meal-slots/{id}/mark-cooked` | Record a cook event. |
+| `GET /cook-events` | Retrieve the 100 most recent cook events. |
 
 ## Planned-stock confirmation
 
@@ -48,42 +55,12 @@ An inventory status change that could remove an ingredient from an upcoming plan
 
 returns `409` with `error.code: "planned_ingredient_in_use"` and affected meal slots unless it includes `confirmPlannedUse: true`. The confirmation is an explicit user decision and is written to inventory history. `POST /meal-slots/{id}/mark-cooked` performs the linked `cook_recipe` inventory update internally and never requests this confirmation.
 
-## Real-time events
+## Planned API surfaces
 
-Connect to `wss://odori.tail-net-name.ts.net/api/v1/realtime` using the authenticated same-origin session. The server assigns household inventory and authorized shopping-list subscriptions; clients do not choose arbitrary channel names.
-
-```json
-{
-  "type": "shopping.item.updated",
-  "resourceId": "shopping_item_uuid",
-  "listId": "shopping_list_uuid",
-  "version": 12,
-  "actor": { "id": "user_uuid", "displayName": "Mara" },
-  "changed": { "state": "purchased" }
-}
-```
-
-Event types include `inventory.item.updated`, `shopping.item.created`, `shopping.item.updated`, `shopping.item.deleted`, and `shopping.list.regenerated`. Events are notifications of committed writes, not commands. On reconnect or a version gap, clients fetch the affected resource through its REST endpoint.
-
-## Import request
-
-URL imports use JSON:
-
-```json
-{ "sourceUrl": "https://example.org/recipe" }
-```
-
-File imports use `multipart/form-data` with a `file` part. The accepted response contains:
-
-```json
-{
-  "id": "job_uuid",
-  "state": "queued",
-  "statusUrl": "/api/v1/recipe-imports/job_uuid"
-}
-```
-
-The job response includes safe progress data (`queued`, `extracting`, `normalizing`, `awaiting_review`), a structured `draftRecipe` when available, field-level review flags, and a retryable error code. It never exposes provider credentials or raw stack traces.
+Recipe URL/file imports and real-time WebSocket events are planned capabilities, not current API
+surfaces. Current clients read fresh state through the HTTP endpoints above. The eventual import
+and collaboration contracts remain in the product requirements and implementation plan until their
+routes, durable job models, and transport are implemented.
 
 ## Recommendation response
 
@@ -116,7 +93,9 @@ succeeds. The worker performs the provider request; safe failures are retained o
 
 ## Concurrency
 
-`PATCH` requests for recipe, inventory, meal-slot, and shopping-item changes include an entity version or HTTP `If-Match` ETag. A stale update returns `409` with the current version. This prevents a phone and tablet from silently overwriting each other.
+`PATCH` requests for recipes, inventory, meal slots, and shopping items include an entity version.
+Recipe and shopping-item deletes also include a version. A stale update returns `409` with the
+current version. HTTP `If-Match` ETags are not currently supported.
 
 ## Meal-slot and cooking semantics
 

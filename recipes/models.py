@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from core.models import Household
 from pantry.models import CanonicalIngredient
@@ -11,15 +12,107 @@ class RecipeSource(models.Model):
     class Type(models.TextChoices):
         MANUAL = "manual", "Manual"
         GENERATED = "generated", "Generated"
+        IMPORTED = "imported", "Imported"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(Household, on_delete=models.CASCADE)
     type = models.CharField(max_length=20, choices=Type.choices, default=Type.MANUAL)
     attribution = models.CharField(max_length=255, blank=True)
+    import_source = models.OneToOneField(
+        "ImportSource", null=True, blank=True, on_delete=models.PROTECT, related_name="recipe_source"
+    )
     imported_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.attribution or self.get_type_display()
+
+
+class ImportSource(models.Model):
+    class Type(models.TextChoices):
+        URL = "url", "URL"
+        IMAGE = "image", "Image"
+        PDF = "pdf", "PDF"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="import_sources")
+    source_type = models.CharField(max_length=10, choices=Type.choices)
+    url = models.URLField(max_length=2048, blank=True)
+    file = models.FileField(upload_to="recipe-imports/", blank=True)
+    content_hash = models.CharField(max_length=64)
+    content_length = models.PositiveBigIntegerField(default=0)
+    content_type = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "content_hash"], name="unique_import_source_hash"
+            )
+        ]
+
+
+class RecipeImportJob(models.Model):
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class Stage(models.TextChoices):
+        ACQUIRE = "acquire", "Acquire"
+        EXTRACT = "extract", "Extract"
+        NORMALIZE = "normalize", "Normalize"
+        REVIEW = "review", "Review"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="recipe_import_jobs")
+    source = models.ForeignKey(ImportSource, on_delete=models.PROTECT, related_name="jobs")
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    stage = models.CharField(max_length=12, choices=Stage.choices, default=Stage.ACQUIRE)
+    attempt_count = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=3)
+    available_at = models.DateTimeField(null=True, blank=True)
+    lease_id = models.UUIDField(null=True, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    correlation_id = models.UUIDField(default=uuid.uuid4, editable=False)
+    error_code = models.CharField(max_length=80, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
+    recipe = models.ForeignKey(
+        "Recipe", null=True, blank=True, on_delete=models.SET_NULL, related_name="import_jobs"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["state", "available_at"], name="recipe_import_ready_idx"),
+            models.Index(fields=["lease_expires_at"], name="recipe_import_lease_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source"],
+                condition=Q(state__in=["queued", "running"]),
+                name="one_active_import_per_source",
+            )
+        ]
+
+
+class RecipeImportAttempt(models.Model):
+    job = models.ForeignKey(RecipeImportJob, on_delete=models.CASCADE, related_name="attempts")
+    number = models.PositiveIntegerField()
+    lease_id = models.UUIDField()
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=12, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["job", "number"], name="unique_import_attempt")
+        ]
 
 
 class Recipe(models.Model):

@@ -10,4 +10,4 @@
 | [Implementation plan](implementation-plan.md) | Milestones, implementation-agent packets, dependencies, release gates, Pi budgets, and Azure cost controls |
 | [Product backlog](backlog.md) | Candidate features, design-risk mitigations, detailed delivery plans, priorities, and open product questions |
 
-The source brief makes no framework choice. The documents therefore define stable boundaries and recommend a single deployable, server-rendered application with a relational database for the first release. Milestone 0 records the concrete framework/tooling choice before feature agents begin. This keeps the Pi deployment simple while allowing measured workload to move to a worker or consumption-based Azure function later.
+Milestone 0 selected and established a Django modular monolith with server-rendered templates, a relational database, and a separate worker process. The documents define the implemented contracts and clearly label later work, keeping the Pi deployment simple while allowing measured workload to move to an Azure Function only when justified.

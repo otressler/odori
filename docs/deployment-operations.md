@@ -110,7 +110,7 @@ file.
 | `INGREDIENT_EMBEDDINGS_ENABLED` | Enables Azure OpenAI semantic ingredient matching; leave `false` for local fuzzy matching only. |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Azure OpenAI endpoint, credential, and embedding deployment used when embeddings are enabled. |
 | `AZURE_OPENAI_IMAGE_DEPLOYMENT`, `AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT` | Image deployment names used by the worker; the former defaults to `gpt-image-2`, while the latter is optional. |
-| `AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY` | Set `true` only when the pantry icon deployment supports native transparent backgrounds; otherwise leave it unset or set it to `false` to use white-background icons with local postprocessing (default `false`). |
+| `AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY` | Set `true` only when the pantry icon deployment supports native transparent backgrounds. The application fallback is `true`, but the supplied Compose file and `.env.example` explicitly set `false` to use white-background icons with local postprocessing. |
 | `AZURE_OPENAI_IMAGE_API_VERSION`, `AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS`, `AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS` | Image API version, request timeout (default `60`), and minimum interval between image requests in the worker (default `12`). |
 | `RECIPE_GENERATION_ENABLED`, `AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT`, `AZURE_OPENAI_RECIPE_GENERATION_TIMEOUT_SECONDS`, `RECIPE_GENERATION_DAILY_LIMIT` | Enable queued recipe generation, select its chat-model deployment, and set its worker timeout (default `30`) and per-household rolling 24-hour limit (default `3`). |
 | `WORKER_HEARTBEAT_MAX_AGE_SECONDS` | Heartbeat freshness threshold for `/health/worker`, the operations page, and the worker container healthcheck (default `30`). |
@@ -156,7 +156,7 @@ Do not store `.env`, provider keys, database dumps, or uploaded source recipes i
 - Back up the PostgreSQL volume and uploads volume together daily; encrypt backups and test a restore at least quarterly.
 - Provide an authenticated recipe export (structured JSON plus optionally printable recipes) so a household can retain its approved catalog independently of infrastructure backups.
 - Monitor container health, database free space, failed/retried job counts, upload volume consumption, and Azure API errors/latency.
-- Monitor active WebSocket connections, reconnect rates, event delivery failures, and persistent client version gaps; a reconnect must always recover through REST state reads.
+- Monitor request failures, database free space, worker freshness, queue counts, and provider latency. WebSocket connection and event-delivery monitoring is future work because the current application has no WebSocket transport.
 - Retain provider request metadata and job errors for troubleshooting, but redact credentials, cookies, full authorization headers, and unnecessary source content from logs.
 - The application retains at most 200 sanitized provider diagnostic records per household. These records contain outcome codes, deployment names, HTTP status, vector dimensions, durations, and correlation IDs; they never contain prompts, embeddings, provider payloads, cookies, or credentials.
 - Prune source uploads according to a household retention setting only after confirming the extracted recipe has been approved.
@@ -225,8 +225,8 @@ python scripts/check_embedding_connectivity.py
 ## Network policy
 
 - Traefik is the only service connected to `proxy`; it terminates HTTPS for the tailnet hostname.
-- Configure Traefik to support standard HTTPS WebSocket upgrades on the `odori` router; no additional public port or separate socket hostname is needed.
+- A future WebSocket transport can use standard HTTPS upgrades on the existing `odori` router; it does not require another public port or socket hostname.
 - `postgres` and `odori-worker` have no Traefik labels and no published ports.
-- Outbound application access is limited to Azure provider endpoints and explicitly permitted URL-import destinations.
+- The Compose `egress` network permits outbound connections. Use a host firewall or explicit proxy to limit current worker access to Azure provider endpoints and, when assisted import is introduced, permitted recipe-source destinations.
 - Tailscale ACLs should allow only the household's devices/users to reach the Pi service.
 - Bind the Traefik entrypoint or host firewall rule to the Tailscale interface/address. A tailnet hostname and ACL do not make a router private if the same entrypoint is also reachable from a public interface.
