@@ -3,7 +3,9 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from PIL import Image
@@ -104,6 +106,41 @@ class IngredientIconGenerationTests(TestCase):
         call_command("backfill_ingredient_icons", limit=2)
 
         self.assertEqual(IngredientIconJob.objects.filter(state="queued").count(), 2)
+
+    def test_remove_ingredient_icons_clears_selected_icons_and_pending_jobs(self):
+        second = CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
+        self.ingredient.icon.save("tomate.png", ContentFile(b"icon"), save=True)
+        self.ingredient.icon_status = "ready"
+        self.ingredient.icon_prompt = "old prompt"
+        self.ingredient.save(update_fields=["icon_status", "icon_prompt"])
+        job = queue_ingredient_icon(self.ingredient)
+
+        call_command("remove_ingredient_icons", str(self.ingredient.id))
+
+        self.ingredient.refresh_from_db()
+        second.refresh_from_db()
+        job.refresh_from_db()
+        self.assertFalse(self.ingredient.icon)
+        self.assertEqual(self.ingredient.icon_status, "pending")
+        self.assertEqual(self.ingredient.icon_prompt, "")
+        self.assertEqual(job.state, IngredientIconJob.State.SUPERSEDED)
+        self.assertFalse(second.icon)
+
+    def test_remove_ingredient_icons_supports_all(self):
+        second = CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
+        self.ingredient.icon.save("tomate.png", ContentFile(b"icon"), save=True)
+        second.icon.save("basilikum.png", ContentFile(b"icon"), save=True)
+
+        call_command("remove_ingredient_icons", "--all")
+
+        self.ingredient.refresh_from_db()
+        second.refresh_from_db()
+        self.assertFalse(self.ingredient.icon)
+        self.assertFalse(second.icon)
+
+    def test_remove_ingredient_icons_requires_selection(self):
+        with self.assertRaisesMessage(CommandError, "at least one ingredient ID"):
+            call_command("remove_ingredient_icons")
 
     @override_settings(AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS=60)
     @patch("pantry.images.generate_image_bytes", return_value=b"generated-icon")
