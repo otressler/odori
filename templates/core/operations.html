@@ -42,6 +42,7 @@
   <h2>Warteschlangen</h2>
   <p>Warengruppen: {% for state, count in category_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
   <p>Rezeptbilder: {% for state, count in image_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+  <p>Rezeptimporte: {% for state, count in import_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
 
   <h3>Letzte Warengruppen-Jobs</h3>
   <table>
@@ -55,6 +56,25 @@
         <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-category-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
       </tr>
       {% empty %}<tr><td colspan="6">Noch keine Warengruppen-Jobs.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Letzte Rezeptimporte</h3>
+  <table>
+    <thead><tr><th>Erstellt</th><th>Quelle</th><th>Status</th><th>Phase</th><th>Versuche</th><th>Rezept</th><th>Fehler</th><th>Aktion</th></tr></thead>
+    <tbody>
+      {% for job in import_jobs %}
+      <tr>
+        <td>{{ job.created_at|date:"d.m.Y H:i:s" }}</td>
+        <td><a href="{{ job.source.url }}" target="_blank" rel="noreferrer">{{ job.source.url|truncatechars:50 }}</a></td>
+        <td>{{ job.get_state_display }}</td>
+        <td>{{ job.get_stage_display }}</td>
+        <td>{{ job.attempt_count }} / {{ job.max_attempts }}</td>
+        <td>{% if job.recipe %}<a href="{% url 'recipe-detail' job.recipe.id %}">{{ job.recipe.title|default:"Entwurf" }}</a>{% else %}—{% endif %}</td>
+        <td>{% if job.error_code %}<code>{{ job.error_code }}</code>: {{ job.error_message }}{% else %}—{% endif %}</td>
+        <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-import-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td colspan="8">Noch keine Rezeptimporte.</td></tr>{% endfor %}
     </tbody>
   </table>
 

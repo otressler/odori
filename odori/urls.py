@@ -30,6 +30,11 @@ urlpatterns = [
         login_required(core_views.retry_image_job),
         name="retry-image-job",
     ),
+    path(
+        "admin/operations/jobs/imports/<uuid:job_id>/retry",
+        login_required(core_views.retry_import_job),
+        name="retry-import-job",
+    ),
     path("admin/", admin.site.urls),
     path("", core_views.home, name="home"),
     path("health/live", core_views.liveness, name="liveness"),

@@ -8,10 +8,16 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from pantry.models import CanonicalIngredient, IngredientIconJob, PantryCategorizationJob
-from recipes.models import Recipe, RecipeImageJob, RecipeSource
+from recipes.models import Recipe, RecipeImageJob, RecipeImportAttempt, RecipeImportJob, RecipeSource
 
 from .models import Household, HouseholdMembership, ProviderDiagnostic, User, WorkerHeartbeat
-from .views import job_state_counts, operations_page, retry_category_job, worker_readiness
+from .views import (
+    job_state_counts,
+    operations_page,
+    retry_category_job,
+    retry_import_job,
+    worker_readiness,
+)
 
 
 class OperationsPageTests(TestCase):
@@ -112,3 +118,30 @@ class OperationsPageTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(json.loads(response.content)["reason"], "worker_not_seen")
+
+    def test_failed_import_retry_preserves_attempt_numbering(self):
+        from recipes.models import ImportSource
+
+        import_source = ImportSource.objects.create(
+            household=self.household,
+            source_type=ImportSource.Type.URL,
+            url="https://example.test/recipe",
+            content_hash="retry-test",
+        )
+        job = RecipeImportJob.objects.create(
+            household=self.household,
+            source=import_source,
+            state=RecipeImportJob.State.FAILED,
+            attempt_count=1,
+        )
+        RecipeImportAttempt.objects.create(job=job, number=1, lease_id=uuid.uuid4())
+        request = self.factory.post(f"/admin/operations/jobs/imports/{job.id}/retry")
+        request.user = self.owner
+        request.request_id = str(uuid.uuid4())
+
+        response = retry_import_job(request, job.id)
+
+        self.assertEqual(response.status_code, 302)
+        job.refresh_from_db()
+        self.assertEqual(job.state, RecipeImportJob.State.QUEUED)
+        self.assertEqual(job.attempt_count, 1)

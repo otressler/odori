@@ -505,6 +505,23 @@ main {
   margin: 0;
 }
 
+.recipe-import {
+  margin-bottom: 1rem;
+}
+
+.recipe-import .panel__head {
+  align-items: flex-start;
+}
+
+.recipe-import .panel__head p {
+  margin: .35rem 0 0;
+  max-width: 42rem;
+}
+
+.recipe-import .inline-form {
+  margin-top: 1rem;
+}
+
 a.card {
   display: block;
   color: inherit;
@@ -1874,6 +1891,56 @@ textarea:focus {
   display: grid;
   min-width: 0;
   gap: 0.15rem;
+}
+
+.inventory-card__menu {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.inventory-card__menu summary {
+  list-style: none;
+}
+
+.inventory-card__menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.inventory-card__menu summary svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.inventory-card__flyout {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.inventory-card__flyout form,
+.inventory-card__flyout button {
+  width: 100%;
+  margin: 0;
+}
+
+.inventory-card__flyout button {
+  justify-content: flex-start;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.inventory-card__flyout svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .inventory-card__name {

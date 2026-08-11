@@ -28,6 +28,7 @@ from .services import (
     curate_ingredient_category,
     merge_ingredients,
     queue_category_suggestions,
+    remove_inventory_item,
     similar_ingredient_recommendations,
     toggle_category_example,
 )
@@ -341,6 +342,12 @@ def inventory_status_page(request, ingredient_id):
         )
     else:
         messages.success(request, "Verfügbarkeit aktualisiert.")
+    return redirect("inventory-page")
+
+
+def inventory_remove_page(request, ingredient_id):
+    remove_inventory_item(user=request.user, ingredient_id=ingredient_id)
+    messages.success(request, "Zutat aus dem Vorrat entfernt.")
     return redirect("inventory-page")
 
 

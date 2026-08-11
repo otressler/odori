@@ -15,6 +15,25 @@
   <a class="button ghost" href="{% url 'recipe-recommendations' %}">Vorschläge</a>
 </div>
 
+<section class="panel recipe-import" aria-labelledby="recipe-import-heading">
+  <div class="panel__head">
+    <div>
+      <h2 id="recipe-import-heading">Rezept aus dem Internet übernehmen</h2>
+      <p class="field__hint">Füge den Link zu einer Rezeptseite ein. Der Entwurf wird im Hintergrund erstellt und muss anschließend geprüft werden.</p>
+    </div>
+  </div>
+  <form class="inline-form" id="recipe-import-form">
+    {% csrf_token %}
+    <div class="field">
+      <label for="recipe-import-url">Rezept-URL</label>
+      <input id="recipe-import-url" name="url" type="url" required maxlength="2048"
+             placeholder="https://www.example.com/mein-rezept">
+    </div>
+    <button class="primary" type="submit" id="recipe-import-submit">Importieren</button>
+  </form>
+  <p class="message" id="recipe-import-status" role="status" aria-live="polite" hidden></p>
+</section>
+
 <form class="search-bar" method="get" role="search">
   <div class="field">
     <label for="recipe-search">Rezepte suchen</label>
@@ -74,4 +93,89 @@
       <p><a class="button primary" href="/recipes/new/">Rezept anlegen</a></p>
     </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("recipe-import-form");
+  var input = document.getElementById("recipe-import-url");
+  var submit = document.getElementById("recipe-import-submit");
+  var status = document.getElementById("recipe-import-status");
+  var csrf = form.querySelector("[name=csrfmiddlewaretoken]").value;
+  var pollLimit = 120;
+
+  function showStatus(text, className) {
+    status.hidden = false;
+    status.className = "message" + (className ? " message--" + className : "");
+    status.textContent = text;
+  }
+
+  function stageLabel(stage) {
+    return {
+      acquire: "Seite wird gelesen",
+      extract: "Rezeptdaten werden erkannt",
+      normalize: "Rezept wird aufbereitet",
+      review: "Entwurf ist bereit"
+    }[stage] || "Import wird verarbeitet";
+  }
+
+  function poll(statusUrl, remaining) {
+    fetch(statusUrl, {headers: {"Accept": "application/json"}})
+      .then(function (response) {
+        return response.ok ? response.json() : Promise.reject();
+      })
+      .then(function (data) {
+        if (data.state === "succeeded" && data.recipe) {
+          showStatus("Entwurf ist bereit. Die Rezeptprüfung wird geöffnet.");
+          window.location.href = "/recipes/" + data.recipe.id + "/";
+          return;
+        }
+        if (data.state === "failed" || data.state === "cancelled") {
+          showStatus("Der Import konnte nicht abgeschlossen werden. Bitte prüfe den Link und versuche es erneut.", "error");
+          submit.disabled = false;
+          return;
+        }
+        if (remaining <= 0) {
+          showStatus("Der Import dauert länger als erwartet. Der Worker verarbeitet ihn weiter; bitte später erneut nachsehen.", "warning");
+          submit.disabled = false;
+          return;
+        }
+        showStatus(stageLabel(data.stage) + ".");
+        window.setTimeout(function () { poll(statusUrl, remaining - 1); }, 1500);
+      })
+      .catch(function () {
+        showStatus("Der Importstatus konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
+        submit.disabled = false;
+      });
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    submit.disabled = true;
+    showStatus("Import wird in die Warteschlange gestellt.");
+    fetch("/api/v1/recipe-imports", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrf,
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({url: input.value.trim()})
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return response.ok ? data : Promise.reject(data);
+        });
+      })
+      .then(function (data) { poll(data.statusUrl, pollLimit); })
+      .catch(function (data) {
+        var message = data && data.error && data.error.message;
+        showStatus(message || "Der Import konnte nicht gestartet werden. Bitte prüfe die URL.", "error");
+        submit.disabled = false;
+      });
+  });
+}());
+</script>
 {% endblock %}

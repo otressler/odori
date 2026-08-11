@@ -80,6 +80,17 @@
               {% endwith %}
             {% endif %}
           </div>
+          <details class="inventory-card__menu">
+            <summary class="icon-button ghost" aria-label="{{ item.ingredient.name }} verwalten" title="{{ item.ingredient.name }} verwalten">
+              <svg aria-hidden="true"><use href="#i-more-vertical"></use></svg>
+            </summary>
+            <div class="inventory-card__flyout">
+              <form method="post" action="{% url 'inventory-remove' item.ingredient.id %}">
+                {% csrf_token %}
+                <button class="danger" type="submit"><svg aria-hidden="true"><use href="#i-trash"></use></svg>Aus Vorrat entfernen</button>
+              </form>
+            </div>
+          </details>
         {# The segmented control already announces the current state, so no separate badge. #}
         <div class="segmented inventory-card__control" data-inventory-status data-url="{% url 'api-v1-inventory-change-status' item.ingredient.id %}" data-version="{{ item.version }}" data-status="{{ item.status }}">
           {% for value, label in status_choices %}

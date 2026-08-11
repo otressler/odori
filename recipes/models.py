@@ -99,6 +99,10 @@ class RecipeImportJob(models.Model):
             )
         ]
 
+    @classmethod
+    def for_household(cls, household):
+        return cls.objects.filter(household=household)
+
 
 class RecipeImportAttempt(models.Model):
     job = models.ForeignKey(RecipeImportJob, on_delete=models.CASCADE, related_name="attempts")

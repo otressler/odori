@@ -42,4 +42,9 @@ urlpatterns = [
         login_required(require_POST(views.inventory_status_page)),
         name="inventory-status",
     ),
+    path(
+        "<uuid:ingredient_id>/remove/",
+        login_required(require_POST(views.inventory_remove_page)),
+        name="inventory-remove",
+    ),
 ]

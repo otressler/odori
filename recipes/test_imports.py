@@ -136,6 +136,11 @@ class RecipeImportJobTests(TestCase):
         recipe = Recipe.objects.get(id=job.recipe_id)
         self.assertEqual(recipe.source.type, RecipeSource.Type.IMPORTED)
         self.assertEqual(recipe.source.import_source.source_type, ImportSource.Type.URL)
+        request_body = json.loads(mocked_urlopen.call_args.args[0].data)
+        prompt = request_body["messages"][0]["content"]
+        self.assertIn("Translate the complete recipe into German", prompt)
+        self.assertIn("German metric kitchen units", prompt)
+        self.assertIn("sourceText", prompt)
         status = self.client.get(queued.json()["statusUrl"])
         self.assertEqual(status.status_code, 200)
         self.assertEqual(status.json()["recipe"]["title"], "Tomatenpasta")

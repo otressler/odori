@@ -18,7 +18,7 @@ from pantry.models import (
 )
 from planning.models import MealPlan, MealSlot
 from planning.services import current_week_start
-from recipes.models import Recipe, RecipeImageJob
+from recipes.models import Recipe, RecipeImageJob, RecipeImportJob
 from shopping.models import ShoppingItem, ShoppingList
 
 from .models import (
@@ -91,9 +91,12 @@ def operations_page(request):
             "category_jobs": PantryCategorizationJob.objects.filter(household=household)[:20],
             "image_jobs": RecipeImageJob.objects.filter(recipe__household=household)
             .select_related("recipe")[:20],
+            "import_jobs": RecipeImportJob.objects.filter(household=household)
+            .select_related("source", "recipe")[:20],
             "provider_diagnostics": ProviderDiagnostic.objects.filter(household=household)[:20],
             "category_queue_counts": job_state_counts(PantryCategorizationJob, household=household),
             "image_queue_counts": job_state_counts(RecipeImageJob, household=household),
+            "import_queue_counts": job_state_counts(RecipeImportJob, household=household),
             "category_embedding_count": sum(bool(category.embedding) for category in categories),
             "category_count": len(categories),
             "ingredient_embedding_count": sum(
@@ -175,6 +178,46 @@ def retry_image_job(request, job_id):
             logger,
             "admin.job_requeued",
             job_type="recipe_image",
+            job_id=job.id,
+            household_id=household.id,
+        )
+    return redirect("operations")
+
+
+@login_required
+@require_POST
+def retry_import_job(request, job_id):
+    household = owner_household_for(request.user)
+    job = RecipeImportJob.objects.filter(id=job_id, household=household).first()
+    if not job:
+        raise Http404
+    if job.state == RecipeImportJob.State.FAILED:
+        job.state = RecipeImportJob.State.QUEUED
+        job.error_message = ""
+        job.error_code = ""
+        job.available_at = timezone.now()
+        job.started_at = None
+        job.finished_at = None
+        job.lease_id = None
+        job.lease_expires_at = None
+        job.correlation_id = getattr(request, "request_id", None)
+        job.save(
+            update_fields=[
+                "state",
+                "error_message",
+                "error_code",
+                "available_at",
+                "started_at",
+                "finished_at",
+                "lease_id",
+                "lease_expires_at",
+                "correlation_id",
+            ]
+        )
+        log_event(
+            logger,
+            "admin.job_requeued",
+            job_type="recipe_import",
             job_id=job.id,
             household_id=household.id,
         )

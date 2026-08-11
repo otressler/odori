@@ -64,11 +64,15 @@ def claim_next_import(*, now=None, lease_seconds=None):
         if job is None:
             return None
         lease_id = uuid.uuid4()
+        last_attempt = job.attempts.order_by("-number").first()
+        next_attempt_number = max(
+            job.attempt_count, last_attempt.number if last_attempt else 0
+        ) + 1
         job.state = RecipeImportJob.State.RUNNING
         job.lease_id = lease_id
         job.lease_expires_at = now + timedelta(seconds=lease_seconds)
         job.started_at = now
-        job.attempt_count += 1
+        job.attempt_count = next_attempt_number
         job.error_code = ""
         job.error_message = ""
         job.save(
@@ -83,7 +87,7 @@ def claim_next_import(*, now=None, lease_seconds=None):
             ]
         )
         attempt = RecipeImportAttempt.objects.create(
-            job=job, number=job.attempt_count, lease_id=lease_id
+            job=job, number=next_attempt_number, lease_id=lease_id
         )
     return job, attempt
 

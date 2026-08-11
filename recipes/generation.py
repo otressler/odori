@@ -96,8 +96,7 @@ def _generate_payload(idea):
         "?api-version=2025-01-01-preview"
     )
     body = {
-        "temperature": 0.4,
-        "max_tokens": 1200,
+        "max_completion_tokens": 1200,
         "response_format": {"type": "json_object"},
         "messages": [
             {

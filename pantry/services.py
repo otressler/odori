@@ -83,6 +83,20 @@ def change_inventory_status(*, user, ingredient_id, status, version, confirm_pla
     return write_status(item=item, status=status, actor=user, origin=InventoryEvent.Origin.MANUAL)
 
 
+@transaction.atomic
+def remove_inventory_item(*, user, ingredient_id):
+    household = household_for(user)
+    item = (
+        InventoryItem.objects.select_for_update()
+        .filter(household=household, ingredient_id=ingredient_id)
+        .first()
+    )
+    if not item:
+        raise Http404
+    item.events.all().delete()
+    item.delete()
+
+
 def record_purchase(*, user, household, ingredient):
     """Runs inside the shopping purchase transaction; never asks for confirmation."""
 

@@ -452,6 +452,44 @@ class PantryApiTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, InventoryItem.Status.NEEDS_REPLENISHMENT)
 
+    def test_inventory_page_removes_item_and_its_history(self):
+        item = InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.ingredient,
+            status=InventoryItem.Status.UNKNOWN,
+        )
+        InventoryEvent.objects.create(
+            item=item,
+            previous_status=InventoryItem.Status.UNKNOWN,
+            new_status=InventoryItem.Status.IN_STOCK,
+            actor=self.user,
+        )
+
+        response = self.client.post(f"/pantry/{self.ingredient.id}/remove/")
+
+        self.assertRedirects(response, "/pantry/")
+        self.assertFalse(InventoryItem.objects.filter(pk=item.pk).exists())
+        self.assertFalse(InventoryEvent.objects.filter(item_id=item.pk).exists())
+        self.assertTrue(CanonicalIngredient.objects.filter(pk=self.ingredient.pk).exists())
+
+    def test_inventory_remove_does_not_remove_another_households_item(self):
+        other_user = User.objects.create_user(username="other", password="pass")
+        other_household = Household.objects.create(name="Other")
+        HouseholdMembership.objects.create(
+            household=other_household, user=other_user, role="owner"
+        )
+        other_ingredient = CanonicalIngredient.objects.create(
+            household=other_household, name="Andere Zutat"
+        )
+        item = InventoryItem.objects.create(
+            household=other_household, ingredient=other_ingredient
+        )
+
+        response = self.client.post(f"/pantry/{other_ingredient.id}/remove/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(InventoryItem.objects.filter(pk=item.pk).exists())
+
     def test_inventory_page_filters_by_query(self):
         matching = InventoryItem.objects.create(
             household=self.household,
