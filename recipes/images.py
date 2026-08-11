@@ -34,6 +34,7 @@ def queue_recipe_image(recipe, *, prompt=None):
         recipe=recipe, state=RecipeImageJob.State.QUEUED
     ).update(state=RecipeImageJob.State.SUPERSEDED, finished_at=timezone.now())
     recipe.image.delete(save=False)
+    recipe.thumbnail.delete(save=False)
     recipe.image_status = "pending"
     recipe.image_prompt = prompt
     recipe.save(update_fields=["image", "image_status", "image_prompt"])
