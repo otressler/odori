@@ -20,7 +20,7 @@ def run_next_job(
     log_fields=None,
     logger,
 ):
-    queryset = model.objects.select_for_update().select_related(*select_related)
+    queryset = model.objects.select_for_update(of=("self",)).select_related(*select_related)
     with transaction.atomic():
         if ready is not None:
             queryset = ready(queryset)
@@ -65,7 +65,11 @@ def run_next_job(
     except Exception as exc:
         error_code = getattr(exc, "error_code", type(exc).__name__)
         with transaction.atomic():
-            job = model.objects.select_for_update().select_related(*select_related).get(id=job.id)
+            job = (
+                model.objects.select_for_update(of=("self",))
+                .select_related(*select_related)
+                .get(id=job.id)
+            )
             fail(job, exc)
             job.state = model.State.FAILED
             job.error_message = str(exc)[:500]
@@ -86,7 +90,11 @@ def run_next_job(
         return True
 
     with transaction.atomic():
-        job = model.objects.select_for_update().select_related(*select_related).get(id=job.id)
+        job = (
+            model.objects.select_for_update(of=("self",))
+            .select_related(*select_related)
+            .get(id=job.id)
+        )
         completed = succeed(job, result)
         job.state = model.State.SUCCEEDED if completed else model.State.SUPERSEDED
         job.finished_at = timezone.now()
