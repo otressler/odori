@@ -1,9 +1,9 @@
 import json
 from unittest.mock import MagicMock, patch
 
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
-from django.db import connection
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryItem
@@ -98,7 +98,7 @@ class RecommendationTests(TestCase):
             result = recommend_for_user(user=self.user)
 
         self.assertLessEqual(len(queries), 12)
-        self.assertEqual(result.suggestions[0].recipe_id, first_recipe.id)
+        self.assertEqual(result.suggestions[0].recipe.id, first_recipe.id)
         self.assertNotIn("Private", [item.recipe.title for item in result.suggestions])
 
     def test_outcome_is_scoped_to_the_recommendation_household(self):

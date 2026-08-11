@@ -9,7 +9,7 @@ from core.services import household_for
 
 from .generation import GeneratedDraftError, generate_recipe_draft
 from .models import Recipe
-from .recommendations import record_outcome, recommend_for_user
+from .recommendations import recommend_for_user, record_outcome
 from .semantic import rank_recipes
 from .services import (
     StaleRecipeVersion,
