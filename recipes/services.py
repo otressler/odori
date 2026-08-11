@@ -34,7 +34,7 @@ class StaleRecipeVersion(Exception):
 
 
 def create_or_update_recipe(
-    *, user, data, recipe=None, source_type=RecipeSource.Type.MANUAL, household=None
+    *, user, data, recipe=None, source_type=RecipeSource.Type.MANUAL, household=None, source=None
 ):
     household = household or household_for(user)
     is_new_recipe = recipe is None
@@ -48,7 +48,9 @@ def create_or_update_recipe(
                 matched_ingredients[index] = best_match(active_ingredients, line["sourceText"])
     with transaction.atomic():
         if recipe is None:
-            source = RecipeSource.objects.create(household=household, type=source_type)
+            source = source or RecipeSource.objects.create(household=household, type=source_type)
+            if source.household_id != household.id:
+                raise ValueError("Recipe source does not belong to this household.")
             recipe = Recipe.objects.create(household=household, source=source, created_by=user)
         if recipe.status == Recipe.Status.ARCHIVED:
             raise ValueError("Archived recipes cannot be edited.")

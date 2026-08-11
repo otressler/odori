@@ -9,8 +9,13 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.observability import bind_context
+from providers.foundry_recipe_import import (
+    RecipeExtractionError,
+    extract_recipe_from_url,
+)
 
 from .models import ImportSource, Recipe, RecipeImportAttempt, RecipeImportJob, RecipeSource
+from .services import create_or_update_recipe
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +29,8 @@ class PermanentImportError(Exception):
 
 
 def create_import(*, household, source_type, content=b"", url="", content_type=""):
-    content_hash = hashlib.sha256(content).hexdigest()
+    hash_input = content or (url.strip().encode() if source_type == ImportSource.Type.URL else b"")
+    content_hash = hashlib.sha256(hash_input).hexdigest()
     source, _ = ImportSource.objects.get_or_create(
         household=household,
         content_hash=content_hash,
@@ -65,8 +71,20 @@ def claim_next_import(*, now=None, lease_seconds=None):
         job.attempt_count += 1
         job.error_code = ""
         job.error_message = ""
-        job.save(update_fields=["state", "lease_id", "lease_expires_at", "started_at", "attempt_count", "error_code", "error_message"])
-        attempt = RecipeImportAttempt.objects.create(job=job, number=job.attempt_count, lease_id=lease_id)
+        job.save(
+            update_fields=[
+                "state",
+                "lease_id",
+                "lease_expires_at",
+                "started_at",
+                "attempt_count",
+                "error_code",
+                "error_message",
+            ]
+        )
+        attempt = RecipeImportAttempt.objects.create(
+            job=job, number=job.attempt_count, lease_id=lease_id
+        )
     return job, attempt
 
 
@@ -103,7 +121,17 @@ def _finish(job_id, lease_id, *, state, error=None, recipe=None):
         job.lease_id = None
         job.lease_expires_at = None
         job.finished_at = now
-        job.save(update_fields=["state", "recipe", "error_code", "error_message", "lease_id", "lease_expires_at", "finished_at"])
+        job.save(
+            update_fields=[
+                "state",
+                "recipe",
+                "error_code",
+                "error_message",
+                "lease_id",
+                "lease_expires_at",
+                "finished_at",
+            ]
+        )
     return True
 
 
@@ -112,11 +140,17 @@ def run_next_import_job(process=None):
     if claimed is None:
         return False
     job, attempt = claimed
-    process = process or (lambda current: {})
+    process = process or _extract_and_create_recipe
     with bind_context(request_id=job.correlation_id, job_id=job.id, household_id=job.household_id):
         try:
             result = process(job)
-            recipe = result.get("recipe") if isinstance(result, dict) else None
+            recipe = (
+                result
+                if isinstance(result, Recipe)
+                else result.get("recipe")
+                if isinstance(result, dict)
+                else None
+            )
             if recipe is None:
                 source, _ = RecipeSource.objects.get_or_create(
                     import_source=job.source,
@@ -130,8 +164,14 @@ def run_next_import_job(process=None):
                     source=source,
                     defaults={
                         "household_id": job.household_id,
-                        "created_by_id": job.household.memberships.values_list("user_id", flat=True).first(),
-                        "title": result.get("title", "Imported recipe") if isinstance(result, dict) else "Imported recipe",
+                        "created_by_id": job.household.memberships.values_list(
+                            "user_id", flat=True
+                        ).first(),
+                        "title": (
+                            result.get("title", "Imported recipe")
+                            if isinstance(result, dict)
+                            else "Imported recipe"
+                        ),
                     },
                 )
             _finish(job.id, attempt.lease_id, state=RecipeImportJob.State.SUCCEEDED, recipe=recipe)
@@ -143,12 +183,23 @@ def run_next_import_job(process=None):
                     current = RecipeImportJob.objects.select_for_update().get(id=job.id)
                     if current.lease_id == attempt.lease_id:
                         current.state = RecipeImportJob.State.QUEUED
-                        current.available_at = timezone.now() + timedelta(seconds=settings.IMPORT_JOB_RETRY_DELAY_SECONDS)
+                        current.available_at = timezone.now() + timedelta(
+                            seconds=settings.IMPORT_JOB_RETRY_DELAY_SECONDS
+                        )
                         current.lease_id = None
                         current.lease_expires_at = None
                         current.error_code = exc.error_code
                         current.error_message = str(exc)[:500]
-                        current.save(update_fields=["state", "available_at", "lease_id", "lease_expires_at", "error_code", "error_message"])
+                        current.save(
+                            update_fields=[
+                                "state",
+                                "available_at",
+                                "lease_id",
+                                "lease_expires_at",
+                                "error_code",
+                                "error_message",
+                            ]
+                        )
                         attempt.finished_at = timezone.now()
                         attempt.outcome = "retry"
                         attempt.error_code = exc.error_code
@@ -157,3 +208,40 @@ def run_next_import_job(process=None):
             _finish(job.id, attempt.lease_id, state=RecipeImportJob.State.FAILED, error=exc)
             logger.exception("Recipe import failed")
     return True
+
+
+def _extract_and_create_recipe(job):
+    if job.source.source_type != ImportSource.Type.URL:
+        raise PermanentImportError("Only URL recipe imports are supported yet.")
+    job.stage = RecipeImportJob.Stage.EXTRACT
+    job.save(update_fields=["stage"])
+    try:
+        data = extract_recipe_from_url(job.source.url)
+    except RecipeExtractionError as exc:
+        error = RetryableImportError(str(exc)) if exc.retryable else PermanentImportError(str(exc))
+        error.error_code = exc.error_code
+        raise error from exc
+
+    job.stage = RecipeImportJob.Stage.NORMALIZE
+    job.save(update_fields=["stage"])
+    source, _ = RecipeSource.objects.get_or_create(
+        import_source=job.source,
+        defaults={
+            "household_id": job.household_id,
+            "type": RecipeSource.Type.IMPORTED,
+            "attribution": job.source.url,
+        },
+    )
+    membership = job.household.memberships.select_related("user").first()
+    if membership is None:
+        raise PermanentImportError("The import household has no available user.")
+    recipe = create_or_update_recipe(
+        user=membership.user,
+        household=job.household,
+        data=data,
+        source_type=RecipeSource.Type.IMPORTED,
+        source=source,
+    )
+    job.stage = RecipeImportJob.Stage.REVIEW
+    job.save(update_fields=["stage"])
+    return recipe

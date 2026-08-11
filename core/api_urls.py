@@ -26,6 +26,8 @@ urlpatterns = [
         "generated-recipe-drafts/<uuid:request_id>",
         recipes_api.generated_recipe_draft_status,
     ),
+    path("recipe-imports", recipes_api.recipe_import),
+    path("recipe-imports/<uuid:import_id>", recipes_api.recipe_import_status),
     path("meal-plans/<str:week_start>", planning_api.meal_plan),
     path("meal-plans/<str:week_start>/slots", planning_api.meal_plan_slots),
     path("meal-plans/<str:week_start>/shopping-lists", shopping_api.generate),

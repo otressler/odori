@@ -42,6 +42,8 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 | `POST /recommendation-outcomes` | Record a local recommendation outcome. |
 | `POST /generated-recipe-drafts` | Queue an explicit generated-draft request. |
 | `GET /generated-recipe-drafts/{requestId}` | Poll generated-draft status. |
+| `POST /recipe-imports` | Queue a URL-based assisted recipe import. |
+| `GET /recipe-imports/{importId}` | Poll assisted recipe import status. |
 | `POST /meal-slots/{id}/mark-cooked` | Record a cook event. |
 | `GET /cook-events` | Retrieve the 100 most recent cook events. |
 
@@ -57,10 +59,8 @@ returns `409` with `error.code: "planned_ingredient_in_use"` and affected meal s
 
 ## Planned API surfaces
 
-Recipe URL/file imports and real-time WebSocket events are planned capabilities, not current API
-surfaces. Current clients read fresh state through the HTTP endpoints above. The eventual import
-and collaboration contracts remain in the product requirements and implementation plan until their
-routes, durable job models, and transport are implemented.
+File imports and real-time WebSocket events are planned capabilities, not current API surfaces.
+URL imports are implemented below as an asynchronous worker-backed flow.
 
 ## Recommendation response
 
@@ -90,6 +90,14 @@ household-owned recipe; dismissal reasons use a small fixed vocabulary. `POST
 `202`, a request ID, and a status URL. `GET /api/v1/generated-recipe-drafts/{requestId}` returns
 the queued, running, succeeded, or failed state and includes the generated draft only after it
 succeeds. The worker performs the provider request; safe failures are retained on the request.
+
+`POST /api/v1/recipe-imports` accepts `{ "url": "https://example.com/recipe" }` and returns
+`202` with an import ID and status URL. `GET /api/v1/recipe-imports/{importId}` returns the
+queued, running, succeeded, or failed state and includes a reviewable imported draft after success.
+The worker sends the URL and a strict JSON extraction contract to the configured Microsoft Foundry
+deployment. `recipe_not_found` means the deployment could not identify an extractable recipe;
+`invalid_output` means its response did not satisfy the contract, and `provider_unavailable` means
+the provider request can be retried.
 
 ## Concurrency
 

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from urllib.parse import urlparse
 
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
@@ -8,7 +9,8 @@ from core.api import error, read_json
 from core.services import household_for
 
 from .generation import GeneratedDraftError, queue_recipe_generation
-from .models import GeneratedRecipeRequest, Recipe
+from .imports import create_import
+from .models import GeneratedRecipeRequest, Recipe, RecipeImportJob
 from .recommendations import recommend_for_user, record_outcome
 from .semantic import rank_recipes
 from .services import (
@@ -240,4 +242,50 @@ def generated_recipe_draft_status(request, request_id):
     }
     if generated_request.recipe:
         body["recipe"] = recipe_json(generated_request.recipe, request.user)
+    return JsonResponse(body)
+
+
+@login_required
+@require_http_methods(["POST"])
+def recipe_import(request):
+    data = read_json(request)
+    if not isinstance(data, dict):
+        return error("malformed_input", "Expected JSON.", 400)
+    url = str(data.get("url", "")).strip()
+    parsed_url = urlparse(url)
+    if len(url) > 2048 or parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:
+        return error("invalid_url", "A valid HTTP(S) recipe URL is required.")
+    job, _ = create_import(
+        household=household_for(request.user),
+        source_type="url",
+        url=url,
+    )
+    return JsonResponse(
+        {
+            "importId": str(job.id),
+            "state": job.state,
+            "statusUrl": f"/api/v1/recipe-imports/{job.id}",
+        },
+        status=202,
+    )
+
+
+@login_required
+@require_http_methods(["GET"])
+def recipe_import_status(request, import_id):
+    job = (
+        RecipeImportJob.objects.select_related("source", "recipe__source")
+        .filter(id=import_id, household=household_for(request.user))
+        .first()
+    )
+    if not job:
+        raise Http404
+    body = {
+        "importId": str(job.id),
+        "state": job.state,
+        "stage": job.stage,
+        "errorCode": job.error_code or None,
+    }
+    if job.recipe:
+        body["recipe"] = recipe_json(job.recipe, request.user)
     return JsonResponse(body)

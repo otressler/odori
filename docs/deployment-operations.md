@@ -113,6 +113,7 @@ file.
 | `AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY` | Set `true` only when the pantry icon deployment supports native transparent backgrounds. The application fallback is `true`, but the supplied Compose file and `.env.example` explicitly set `false` to use white-background icons with local postprocessing. |
 | `AZURE_OPENAI_IMAGE_API_VERSION`, `AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS`, `AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS` | Image API version, request timeout (default `60`), and minimum interval between image requests in the worker (default `12`). |
 | `RECIPE_GENERATION_ENABLED`, `AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT`, `AZURE_OPENAI_RECIPE_GENERATION_TIMEOUT_SECONDS`, `RECIPE_GENERATION_DAILY_LIMIT` | Enable queued recipe generation, select its chat-model deployment, and set its worker timeout (default `30`) and per-household rolling 24-hour limit (default `3`). |
+| `AZURE_OPENAI_RECIPE_IMPORT_DEPLOYMENT`, `AZURE_OPENAI_RECIPE_IMPORT_TIMEOUT_SECONDS` | Select the Microsoft Foundry chat deployment with web search enabled for URL recipe extraction and set its worker timeout (default `45` seconds). |
 | `WORKER_HEARTBEAT_MAX_AGE_SECONDS` | Heartbeat freshness threshold for `/health/worker`, the operations page, and the worker container healthcheck (default `30`). |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Optional Google sign-in credentials for the web service; see [Google sign-in](google-sign-in.md). |
 
