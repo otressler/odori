@@ -10,6 +10,7 @@ from pantry.models import CanonicalIngredient, InventoryItem
 from pantry.services import change_inventory_status
 
 from .models import Recipe, RecipeIngredient
+from .recommendations import recommend_for_user
 from .semantic import rank_recipes
 from .services import (
     StaleRecipeVersion,
@@ -52,6 +53,18 @@ def recipe_list(request):
             "published_recipes": published_recipes,
             "draft_recipes": draft_recipes,
             "query": query,
+        },
+    )
+
+
+def recommendation_list_page(request):
+    result = recommend_for_user(user=request.user)
+    return render(
+        request,
+        "recipes/recommendations.html",
+        {
+            "recommendations": result.suggestions,
+            "recommendation_run": result.run,
         },
     )
 
@@ -155,7 +168,8 @@ def recipe_create_page(request):
 def recipe_edit_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
         .filter(id=recipe_id, household=household)
         .first()
     )
@@ -175,7 +189,8 @@ def recipe_edit_page(request, recipe_id):
 def recipe_detail_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
         .filter(id=recipe_id, household=household)
         .first()
     )
@@ -298,7 +313,8 @@ def recipe_thumbnail(request, recipe_id):
 
 def recipe_for_user(user, recipe_id):
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
         .filter(id=recipe_id, household=household_for(user))
         .first()
     )

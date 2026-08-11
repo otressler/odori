@@ -20,9 +20,7 @@ ALLOWED_HOSTS = [
     host for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host
 ]
 CSRF_TRUSTED_ORIGINS = [
-    origin
-    for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
-    if origin
+    origin for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if origin
 ]
 
 INSTALLED_APPS = [
@@ -128,16 +126,14 @@ CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 _default_secure_setting = "true" if not DEBUG else "false"
-SECURE_SSL_REDIRECT = os.environ.get(
-    "SECURE_SSL_REDIRECT", _default_secure_setting
-).lower() == "true"
-SECURE_HSTS_SECONDS = int(
-    os.environ.get("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0")
+SECURE_SSL_REDIRECT = (
+    os.environ.get("SECURE_SSL_REDIRECT", _default_secure_setting).lower() == "true"
 )
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
-SECURE_HSTS_PRELOAD = os.environ.get(
-    "SECURE_HSTS_PRELOAD", _default_secure_setting
-).lower() == "true"
+SECURE_HSTS_PRELOAD = (
+    os.environ.get("SECURE_HSTS_PRELOAD", _default_secure_setting).lower() == "true"
+)
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get("DATA_UPLOAD_MAX_MEMORY_SIZE", 1024 * 1024))
 DATA_UPLOAD_MAX_NUMBER_FIELDS = int(os.environ.get("DATA_UPLOAD_MAX_NUMBER_FIELDS", 600))
 AUTH_PASSWORD_VALIDATORS = [
@@ -156,9 +152,7 @@ INGREDIENT_AUTO_MATCH_MIN_SCORE = float(os.environ.get("INGREDIENT_AUTO_MATCH_MI
 CATEGORY_CLASSIFIER_MIN_SIMILARITY = float(
     os.environ.get("CATEGORY_CLASSIFIER_MIN_SIMILARITY", "0.45")
 )
-CATEGORY_CLASSIFIER_MIN_MARGIN = float(
-    os.environ.get("CATEGORY_CLASSIFIER_MIN_MARGIN", "0.05")
-)
+CATEGORY_CLASSIFIER_MIN_MARGIN = float(os.environ.get("CATEGORY_CLASSIFIER_MIN_MARGIN", "0.05"))
 AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "")
@@ -166,9 +160,7 @@ AZURE_OPENAI_EMBEDDING_TIMEOUT_SECONDS = float(
     os.environ.get("AZURE_OPENAI_EMBEDDING_TIMEOUT_SECONDS", "5")
 )
 AZURE_OPENAI_IMAGE_DEPLOYMENT = os.environ.get("AZURE_OPENAI_IMAGE_DEPLOYMENT", "gpt-image-2")
-AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT = os.environ.get(
-    "AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT", ""
-)
+AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT = os.environ.get("AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT", "")
 AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY = (
     os.environ.get("AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY", "true").lower() == "true"
 )
@@ -183,9 +175,16 @@ AZURE_OPENAI_IMAGE_TIMEOUT_SECONDS = float(
 AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS = float(
     os.environ.get("AZURE_OPENAI_IMAGE_MIN_INTERVAL_SECONDS", "12")
 )
-WORKER_HEARTBEAT_MAX_AGE_SECONDS = int(
-    os.environ.get("WORKER_HEARTBEAT_MAX_AGE_SECONDS", "30")
+RECIPE_GENERATION_ENABLED = os.environ.get("RECIPE_GENERATION_ENABLED", "false").lower() == "true"
+AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT = os.environ.get(
+    "AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT", ""
 )
+AZURE_OPENAI_RECIPE_GENERATION_TIMEOUT_SECONDS = float(
+    os.environ.get("AZURE_OPENAI_RECIPE_GENERATION_TIMEOUT_SECONDS", "30")
+)
+RECIPE_GENERATION_DAILY_LIMIT = int(os.environ.get("RECIPE_GENERATION_DAILY_LIMIT", "3"))
+RECOMMENDATION_CANDIDATE_LIMIT = int(os.environ.get("RECOMMENDATION_CANDIDATE_LIMIT", "100"))
+WORKER_HEARTBEAT_MAX_AGE_SECONDS = int(os.environ.get("WORKER_HEARTBEAT_MAX_AGE_SECONDS", "30"))
 ORBIT_CONFIG = {
     "ENABLED": os.environ.get("ORBIT_ENABLED", "true").lower() == "true",
     "AUTH_CHECK": "core.orbit.orbit_access_allowed",

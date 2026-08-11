@@ -33,8 +33,10 @@ class StaleRecipeVersion(Exception):
     pass
 
 
-def create_or_update_recipe(*, user, data, recipe=None):
-    household = household_for(user)
+def create_or_update_recipe(
+    *, user, data, recipe=None, source_type=RecipeSource.Type.MANUAL, household=None
+):
+    household = household or household_for(user)
     is_new_recipe = recipe is None
     matched_ingredients = {}
     if "ingredients" in data:
@@ -46,7 +48,7 @@ def create_or_update_recipe(*, user, data, recipe=None):
                 matched_ingredients[index] = best_match(active_ingredients, line["sourceText"])
     with transaction.atomic():
         if recipe is None:
-            source = RecipeSource.objects.create(household=household)
+            source = RecipeSource.objects.create(household=household, type=source_type)
             recipe = Recipe.objects.create(household=household, source=source, created_by=user)
         if recipe.status == Recipe.Status.ARCHIVED:
             raise ValueError("Archived recipes cannot be edited.")
@@ -88,9 +90,7 @@ def create_or_update_recipe(*, user, data, recipe=None):
         if "steps" in data:
             RecipeStep.objects.filter(recipe=recipe).delete()
             for index, step in enumerate(data["steps"]):
-                body = (
-                    step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
-                )
+                body = step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
                 if body:
                     RecipeStep.objects.create(recipe=recipe, body=body, sort_order=index)
         if "tags" in data:
@@ -115,6 +115,11 @@ def regenerate_recipe_image(recipe):
 def approve_recipe(recipe):
     if not recipe.title.strip() or not recipe.steps.exists():
         raise ValueError("A title and at least one instruction are required before approval.")
+    if (
+        recipe.source.type == RecipeSource.Type.GENERATED
+        and recipe.ingredients.exclude(match_state=RecipeIngredient.MatchState.MATCHED).exists()
+    ):
+        raise ValueError("Generated recipe ingredients must be reviewed before approval.")
     recipe.status = Recipe.Status.APPROVED
     recipe.version += 1
     recipe.save(update_fields=["status", "version", "updated_at"])

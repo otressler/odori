@@ -404,6 +404,15 @@ Tasks:
 - Build replayable fixture tests and store a bounded input snapshot/version for debugging.
 - Measure query and scoring time on representative Pi data before considering caching.
 
+The baseline score is versioned as `2026-08-1`. It uses 80% pantry coverage (unknown
+ingredients count as 40% coverage), adds 10% for a user favorite, and subtracts 10% each
+for a recipe cooked in the previous 21 days or duplicated in an upcoming plan. A latest
+`dismissed` or `hidden` outcome subtracts 15%. Scores are clamped to `[0, 1]`; ties sort
+by case-folded recipe title and recipe ID. Each response stores a bounded, ID-only input
+snapshot with the score version for replay/debugging. The candidate query is capped at 100
+recipes by default (`RECOMMENDATION_CANDIDATE_LIMIT`); measure it with representative Pi
+data before increasing that setting or introducing a cache.
+
 ### Packet 4B: Optional generated recipe drafts
 
 **Owner:** AI recommendation agent  
@@ -415,6 +424,12 @@ Tasks:
 - Reuse recipe draft validation and ingredient review. Label source as generated and require approval.
 - Apply stricter token/rate budgets and an independent feature switch.
 - Ensure unsafe or invalid model output becomes a reviewable failure, never a published recipe.
+
+Generated drafts are disabled by default. Enabling them requires
+`RECIPE_GENERATION_ENABLED`, a dedicated Azure deployment, and a per-household rolling
+daily limit (`RECIPE_GENERATION_DAILY_LIMIT`). Failed requests retain only a safe error code;
+successful output remains a generated draft until its ingredients are mapped and a user
+explicitly approves it.
 
 ## Milestone 5: Collaboration and recovery
 

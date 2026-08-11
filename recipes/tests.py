@@ -159,9 +159,7 @@ class RecipeLifecycleTests(TestCase):
         original_job.refresh_from_db()
         self.assertEqual(original_job.state, RecipeImageJob.State.SUPERSEDED)
         self.assertEqual(
-            RecipeImageJob.objects.filter(
-                recipe=recipe, state=RecipeImageJob.State.QUEUED
-            ).count(),
+            RecipeImageJob.objects.filter(recipe=recipe, state=RecipeImageJob.State.QUEUED).count(),
             1,
         )
 
@@ -262,7 +260,7 @@ class RecipeLifecycleTests(TestCase):
     def test_recipe_form_uses_semantic_ingredient_search_for_pantry_assignment(self):
         response = self.client.get("/recipes/new/")
 
-        self.assertContains(response, 'data-ingredient-search')
+        self.assertContains(response, "data-ingredient-search")
         self.assertContains(response, 'name="ingredient-canonical-0"')
         self.assertContains(response, 'type="hidden"')
         self.assertNotContains(response, '<select id="ingredient-canonical-0"')

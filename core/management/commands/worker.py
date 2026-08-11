@@ -9,6 +9,10 @@ from core.models import WorkerHeartbeat
 from core.observability import log_event
 from pantry.images import recover_interrupted_ingredient_icon_jobs, run_next_ingredient_icon_job
 from pantry.jobs import recover_interrupted_category_jobs, run_next_category_job
+from recipes.generation import (
+    recover_interrupted_recipe_generation_jobs,
+    run_next_recipe_generation_job,
+)
 from recipes.images import recover_interrupted_recipe_image_jobs, run_next_recipe_image_job
 
 logger = logging.getLogger(__name__)
@@ -20,6 +24,7 @@ class Command(BaseCommand):
     def run_next_job(self):
         runners = (
             ("pantry_category", run_next_category_job),
+            ("recipe_generation", run_next_recipe_generation_job),
             ("recipe_image", run_next_recipe_image_job),
             ("ingredient_icon", run_next_ingredient_icon_job),
         )
@@ -86,6 +91,10 @@ class Command(BaseCommand):
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted pantry categorization job(s).")
             log_event(logger, "worker.jobs_requeued", job_type="pantry_category", count=recovered)
+        recovered = recover_interrupted_recipe_generation_jobs()
+        if recovered:
+            self.stdout.write(f"Requeued {recovered} interrupted recipe generation job(s).")
+            log_event(logger, "worker.jobs_requeued", job_type="recipe_generation", count=recovered)
 
         while True:
             try:

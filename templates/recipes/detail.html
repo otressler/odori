@@ -14,6 +14,7 @@
     <h1>{{ recipe.title|default:"Unbenannter Entwurf" }}</h1>
     <p class="recipe-hero__meta">
       <span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>
+      {% if recipe.source.type == "generated" %}<span class="flag">KI-Entwurf</span>{% endif %}
       {% if recipe.servings %}<span>Für {{ requested_servings }} Portionen</span>{% endif %}
       {% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}
     </p>

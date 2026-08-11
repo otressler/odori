@@ -10,6 +10,7 @@ from pantry.models import CanonicalIngredient
 class RecipeSource(models.Model):
     class Type(models.TextChoices):
         MANUAL = "manual", "Manual"
+        GENERATED = "generated", "Generated"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(Household, on_delete=models.CASCADE)
@@ -174,3 +175,95 @@ class RecipeFavorite(models.Model):
 
     def __str__(self):
         return f"{self.user} likes {self.recipe}"
+
+
+class RecommendationRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="recommendation_runs"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    scoring_version = models.CharField(max_length=40)
+    inventory_snapshot_at = models.DateTimeField()
+    input_snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["household", "created_at"], name="recommendation_run_house_idx")
+        ]
+
+
+class RecommendationOutcome(models.Model):
+    class Type(models.TextChoices):
+        OPENED = "opened", "Opened"
+        PLANNED = "planned", "Planned"
+        COOKED = "cooked", "Cooked"
+        DISMISSED = "dismissed", "Dismissed"
+        HIDDEN = "hidden", "Hidden"
+
+    class Reason(models.TextChoices):
+        NOT_RELEVANT = "not_relevant", "Not relevant"
+        TOO_MANY_INGREDIENTS = "too_many_ingredients", "Too many ingredients"
+        RECENTLY_COOKED = "recently_cooked", "Recently cooked"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="recommendation_outcomes"
+    )
+    recipe = models.ForeignKey(
+        Recipe, on_delete=models.CASCADE, related_name="recommendation_outcomes"
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    run = models.ForeignKey(
+        RecommendationRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="outcomes"
+    )
+    outcome = models.CharField(max_length=12, choices=Type.choices)
+    reason = models.CharField(max_length=24, choices=Reason.choices, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["household", "recipe", "created_at"],
+                name="recommendation_outcome_rec_idx",
+            )
+        ]
+
+
+class GeneratedRecipeRequest(models.Model):
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="generated_recipe_requests"
+    )
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    recipe = models.ForeignKey(
+        Recipe, null=True, blank=True, on_delete=models.SET_NULL, related_name="generation_requests"
+    )
+    idea = models.TextField()
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    attempt_count = models.PositiveIntegerField(default=0)
+    error_code = models.CharField(max_length=80, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
+    provider_deployment = models.CharField(max_length=120, blank=True)
+    prompt_version = models.CharField(max_length=40)
+    correlation_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["household", "created_at"], name="generated_recipe_req_idx")
+        ]

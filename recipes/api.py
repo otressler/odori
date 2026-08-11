@@ -7,7 +7,9 @@ from django.views.decorators.http import require_http_methods
 from core.api import error, read_json
 from core.services import household_for
 
-from .models import Recipe
+from .generation import GeneratedDraftError, queue_recipe_generation
+from .models import GeneratedRecipeRequest, Recipe
+from .recommendations import recommend_for_user, record_outcome
 from .semantic import rank_recipes
 from .services import (
     StaleRecipeVersion,
@@ -54,12 +56,14 @@ def recipe_json(recipe, user, servings=None):
         ],
         "favorite": recipe.favorites.filter(user=user).exists(),
         "imageStatus": recipe.image_status,
+        "source": {"type": recipe.source.type},
     }
 
 
 def visible_recipe(user, recipe_id):
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag", "favorites")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag", "favorites")
         .filter(id=recipe_id, household=household_for(user))
         .first()
     )
@@ -75,17 +79,17 @@ def recipe_collection(request):
     if request.method == "GET":
         query = request.GET.get("q", "")
         include_archived = request.GET.get("includeArchived") == "true"
-        recipes = Recipe.objects.prefetch_related(
-            "ingredients", "steps", "tag_assignments__tag", "favorites"
-        ).filter(household=household)
+        recipes = (
+            Recipe.objects.select_related("source")
+            .prefetch_related("ingredients", "steps", "tag_assignments__tag", "favorites")
+            .filter(household=household)
+        )
         if not include_archived:
             recipes = recipes.exclude(status=Recipe.Status.ARCHIVED)
         recipes = list(recipes.order_by("title"))
         if query:
             recipes = rank_recipes(recipes, query)
-        return JsonResponse(
-            {"recipes": [recipe_json(recipe, request.user) for recipe in recipes]}
-        )
+        return JsonResponse({"recipes": [recipe_json(recipe, request.user) for recipe in recipes]})
     data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected JSON.", 400)
@@ -145,3 +149,95 @@ def approve(request, recipe_id):
 def favorite(request, recipe_id):
     recipe = visible_recipe(request.user, recipe_id)
     return JsonResponse({"favorite": toggle_favorite(recipe, request.user)})
+
+
+@login_required
+@require_http_methods(["GET"])
+def recommendations(request):
+    result = recommend_for_user(user=request.user)
+    return JsonResponse(
+        {
+            "runId": str(result.run.id),
+            "scoringVersion": result.run.scoring_version,
+            "inventorySnapshotAt": result.run.inventory_snapshot_at.isoformat(),
+            "suggestions": [
+                {
+                    "recipeId": str(suggestion.recipe.id),
+                    "title": suggestion.recipe.title,
+                    "matchedIngredients": suggestion.matched_ingredients,
+                    "missingIngredients": suggestion.missing_ingredients,
+                    "reasons": suggestion.reasons,
+                    "score": suggestion.score,
+                    "scoreComponents": suggestion.score_components,
+                }
+                for suggestion in result.suggestions
+            ],
+        }
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def recommendation_outcomes(request):
+    data = read_json(request)
+    if not isinstance(data, dict):
+        return error("malformed_input", "Expected JSON.", 400)
+    try:
+        outcome = record_outcome(
+            user=request.user,
+            recipe_id=data.get("recipeId"),
+            outcome=data.get("outcome"),
+            reason=data.get("reason", ""),
+            run_id=data.get("runId"),
+        )
+    except ValueError as exc:
+        code = str(exc)
+        return error(
+            code,
+            "The recommendation outcome could not be recorded.",
+            404 if code.endswith("not_found") else 422,
+        )
+    return JsonResponse({"id": str(outcome.id), "outcome": outcome.outcome}, status=201)
+
+
+@login_required
+@require_http_methods(["POST"])
+def generated_recipe_draft(request):
+    data = read_json(request)
+    if not isinstance(data, dict):
+        return error("malformed_input", "Expected JSON.", 400)
+    try:
+        generated_request = queue_recipe_generation(user=request.user, idea=data.get("idea"))
+    except GeneratedDraftError as exc:
+        statuses = {
+            "generation_disabled": 503,
+            "generation_quota_exceeded": 429,
+            "invalid_request": 422,
+        }
+        return error(exc.code, "The generated recipe could not be queued.", statuses[exc.code])
+    return JsonResponse(
+        {
+            "requestId": str(generated_request.id),
+            "state": generated_request.state,
+            "statusUrl": f"/api/v1/generated-recipe-drafts/{generated_request.id}",
+        },
+        status=202,
+    )
+
+
+@login_required
+@require_http_methods(["GET"])
+def generated_recipe_draft_status(request, request_id):
+    generated_request = GeneratedRecipeRequest.objects.filter(
+        id=request_id, household=household_for(request.user)
+    ).select_related("recipe__source").first()
+    if not generated_request:
+        raise Http404
+    body = {
+        "requestId": str(generated_request.id),
+        "state": generated_request.state,
+        "errorCode": generated_request.error_code or None,
+    }
+    if generated_request.recipe:
+        body["recipe"] = recipe_json(generated_request.recipe, request.user)
+    return JsonResponse(body)

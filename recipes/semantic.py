@@ -48,7 +48,5 @@ def rank_recipes(recipes, query):
             ranked.append((recipe, score))
     return [
         recipe
-        for recipe, _ in sorted(
-            ranked, key=lambda result: (-result[1], result[0].title.casefold())
-        )
+        for recipe, _ in sorted(ranked, key=lambda result: (-result[1], result[0].title.casefold()))
     ]
