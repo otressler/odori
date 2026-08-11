@@ -105,6 +105,14 @@ The job response includes safe progress data (`queued`, `extracting`, `normalizi
 
 `score` is ranking metadata, not a statement of nutritional suitability. A generated recipe uses the same recipe-draft schema but has `status: "draft"` and `source.type: "generated"`.
 
+`GET /api/v1/recommendations` returns catalog suggestions only and includes `runId` and
+`scoringVersion` in addition to the response above. `POST /api/v1/recommendation-outcomes`
+records one local outcome (`opened`, `planned`, `cooked`, `dismissed`, or `hidden`) for a
+household-owned recipe; dismissal reasons use a small fixed vocabulary. `POST
+/api/v1/generated-recipe-drafts` only generates a draft after an explicit request and
+returns a safe failure code when the independent generation switch, quota, or provider
+prevents generation.
+
 ## Concurrency
 
 `PATCH` requests for recipe, inventory, meal-slot, and shopping-item changes include an entity version or HTTP `If-Match` ETag. A stale update returns `409` with the current version. This prevents a phone and tablet from silently overwriting each other.

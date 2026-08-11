@@ -17,6 +17,7 @@ urlpatterns = [
     path("recipes/<uuid:recipe_id>/favorite", recipes_api.favorite),
     path("recommendations", recipes_api.recommendations),
     path("recommendation-outcomes", recipes_api.recommendation_outcomes),
+    path("generated-recipe-drafts", recipes_api.generated_recipe_draft),
     path("meal-plans/<str:week_start>", planning_api.meal_plan),
     path("meal-plans/<str:week_start>/slots", planning_api.meal_plan_slots),
     path("meal-plans/<str:week_start>/shopping-lists", shopping_api.generate),

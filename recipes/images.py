@@ -28,9 +28,9 @@ def recipe_image_prompt(recipe):
 
 def queue_recipe_image(recipe, *, prompt=None):
     prompt = prompt or recipe_image_prompt(recipe)
-    RecipeImageJob.objects.filter(
-        recipe=recipe, state=RecipeImageJob.State.QUEUED
-    ).update(state=RecipeImageJob.State.SUPERSEDED, finished_at=timezone.now())
+    RecipeImageJob.objects.filter(recipe=recipe, state=RecipeImageJob.State.QUEUED).update(
+        state=RecipeImageJob.State.SUPERSEDED, finished_at=timezone.now()
+    )
     recipe.image.delete(save=False)
     recipe.image_status = "pending"
     recipe.image_prompt = prompt

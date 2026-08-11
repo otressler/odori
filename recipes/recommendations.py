@@ -48,11 +48,11 @@ def _snapshot(*, recipes, inventory, duplicate_counts, recently_cooked, feedback
         ][:500],
         "plannedRecipeIds": sorted(
             str(recipe_id) for recipe_id, count in duplicate_counts.items() if count > 1
-        )[:_candidate_limit()],
+        )[: _candidate_limit()],
         "recentlyCookedRecipeIds": sorted(str(recipe_id) for recipe_id in recently_cooked)[
-            :_candidate_limit()
+            : _candidate_limit()
         ],
-        "feedbackRecipeIds": sorted(str(recipe_id) for recipe_id in feedback)[:_candidate_limit()],
+        "feedbackRecipeIds": sorted(str(recipe_id) for recipe_id in feedback)[: _candidate_limit()],
     }
 
 
@@ -174,12 +174,13 @@ def recommend_for_user(*, user):
             id__in=[recipe.id for recipe in recipes], favorites__user=user
         ).values_list("id", flat=True)
     )
-    feedback = _latest_feedback(
-        household=household, recipe_ids=[recipe.id for recipe in recipes]
+    feedback = _latest_feedback(household=household, recipe_ids=[recipe.id for recipe in recipes])
+    inventory_updated_at = (
+        InventoryItem.objects.filter(household=household).aggregate(updated_at=Max("updated_at"))[
+            "updated_at"
+        ]
+        or now
     )
-    inventory_updated_at = InventoryItem.objects.filter(household=household).aggregate(
-        updated_at=Max("updated_at")
-    )["updated_at"] or now
     run = RecommendationRun.objects.create(
         household=household,
         requested_by=user,
@@ -204,7 +205,9 @@ def recommend_for_user(*, user):
         )
         for recipe in recipes
     ]
-    suggestions.sort(key=lambda item: (-item.score, item.recipe.title.casefold(), str(item.recipe.id)))
+    suggestions.sort(
+        key=lambda item: (-item.score, item.recipe.title.casefold(), str(item.recipe.id))
+    )
     return RecommendationResult(run=run, suggestions=suggestions)
 
 

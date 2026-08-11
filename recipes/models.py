@@ -178,7 +178,9 @@ class RecipeFavorite(models.Model):
 
 class RecommendationRun(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="recommendation_runs")
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="recommendation_runs"
+    )
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
     )
@@ -190,7 +192,7 @@ class RecommendationRun(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["household", "created_at"], name="recommendation_run_household_idx")
+            models.Index(fields=["household", "created_at"], name="recommendation_run_house_idx")
         ]
 
 
@@ -212,7 +214,9 @@ class RecommendationOutcome(models.Model):
     household = models.ForeignKey(
         Household, on_delete=models.CASCADE, related_name="recommendation_outcomes"
     )
-    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="recommendation_outcomes")
+    recipe = models.ForeignKey(
+        Recipe, on_delete=models.CASCADE, related_name="recommendation_outcomes"
+    )
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     run = models.ForeignKey(
         RecommendationRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="outcomes"
@@ -225,6 +229,33 @@ class RecommendationOutcome(models.Model):
         indexes = [
             models.Index(
                 fields=["household", "recipe", "created_at"],
-                name="recommendation_outcome_recipe_idx",
+                name="recommendation_outcome_rec_idx",
             )
+        ]
+
+
+class GeneratedRecipeRequest(models.Model):
+    class State(models.TextChoices):
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="generated_recipe_requests"
+    )
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    recipe = models.ForeignKey(
+        Recipe, null=True, blank=True, on_delete=models.SET_NULL, related_name="generation_requests"
+    )
+    state = models.CharField(max_length=12, choices=State.choices)
+    error_code = models.CharField(max_length=80, blank=True)
+    provider_deployment = models.CharField(max_length=120, blank=True)
+    prompt_version = models.CharField(max_length=40)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["household", "created_at"], name="generated_recipe_req_idx")
         ]

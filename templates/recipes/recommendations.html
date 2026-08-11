@@ -16,7 +16,7 @@
       <article class="recipe-card">
         <div class="recipe-card__content">
           <h2 class="recipe-card__title"><a href="{% url 'recipe-detail' recommendation.recipe.id %}">{{ recommendation.recipe.title|default:"Unbenanntes Rezept" }}</a></h2>
-          <p class="recipe-card__flavour">{{ recommendation.score|floatformat:0 }}% passend</p>
+          <p class="recipe-card__flavour">{% widthratio recommendation.score 1 100 %}% passend</p>
           <ul>
             {% for reason in recommendation.reasons %}<li>{{ reason }}</li>{% endfor %}
           </ul>

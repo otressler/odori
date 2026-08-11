@@ -168,7 +168,8 @@ def recipe_create_page(request):
 def recipe_edit_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
         .filter(id=recipe_id, household=household)
         .first()
     )
@@ -188,7 +189,8 @@ def recipe_edit_page(request, recipe_id):
 def recipe_detail_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
         .filter(id=recipe_id, household=household)
         .first()
     )
@@ -304,7 +306,8 @@ def recipe_image(request, recipe_id):
 
 def recipe_for_user(user, recipe_id):
     recipe = (
-        Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        Recipe.objects.select_related("source")
+        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
         .filter(id=recipe_id, household=household_for(user))
         .first()
     )
