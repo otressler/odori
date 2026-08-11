@@ -29,7 +29,7 @@ services:
       CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS}"
       GOOGLE_OAUTH_CLIENT_ID: "${GOOGLE_OAUTH_CLIENT_ID:-}"
       GOOGLE_OAUTH_CLIENT_SECRET: "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
-    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --access-logfile - --error-logfile - --capture-output odori.wsgi:application
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --worker-class gthread --threads 4 --access-logfile - --error-logfile - --capture-output odori.wsgi:application
     depends_on:
       postgres:
         condition: service_healthy
