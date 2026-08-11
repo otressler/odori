@@ -1,6 +1,7 @@
 from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
 from django.conf import settings
 from django.db.models import Max
@@ -213,6 +214,11 @@ def recommend_for_user(*, user):
 
 def record_outcome(*, user, recipe_id, outcome, reason="", run_id=None):
     household = household_for(user)
+    try:
+        recipe_id = UUID(str(recipe_id))
+        run_id = UUID(str(run_id)) if run_id else None
+    except (TypeError, ValueError):
+        raise ValueError("recipe_not_found")
     recipe = Recipe.objects.filter(id=recipe_id, household=household).first()
     if not recipe:
         raise ValueError("recipe_not_found")
