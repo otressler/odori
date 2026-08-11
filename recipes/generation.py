@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+import logging
 from datetime import timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -7,26 +7,25 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.utils import timezone
 
+from core.jobs import run_next_job
+from core.models import HouseholdMembership
+from core.observability import current_context
 from core.services import household_for
 
 from .models import GeneratedRecipeRequest, RecipeSource
 from .services import create_or_update_recipe
 
+logger = logging.getLogger(__name__)
 PROMPT_VERSION = "2026-08-1"
 MAX_IDEA_LENGTH = 500
 MAX_RESPONSE_BYTES = 30_000
-
-
-@dataclass(frozen=True)
-class GeneratedDraftResult:
-    request: GeneratedRecipeRequest
-    recipe_id: str | None = None
 
 
 class GeneratedDraftError(ValueError):
     def __init__(self, code, request=None):
         super().__init__(code)
         self.code = code
+        self.error_code = code
         self.request = request
 
 
@@ -136,7 +135,7 @@ def _generate_payload(idea):
         raise GeneratedDraftError("invalid_output") from exc
 
 
-def generate_recipe_draft(*, user, idea):
+def queue_recipe_generation(*, user, idea):
     idea = str(idea or "").strip()
     if not idea or len(idea) > MAX_IDEA_LENGTH:
         raise GeneratedDraftError("invalid_request")
@@ -151,23 +150,67 @@ def generate_recipe_draft(*, user, idea):
         >= settings.RECIPE_GENERATION_DAILY_LIMIT
     ):
         raise GeneratedDraftError("generation_quota_exceeded")
-    request = GeneratedRecipeRequest.objects.create(
+    return GeneratedRecipeRequest.objects.create(
         household=household,
         requested_by=user,
-        state=GeneratedRecipeRequest.State.FAILED,
+        idea=idea,
         provider_deployment=settings.AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT,
         prompt_version=PROMPT_VERSION,
+        correlation_id=current_context().get("request_id"),
     )
+
+
+def recover_interrupted_recipe_generation_jobs():
+    return GeneratedRecipeRequest.objects.filter(
+        state=GeneratedRecipeRequest.State.RUNNING
+    ).update(
+        state=GeneratedRecipeRequest.State.QUEUED,
+        error_message="",
+        error_code="",
+        started_at=None,
+    )
+
+
+def _generate_recipe(job):
     try:
-        data = _generate_payload(idea)
-        recipe = create_or_update_recipe(
-            user=user, data=data, source_type=RecipeSource.Type.GENERATED
+        has_membership = HouseholdMembership.objects.filter(
+            household=job.household, user=job.requested_by
+        ).exists()
+        if not has_membership:
+            raise GeneratedDraftError("requester_not_available")
+        data = _generate_payload(job.idea)
+        return create_or_update_recipe(
+            user=job.requested_by,
+            household=job.household,
+            data=data,
+            source_type=RecipeSource.Type.GENERATED,
         )
     except (GeneratedDraftError, ValueError) as exc:
-        request.error_code = getattr(exc, "code", "invalid_output")
-        request.save(update_fields=["error_code", "finished_at"])
-        raise GeneratedDraftError(request.error_code, request=request) from exc
-    request.recipe = recipe
-    request.state = GeneratedRecipeRequest.State.SUCCEEDED
-    request.save(update_fields=["recipe", "state", "finished_at"])
-    return GeneratedDraftResult(request=request, recipe_id=str(recipe.id))
+        raise GeneratedDraftError(getattr(exc, "code", "invalid_output")) from exc
+
+
+def _complete_recipe_generation_job(job, recipe):
+    job.recipe = recipe
+    job.save(update_fields=["recipe"])
+    return True
+
+
+def _fail_recipe_generation_job(job, exc):
+    return None
+
+
+def run_next_recipe_generation_job():
+    return run_next_job(
+        GeneratedRecipeRequest,
+        "recipe_generation",
+        select_related=("household", "requested_by"),
+        household_id_for=lambda job: job.household_id,
+        process=_generate_recipe,
+        succeed=_complete_recipe_generation_job,
+        fail=_fail_recipe_generation_job,
+        log_fields=lambda job: {
+            "provider_deployment": job.provider_deployment,
+            "prompt_version": job.prompt_version,
+        },
+        logger=logger,
+    )

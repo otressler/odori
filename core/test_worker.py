@@ -9,17 +9,20 @@ class WorkerTelemetryTests(SimpleTestCase):
     @patch("core.management.commands.worker.log_event")
     @patch("core.management.commands.worker.run_next_ingredient_icon_job")
     @patch("core.management.commands.worker.run_next_recipe_image_job")
+    @patch("core.management.commands.worker.run_next_recipe_generation_job")
     @patch("core.management.commands.worker.run_next_category_job")
     def test_processed_job_emits_uniform_execution_entry(
-        self, category_runner, recipe_runner, icon_runner, log_event
+        self, category_runner, generation_runner, recipe_runner, icon_runner, log_event
     ):
         category_runner.return_value = False
+        generation_runner.return_value = False
         recipe_runner.return_value = True
 
         processed = Command().run_next_job()
 
         self.assertTrue(processed)
         category_runner.assert_called_once_with()
+        generation_runner.assert_called_once_with()
         recipe_runner.assert_called_once_with()
         icon_runner.assert_not_called()
         self.assertTrue(

@@ -7,8 +7,8 @@ from django.views.decorators.http import require_http_methods
 from core.api import error, read_json
 from core.services import household_for
 
-from .generation import GeneratedDraftError, generate_recipe_draft
-from .models import Recipe
+from .generation import GeneratedDraftError, queue_recipe_generation
+from .models import GeneratedRecipeRequest, Recipe
 from .recommendations import recommend_for_user, record_outcome
 from .semantic import rank_recipes
 from .services import (
@@ -207,26 +207,37 @@ def generated_recipe_draft(request):
     if not isinstance(data, dict):
         return error("malformed_input", "Expected JSON.", 400)
     try:
-        result = generate_recipe_draft(user=request.user, idea=data.get("idea"))
+        generated_request = queue_recipe_generation(user=request.user, idea=data.get("idea"))
     except GeneratedDraftError as exc:
         statuses = {
             "generation_disabled": 503,
             "generation_quota_exceeded": 429,
             "invalid_request": 422,
-            "invalid_output": 422,
-            "provider_unavailable": 503,
         }
-        body = {
-            "error": {"code": exc.code, "message": "The generated recipe could not be created."}
-        }
-        if exc.request:
-            body["requestId"] = str(exc.request.id)
-        return JsonResponse(body, status=statuses[exc.code])
-    recipe = visible_recipe(request.user, result.recipe_id)
+        return error(exc.code, "The generated recipe could not be queued.", statuses[exc.code])
     return JsonResponse(
         {
-            "requestId": str(result.request.id),
-            "recipe": recipe_json(recipe, request.user),
+            "requestId": str(generated_request.id),
+            "state": generated_request.state,
+            "statusUrl": f"/api/v1/generated-recipe-drafts/{generated_request.id}",
         },
-        status=201,
+        status=202,
     )
+
+
+@login_required
+@require_http_methods(["GET"])
+def generated_recipe_draft_status(request, request_id):
+    generated_request = GeneratedRecipeRequest.objects.filter(
+        id=request_id, household=household_for(request.user)
+    ).select_related("recipe__source").first()
+    if not generated_request:
+        raise Http404
+    body = {
+        "requestId": str(generated_request.id),
+        "state": generated_request.state,
+        "errorCode": generated_request.error_code or None,
+    }
+    if generated_request.recipe:
+        body["recipe"] = recipe_json(generated_request.recipe, request.user)
+    return JsonResponse(body)

@@ -109,9 +109,10 @@ The job response includes safe progress data (`queued`, `extracting`, `normalizi
 `scoringVersion` in addition to the response above. `POST /api/v1/recommendation-outcomes`
 records one local outcome (`opened`, `planned`, `cooked`, `dismissed`, or `hidden`) for a
 household-owned recipe; dismissal reasons use a small fixed vocabulary. `POST
-/api/v1/generated-recipe-drafts` only generates a draft after an explicit request and
-returns a safe failure code when the independent generation switch, quota, or provider
-prevents generation.
+/api/v1/generated-recipe-drafts` validates and queues an explicit generation request, returning
+`202`, a request ID, and a status URL. `GET /api/v1/generated-recipe-drafts/{requestId}` returns
+the queued, running, succeeded, or failed state and includes the generated draft only after it
+succeeds. The worker performs the provider request; safe failures are retained on the request.
 
 ## Concurrency
 

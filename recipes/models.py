@@ -236,6 +236,8 @@ class RecommendationOutcome(models.Model):
 
 class GeneratedRecipeRequest(models.Model):
     class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
         SUCCEEDED = "succeeded", "Succeeded"
         FAILED = "failed", "Failed"
 
@@ -247,12 +249,17 @@ class GeneratedRecipeRequest(models.Model):
     recipe = models.ForeignKey(
         Recipe, null=True, blank=True, on_delete=models.SET_NULL, related_name="generation_requests"
     )
-    state = models.CharField(max_length=12, choices=State.choices)
+    idea = models.TextField()
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    attempt_count = models.PositiveIntegerField(default=0)
     error_code = models.CharField(max_length=80, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
     provider_deployment = models.CharField(max_length=120, blank=True)
     prompt_version = models.CharField(max_length=40)
+    correlation_id = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    finished_at = models.DateTimeField(auto_now=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -33,8 +33,10 @@ class StaleRecipeVersion(Exception):
     pass
 
 
-def create_or_update_recipe(*, user, data, recipe=None, source_type=RecipeSource.Type.MANUAL):
-    household = household_for(user)
+def create_or_update_recipe(
+    *, user, data, recipe=None, source_type=RecipeSource.Type.MANUAL, household=None
+):
+    household = household or household_for(user)
     is_new_recipe = recipe is None
     matched_ingredients = {}
     if "ingredients" in data:

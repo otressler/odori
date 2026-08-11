@@ -16,6 +16,7 @@ from .models import (
     RecipeStep,
     RecommendationOutcome,
 )
+from .generation import run_next_recipe_generation_job
 from .recommendations import recommend_for_user
 
 
@@ -139,7 +140,7 @@ class RecommendationTests(TestCase):
         RECIPE_GENERATION_DAILY_LIMIT=1,
     )
     @patch("recipes.generation.urlopen")
-    def test_explicit_generation_creates_a_reviewable_draft(self, mocked_urlopen):
+    def test_explicit_generation_is_queued_then_creates_a_reviewable_draft(self, mocked_urlopen):
         response = MagicMock()
         response.read.return_value = json.dumps(
             {
@@ -168,11 +169,19 @@ class RecommendationTests(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(result.status_code, 201)
-        recipe = Recipe.objects.get(id=result.json()["recipe"]["id"])
+        self.assertEqual(result.status_code, 202)
+        self.assertEqual(result.json()["state"], GeneratedRecipeRequest.State.QUEUED)
+        mocked_urlopen.assert_not_called()
+
+        self.assertTrue(run_next_recipe_generation_job())
+
+        request = GeneratedRecipeRequest.objects.get()
+        self.assertEqual(request.state, GeneratedRecipeRequest.State.SUCCEEDED)
+        status = self.client.get(result.json()["statusUrl"])
+        self.assertEqual(status.status_code, 200)
+        recipe = Recipe.objects.get(id=status.json()["recipe"]["id"])
         self.assertEqual(recipe.status, Recipe.Status.DRAFT)
         self.assertEqual(recipe.source.type, RecipeSource.Type.GENERATED)
-        self.assertEqual(GeneratedRecipeRequest.objects.get().state, "succeeded")
         self.assertEqual(self.client.post(f"/api/v1/recipes/{recipe.id}/approve").status_code, 200)
 
     @override_settings(
@@ -182,7 +191,7 @@ class RecommendationTests(TestCase):
         AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT="test-deployment",
     )
     @patch("recipes.generation.urlopen")
-    def test_invalid_generated_output_is_a_safe_reviewable_failure(self, mocked_urlopen):
+    def test_invalid_generated_output_is_a_safe_async_failure(self, mocked_urlopen):
         response = MagicMock()
         response.read.return_value = b'{"choices": []}'
         mocked_urlopen.return_value.__enter__.return_value = response
@@ -193,7 +202,11 @@ class RecommendationTests(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(result.status_code, 422)
-        self.assertEqual(result.json()["error"]["code"], "invalid_output")
-        self.assertTrue(result.json()["requestId"])
-        self.assertEqual(GeneratedRecipeRequest.objects.get().state, "failed")
+        self.assertEqual(result.status_code, 202)
+        self.assertTrue(run_next_recipe_generation_job())
+
+        request = GeneratedRecipeRequest.objects.get()
+        self.assertEqual(request.state, GeneratedRecipeRequest.State.FAILED)
+        self.assertEqual(request.error_code, "invalid_output")
+        status = self.client.get(result.json()["statusUrl"])
+        self.assertEqual(status.json()["errorCode"], "invalid_output")
