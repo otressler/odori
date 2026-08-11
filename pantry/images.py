@@ -115,9 +115,12 @@ def _generate_ingredient_icon(job):
         output_format="png",
         deployment=settings.AZURE_OPENAI_PANTRY_ICON_DEPLOYMENT,
     )
-    if settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY:
+    try:
+        if not settings.AZURE_OPENAI_PANTRY_ICON_NATIVE_TRANSPARENCY:
+            image_bytes = _remove_white_background(image_bytes)
+        return _resize_square(image_bytes, settings.INGREDIENT_ICON_SIZE)
+    except (OSError, ValueError):
         return image_bytes
-    return _remove_white_background(image_bytes)
 
 
 def _remove_white_background(image_bytes):
@@ -136,6 +139,22 @@ def _remove_white_background(image_bytes):
             pixels[x, y] = (red, green, blue, 0 if (red + green + blue) / 3 <= 100 else 255)
     output = BytesIO()
     image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _resize_square(image_bytes, side_length):
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(image_bytes)) as source:
+        image = ImageOps.fit(
+            source.convert("RGBA"),
+            (side_length, side_length),
+            method=Image.Resampling.LANCZOS,
+        )
+        alpha = image.getchannel("A").point(lambda value: 255 if value == 255 else 0)
+        image.putalpha(alpha)
+        output = BytesIO()
+        image.save(output, format="PNG")
     return output.getvalue()
 
 

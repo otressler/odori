@@ -38,11 +38,14 @@
       <input id="manual-label" name="label" required maxlength="200" placeholder="z. B. Spülmittel">
     </div>
     <div class="field">
-      <label for="manual-ingredient">Mit Vorrat verknüpfen</label>
-      <select id="manual-ingredient" name="ingredient_id">
-        <option value="">— optional —</option>
-        {% for ingredient in ingredients %}<option value="{{ ingredient.id }}">{{ ingredient.name }}</option>{% endfor %}
-      </select>
+      <label for="manual-ingredient-search">Mit Vorrat verknüpfen</label>
+      <div class="ingredient-search" data-ingredient-search>
+        <input id="manual-ingredient-search" type="search" autocomplete="off" role="combobox"
+               aria-autocomplete="list" aria-expanded="false" aria-controls="manual-ingredient-results"
+               placeholder="Vorratszutat suchen">
+        <input id="manual-ingredient" type="hidden" name="ingredient_id">
+        <div id="manual-ingredient-results" class="ingredient-search__results" role="listbox" hidden></div>
+      </div>
     </div>
     <button class="primary" type="submit">Hinzufügen</button>
   </form>
@@ -109,6 +112,50 @@
 {% block scripts %}
 <script>
   (function () {
+    var search = document.querySelector("[data-ingredient-search]");
+    if (search) {
+      var input = search.querySelector('[type="search"]');
+      var value = search.querySelector('[type="hidden"]');
+      var results = search.querySelector('[role="listbox"]');
+      var timer;
+      function closeResults() {
+        results.hidden = true;
+        results.replaceChildren();
+        input.setAttribute("aria-expanded", "false");
+      }
+      function showResults(items) {
+        results.replaceChildren();
+        items.forEach(function (item) {
+          var option = document.createElement("button");
+          option.type = "button";
+          option.className = "ingredient-search__option";
+          option.setAttribute("role", "option");
+          option.textContent = item.name;
+          option.addEventListener("mousedown", function (event) {
+            event.preventDefault();
+            value.value = item.id;
+            input.value = item.name;
+            closeResults();
+          });
+          results.appendChild(option);
+        });
+        results.hidden = !items.length;
+        input.setAttribute("aria-expanded", String(Boolean(items.length)));
+      }
+      input.addEventListener("input", function () {
+        value.value = "";
+        window.clearTimeout(timer);
+        var query = input.value.trim();
+        if (!query) return closeResults();
+        timer = window.setTimeout(function () {
+          fetch("/api/v1/ingredients?q=" + encodeURIComponent(query), {headers: {"Accept": "application/json"}})
+            .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+            .then(function (data) { showResults(data.ingredients || []); })
+            .catch(closeResults);
+        }, 250);
+      });
+      input.addEventListener("blur", function () { window.setTimeout(closeResults, 150); });
+    }
     var list = document.querySelector("[data-shopping-list]");
     var controls = document.querySelectorAll("[data-shopping-view]");
     var storageKey = "odori-shopping-view";

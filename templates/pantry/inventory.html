@@ -81,16 +81,14 @@
             {% endif %}
           </div>
         {# The segmented control already announces the current state, so no separate badge. #}
-        <form class="segmented inventory-card__control" method="post" action="{% url 'inventory-status' item.ingredient.id %}">
-          {% csrf_token %}
-          <input type="hidden" name="version" value="{{ item.version }}">
+        <div class="segmented inventory-card__control" data-inventory-status data-url="{% url 'api-v1-inventory-change-status' item.ingredient.id %}" data-version="{{ item.version }}" data-status="{{ item.status }}">
           {% for value, label in status_choices %}
-            <button type="submit" name="status" value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
+            <button type="button" data-status-value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
               <svg aria-hidden="true"><use href="#i-{% if value == 'in_stock' %}check{% elif value == 'needs_replenishment' %}basket{% else %}question{% endif %}"></use></svg>
               <span class="sr-only">{{ label }} für {{ item.ingredient.name }}</span>
             </button>
           {% endfor %}
-        </form>
+        </div>
         </article>
         {% endfor %}
       </div>
@@ -102,4 +100,51 @@
     </div>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function csrfToken() {
+    var match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+  document.querySelectorAll("[data-inventory-status]").forEach(function (control) {
+    control.querySelectorAll("[data-status-value]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var previous = control.dataset.status;
+        var next = button.dataset.statusValue;
+        if (next === previous || control.dataset.pending === "true") return;
+        control.dataset.status = next;
+        control.dataset.pending = "true";
+        control.querySelectorAll("[data-status-value]").forEach(function (entry) {
+          entry.setAttribute("aria-pressed", String(entry.dataset.statusValue === next));
+        });
+        var request = new AbortController();
+        var timeout = window.setTimeout(function () { request.abort(); }, 5000);
+        fetch(control.dataset.url, {
+          method: "POST",
+          signal: request.signal,
+          headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken(), "Accept": "application/json"},
+          body: JSON.stringify({status: next, version: Number(control.dataset.version)})
+        }).then(function (response) {
+          if (!response.ok) throw new Error("status update failed");
+          return response.json();
+        }).then(function (data) {
+          control.dataset.version = data.version;
+          control.dataset.status = data.status;
+        }).catch(function () {
+          control.dataset.status = previous;
+          control.querySelectorAll("[data-status-value]").forEach(function (entry) {
+            entry.setAttribute("aria-pressed", String(entry.dataset.statusValue === previous));
+          });
+        }).finally(function () {
+          window.clearTimeout(timeout);
+          control.dataset.pending = "false";
+        });
+      });
+    });
+  });
+}());
+</script>
 {% endblock %}

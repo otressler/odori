@@ -289,6 +289,13 @@ def recipe_image(request, recipe_id):
     return FileResponse(recipe.image.open("rb"))
 
 
+def recipe_thumbnail(request, recipe_id):
+    recipe = recipe_for_user(request.user, recipe_id)
+    if not recipe.thumbnail:
+        raise Http404
+    return FileResponse(recipe.thumbnail.open("rb"))
+
+
 def recipe_for_user(user, recipe_id):
     recipe = (
         Recipe.objects.prefetch_related("ingredients", "steps", "tag_assignments__tag")

@@ -36,6 +36,7 @@ class Recipe(models.Model):
     search_embedding = models.JSONField(default=list, blank=True)
     search_embedding_model = models.CharField(max_length=120, blank=True)
     image = models.FileField(upload_to="recipes/", blank=True)
+    thumbnail = models.FileField(upload_to="recipe-thumbnails/", blank=True)
     image_status = models.CharField(
         max_length=12,
         choices=(("pending", "Ausstehend"), ("ready", "Fertig"), ("failed", "Fehlgeschlagen")),
