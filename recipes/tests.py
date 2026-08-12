@@ -265,6 +265,8 @@ class RecipeLifecycleTests(TestCase):
         self.assertContains(response, 'type="hidden"')
         self.assertNotContains(response, '<select id="ingredient-canonical-0"')
         self.assertContains(response, 'fetch(searchEndpoint + "?q="')
+        self.assertContains(response, "schnell anlegen")
+        self.assertContains(response, 'method: "POST"')
 
     def test_recipe_form_accepts_more_than_twelve_steps(self):
         form_data = {"title": "Viele Schritte", "servings": "2"}
