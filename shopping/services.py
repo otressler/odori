@@ -240,6 +240,42 @@ def add_manual_item(*, user, list_id, label, ingredient_id=None):
 
 
 @transaction.atomic
+def add_pantry_items(*, user, list_id):
+    """Add pantry ingredients marked for replenishment or with unknown stock."""
+
+    household = household_for(user)
+    shopping_list = list_for_user(user, list_id)
+    pantry_items = InventoryItem.objects.filter(
+        household=household,
+        status__in=[
+            InventoryItem.Status.NEEDS_REPLENISHMENT,
+            InventoryItem.Status.UNKNOWN,
+        ],
+    ).select_related("ingredient")
+    existing_ingredient_ids = set(
+        ShoppingItem.objects.filter(
+            shopping_list=shopping_list,
+            canonical_ingredient__isnull=False,
+        ).values_list("canonical_ingredient_id", flat=True)
+    )
+    added = 0
+    for pantry_item in pantry_items:
+        if pantry_item.ingredient_id in existing_ingredient_ids:
+            continue
+        ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            canonical_ingredient=pantry_item.ingredient,
+            label=pantry_item.ingredient.name,
+            grouping_key=f"pantry:{pantry_item.ingredient_id}",
+            source=ShoppingItem.Source.MANUAL,
+            needs_confirmation=pantry_item.status == InventoryItem.Status.UNKNOWN,
+        )
+        existing_ingredient_ids.add(pantry_item.ingredient_id)
+        added += 1
+    return added
+
+
+@transaction.atomic
 def set_item_state(*, user, item_id, version, state):
     if state not in ShoppingItem.State.values:
         raise ValueError("Unbekannter Status.")

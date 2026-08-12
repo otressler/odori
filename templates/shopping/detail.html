@@ -52,6 +52,17 @@
   <p class="field__hint">Verknüpfte Einträge setzen den Vorrat beim Abhaken automatisch auf „vorrätig“.</p>
 </section>
 
+{% if pantry_items %}
+  <section class="panel shopping-add-item">
+    <h2>Aus dem Vorrat hinzufügen</h2>
+    <p>Diese Zutaten sind als „Nachkaufen“ oder „Unbekannt“ markiert.</p>
+    <form method="post" action="{% url 'shopping-pantry-items' list.id %}">
+      {% csrf_token %}
+      <button class="primary" type="submit">Alle zur Liste hinzufügen ({{ pantry_items|length }})</button>
+    </form>
+  </section>
+{% endif %}
+
 <div class="shopping-list" data-shopping-list>
   <section class="shopping-section shopping-section--open">
     <div class="rule-heading"><h2>Offen ({{ open_items|length }})</h2></div>
