@@ -30,6 +30,7 @@ class RecipeSource(models.Model):
 class ImportSource(models.Model):
     class Type(models.TextChoices):
         URL = "url", "URL"
+        TEXT = "text", "Text"
         IMAGE = "image", "Image"
         PDF = "pdf", "PDF"
 
@@ -38,6 +39,7 @@ class ImportSource(models.Model):
     source_type = models.CharField(max_length=10, choices=Type.choices)
     url = models.URLField(max_length=2048, blank=True)
     file = models.FileField(upload_to="recipe-imports/", blank=True)
+    content = models.TextField(blank=True)
     content_hash = models.CharField(max_length=64)
     content_length = models.PositiveBigIntegerField(default=0)
     content_type = models.CharField(max_length=120, blank=True)

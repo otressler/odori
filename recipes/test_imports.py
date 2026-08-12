@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from urllib.error import HTTPError
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
@@ -14,7 +15,7 @@ from .imports import (
     recover_expired_imports,
     run_next_import_job,
 )
-from .models import ImportSource, Recipe, RecipeImportJob, RecipeSource
+from .models import ImportSource, Recipe, RecipeImportJob, RecipeIngredient, RecipeSource
 
 
 @override_settings(IMPORT_JOB_LEASE_SECONDS=60, IMPORT_JOB_RETRY_DELAY_SECONDS=0)
@@ -98,22 +99,26 @@ class RecipeImportJobTests(TestCase):
         response = MagicMock()
         response.read.return_value = json.dumps(
             {
-                "choices": [
+                "output": [
                     {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "title": "Tomatenpasta",
-                                    "description": "Schnelles Abendessen",
-                                    "servings": 2,
-                                    "ingredients": [
-                                        {"sourceText": "Tomaten", "amount": "400", "unit": "g"}
-                                    ],
-                                    "steps": [{"body": "Tomaten kochen."}],
-                                    "tags": ["schnell"],
-                                }
-                            )
-                        }
+                        "type": "message",
+                        "content": [{
+                            "type": "output_text",
+                            "text": json.dumps({
+                                "title": "Tomatenpasta",
+                                "description": "Schnelles Abendessen",
+                                "servings": 2,
+                                "ingredients": [
+                                    {
+                                        "sourceText": "400 g Tomaten",
+                                        "amount": "400",
+                                        "unit": "g",
+                                    }
+                                ],
+                                "steps": [{"body": "Tomaten kochen."}],
+                                "tags": ["schnell"],
+                            }),
+                        }],
                     }
                 ]
             }
@@ -136,8 +141,16 @@ class RecipeImportJobTests(TestCase):
         recipe = Recipe.objects.get(id=job.recipe_id)
         self.assertEqual(recipe.source.type, RecipeSource.Type.IMPORTED)
         self.assertEqual(recipe.source.import_source.source_type, ImportSource.Type.URL)
+        ingredient = RecipeIngredient.objects.get(recipe=recipe)
+        self.assertEqual(ingredient.source_text, "Tomaten")
+        self.assertEqual(str(ingredient.amount), "400.00")
+        self.assertEqual(ingredient.unit, "g")
         request_body = json.loads(mocked_urlopen.call_args.args[0].data)
-        prompt = request_body["messages"][0]["content"]
+        self.assertTrue(mocked_urlopen.call_args.args[0].full_url.endswith("/openai/v1/responses"))
+        self.assertEqual(request_body["model"], "recipe-import")
+        self.assertEqual(request_body["max_output_tokens"], 4000)
+        self.assertEqual(request_body["tools"], [{"type": "web_search"}])
+        prompt = request_body["input"][0]["content"][0]["text"]
         self.assertIn("Translate the complete recipe into German", prompt)
         self.assertIn("German metric kitchen units", prompt)
         self.assertIn("sourceText", prompt)
@@ -175,6 +188,181 @@ class RecipeImportJobTests(TestCase):
             self.client.get(queued.json()["statusUrl"]).json()["errorCode"],
             "recipe_not_found",
         )
+
+    @override_settings(
+        RECIPE_GENERATION_ENABLED=True,
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT="recipe-generation",
+    )
+    @patch("providers.foundry_recipe_import.urlopen")
+    def test_plaintext_import_uses_recipe_generation_model_and_normalizes(self, mocked_urlopen):
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{
+                            "type": "output_text",
+                            "text": json.dumps({
+                                "title": "Tomatenpasta",
+                                "description": "Schnelles Abendessen",
+                                "servings": 2,
+                                "ingredients": [
+                                    {"sourceText": "Tomaten", "amount": "400", "unit": "g"}
+                                ],
+                                "steps": [{"body": "Tomaten kochen."}],
+                                "tags": ["schnell"],
+                            }),
+                        }],
+                    }
+                ]
+            }
+        ).encode()
+        mocked_urlopen.return_value.__enter__.return_value = response
+        self.client.force_login(self.user)
+
+        queued = self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"text": "400 g tomatoes; cook until soft."}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(queued.status_code, 202)
+        mocked_urlopen.assert_not_called()
+        self.assertTrue(run_next_import_job())
+
+        source = ImportSource.objects.get()
+        self.assertEqual(source.source_type, ImportSource.Type.TEXT)
+        self.assertEqual(source.content, "400 g tomatoes; cook until soft.")
+        request_body = json.loads(mocked_urlopen.call_args.args[0].data)
+        self.assertTrue(mocked_urlopen.call_args.args[0].full_url.endswith("/openai/v1/responses"))
+        self.assertEqual(request_body["model"], "recipe-generation")
+        self.assertEqual(request_body["tools"], [{"type": "web_search"}])
+        prompt = request_body["input"][0]["content"][0]["text"]
+        self.assertIn("complete recipe", prompt)
+        self.assertIn("well-known dish", prompt)
+        self.assertIn("natural-language cooking goal", prompt)
+        self.assertIn("natural German", prompt)
+        self.assertIn("German metric kitchen units", prompt)
+        self.assertIn("sourceText", prompt)
+
+    @override_settings(
+        RECIPE_GENERATION_ENABLED=True,
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT="recipe-generation",
+    )
+    @patch("providers.foundry_recipe_import.urlopen")
+    def test_plaintext_provider_request_error_is_not_retryable(self, mocked_urlopen):
+        mocked_urlopen.side_effect = HTTPError(
+            "https://example.test/openai/v1/responses",
+            400,
+            "Bad Request",
+            {},
+            MagicMock(read=MagicMock(return_value=b'{"error":{"code":"invalid_value"}}')),
+        )
+        self.client.force_login(self.user)
+        queued = self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"text": "Cacio e pepe"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(queued.status_code, 202)
+        self.assertTrue(run_next_import_job())
+        job = RecipeImportJob.objects.get()
+        self.assertEqual(job.state, RecipeImportJob.State.FAILED)
+        self.assertEqual(job.error_code, "provider_request_rejected")
+        self.assertEqual(job.attempt_count, 1)
+
+    @override_settings(
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_RECIPE_IMPORT_DEPLOYMENT="recipe-import",
+    )
+    @patch("providers.foundry_recipe_import.log_event")
+    @patch("providers.foundry_recipe_import.urlopen")
+    def test_invalid_recipe_content_logs_response_diagnostics(
+        self, mocked_urlopen, mocked_log_event
+    ):
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": "This is not JSON."},
+                    }
+                ]
+            }
+        ).encode()
+        mocked_urlopen.return_value.__enter__.return_value = response
+        self.client.force_login(self.user)
+
+        queued = self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"url": "https://example.test/recipe"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(queued.status_code, 202)
+        self.assertTrue(run_next_import_job())
+        job = RecipeImportJob.objects.get()
+        self.assertEqual(job.state, RecipeImportJob.State.FAILED)
+        self.assertEqual(job.error_code, "invalid_output")
+        mocked_log_event.assert_called_once()
+        self.assertEqual(mocked_log_event.call_args.args[1], "provider.recipe_response_diagnostics")
+        fields = mocked_log_event.call_args.kwargs
+        self.assertEqual(fields["response_shape"], "chat_completions")
+        self.assertEqual(fields["finish_reason"], "stop")
+        self.assertEqual(fields["content_length"], len("This is not JSON."))
+        self.assertEqual(fields["content_preview"], repr("This is not JSON."))
+
+    @override_settings(
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_RECIPE_IMPORT_DEPLOYMENT="recipe-import",
+    )
+    @patch("providers.foundry_recipe_import.urlopen")
+    def test_truncated_recipe_content_has_distinct_error(self, mocked_urlopen):
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": ""},
+                    }
+                ]
+            }
+        ).encode()
+        mocked_urlopen.return_value.__enter__.return_value = response
+        self.client.force_login(self.user)
+
+        queued = self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"url": "https://example.test/recipe"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(queued.status_code, 202)
+        self.assertTrue(run_next_import_job())
+        job = RecipeImportJob.objects.get()
+        self.assertEqual(job.state, RecipeImportJob.State.FAILED)
+        self.assertEqual(job.error_code, "provider_response_truncated")
+
+    def test_plaintext_import_rejects_oversized_text(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"text": "x" * 20_001}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"]["code"], "invalid_text")
 
     def test_import_rejects_non_http_urls(self):
         self.client.force_login(self.user)

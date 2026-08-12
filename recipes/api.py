@@ -251,6 +251,23 @@ def recipe_import(request):
     data = read_json(request)
     if not isinstance(data, dict):
         return error("malformed_input", "Expected JSON.", 400)
+    text = str(data.get("text", "")).strip()
+    if text:
+        if len(text) > 20_000:
+            return error("invalid_text", "Recipe text must be 20,000 characters or fewer.")
+        job, _ = create_import(
+            household=household_for(request.user),
+            source_type="text",
+            content=text.encode("utf-8"),
+        )
+        return JsonResponse(
+            {
+                "importId": str(job.id),
+                "state": job.state,
+                "statusUrl": f"/api/v1/recipe-imports/{job.id}",
+            },
+            status=202,
+        )
     url = str(data.get("url", "")).strip()
     parsed_url = urlparse(url)
     if len(url) > 2048 or parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:

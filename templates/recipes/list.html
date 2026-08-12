@@ -34,6 +34,25 @@
   <p class="message" id="recipe-import-status" role="status" aria-live="polite" hidden></p>
 </section>
 
+<section class="panel recipe-import" aria-labelledby="recipe-text-import-heading">
+  <div class="panel__head">
+    <div>
+      <h2 id="recipe-text-import-heading">Rezept aus Text erstellen</h2>
+      <p class="field__hint">Füge ein Rezept oder deine Notizen ein. Odori erstellt daraus einen deutschen Entwurf mit passenden Küchenmaßen.</p>
+    </div>
+  </div>
+  <form class="inline-form" id="recipe-text-import-form">
+    {% csrf_token %}
+    <div class="field">
+      <label for="recipe-import-text">Rezepttext</label>
+      <textarea id="recipe-import-text" name="text" required maxlength="20000" rows="7"
+                placeholder="Zutaten und Zubereitung hier einfügen"></textarea>
+    </div>
+    <button class="primary" type="submit" id="recipe-text-import-submit">Rezept erstellen</button>
+  </form>
+  <p class="message" id="recipe-text-import-status" role="status" aria-live="polite" hidden></p>
+</section>
+
 <form class="search-bar" method="get" role="search">
   <div class="field">
     <label for="recipe-search">Rezepte suchen</label>
@@ -121,33 +140,38 @@
     }[stage] || "Import wird verarbeitet";
   }
 
-  function poll(statusUrl, remaining) {
+  function poll(statusUrl, remaining, currentSubmit, currentStatus) {
+    function updateStatus(text, className) {
+      currentStatus.hidden = false;
+      currentStatus.className = "message" + (className ? " message--" + className : "");
+      currentStatus.textContent = text;
+    }
     fetch(statusUrl, {headers: {"Accept": "application/json"}})
       .then(function (response) {
         return response.ok ? response.json() : Promise.reject();
       })
       .then(function (data) {
         if (data.state === "succeeded" && data.recipe) {
-          showStatus("Entwurf ist bereit. Die Rezeptprüfung wird geöffnet.");
+          updateStatus("Entwurf ist bereit. Die Rezeptprüfung wird geöffnet.");
           window.location.href = "/recipes/" + data.recipe.id + "/";
           return;
         }
         if (data.state === "failed" || data.state === "cancelled") {
-          showStatus("Der Import konnte nicht abgeschlossen werden. Bitte prüfe den Link und versuche es erneut.", "error");
-          submit.disabled = false;
+          updateStatus("Der Import konnte nicht abgeschlossen werden. Bitte prüfe die Eingabe und versuche es erneut.", "error");
+          currentSubmit.disabled = false;
           return;
         }
         if (remaining <= 0) {
-          showStatus("Der Import dauert länger als erwartet. Der Worker verarbeitet ihn weiter; bitte später erneut nachsehen.", "warning");
-          submit.disabled = false;
+          updateStatus("Der Import dauert länger als erwartet. Der Worker verarbeitet ihn weiter; bitte später erneut nachsehen.", "warning");
+          currentSubmit.disabled = false;
           return;
         }
-        showStatus(stageLabel(data.stage) + ".");
-        window.setTimeout(function () { poll(statusUrl, remaining - 1); }, 1500);
+        updateStatus(stageLabel(data.stage) + ".");
+        window.setTimeout(function () { poll(statusUrl, remaining - 1, currentSubmit, currentStatus); }, 1500);
       })
       .catch(function () {
-        showStatus("Der Importstatus konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
-        submit.disabled = false;
+        updateStatus("Der Importstatus konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
+        currentSubmit.disabled = false;
       });
   }
 
@@ -169,11 +193,45 @@
           return response.ok ? data : Promise.reject(data);
         });
       })
-      .then(function (data) { poll(data.statusUrl, pollLimit); })
+      .then(function (data) { poll(data.statusUrl, pollLimit, submit, status); })
       .catch(function (data) {
         var message = data && data.error && data.error.message;
         showStatus(message || "Der Import konnte nicht gestartet werden. Bitte prüfe die URL.", "error");
         submit.disabled = false;
+      });
+  });
+
+  var textForm = document.getElementById("recipe-text-import-form");
+  var textInput = document.getElementById("recipe-import-text");
+  var textSubmit = document.getElementById("recipe-text-import-submit");
+  var textStatus = document.getElementById("recipe-text-import-status");
+  textForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    textSubmit.disabled = true;
+    textStatus.hidden = false;
+    textStatus.className = "message";
+    textStatus.textContent = "Rezept wird in die Warteschlange gestellt.";
+    fetch("/api/v1/recipe-imports", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": textForm.querySelector("[name=csrfmiddlewaretoken]").value,
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({text: textInput.value.trim()})
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return response.ok ? data : Promise.reject(data);
+        });
+      })
+      .then(function (data) { poll(data.statusUrl, pollLimit, textSubmit, textStatus); })
+      .catch(function (data) {
+        var message = data && data.error && data.error.message;
+        textStatus.hidden = false;
+        textStatus.className = "message message--error";
+        textStatus.textContent = message || "Das Rezept konnte nicht erstellt werden. Bitte versuche es erneut.";
+        textSubmit.disabled = false;
       });
   });
 }());

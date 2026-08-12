@@ -1461,7 +1461,6 @@ textarea:focus {
 .recipe-card__image-wrap {
   position: relative;
   display: grid;
-  place-items: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   background: var(--surface-sunk);

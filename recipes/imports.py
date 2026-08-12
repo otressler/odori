@@ -11,6 +11,7 @@ from django.utils import timezone
 from core.observability import bind_context
 from providers.foundry_recipe_import import (
     RecipeExtractionError,
+    extract_recipe_from_text,
     extract_recipe_from_url,
 )
 
@@ -37,6 +38,7 @@ def create_import(*, household, source_type, content=b"", url="", content_type="
         defaults={
             "source_type": source_type,
             "url": url,
+            "content": content.decode("utf-8", errors="replace") if source_type == ImportSource.Type.TEXT else "",
             "content_type": content_type,
             "content_length": len(content),
         },
@@ -215,12 +217,15 @@ def run_next_import_job(process=None):
 
 
 def _extract_and_create_recipe(job):
-    if job.source.source_type != ImportSource.Type.URL:
-        raise PermanentImportError("Only URL recipe imports are supported yet.")
     job.stage = RecipeImportJob.Stage.EXTRACT
     job.save(update_fields=["stage"])
     try:
-        data = extract_recipe_from_url(job.source.url)
+        if job.source.source_type == ImportSource.Type.URL:
+            data = extract_recipe_from_url(job.source.url)
+        elif job.source.source_type == ImportSource.Type.TEXT:
+            data = extract_recipe_from_text(job.source.content)
+        else:
+            raise PermanentImportError("This recipe import source is not supported yet.")
     except RecipeExtractionError as exc:
         error = RetryableImportError(str(exc)) if exc.retryable else PermanentImportError(str(exc))
         error.error_code = exc.error_code
