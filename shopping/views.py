@@ -11,12 +11,12 @@ from .models import ShoppingItem, ShoppingList
 from .services import (
     StaleItemVersion,
     add_manual_item,
+    add_pantry_items,
     delete_item,
     generate_from_plan,
     item_for_user,
     list_for_user,
     purchase_item,
-    add_pantry_items,
     set_item_state,
 )
 
@@ -68,21 +68,21 @@ def shopping_detail(request, list_id):
             "canonical_ingredient__category__name",
             "label",
         )
-        existing_ingredient_ids = set(
-            item.canonical_ingredient_id for item in items if item.canonical_ingredient_id
+    )
+    existing_ingredient_ids = {
+        item.canonical_ingredient_id for item in items if item.canonical_ingredient_id
+    }
+    pantry_items = (
+        InventoryItem.objects.select_related("ingredient")
+        .filter(
+            household=household,
+            status__in=[
+                InventoryItem.Status.NEEDS_REPLENISHMENT,
+                InventoryItem.Status.UNKNOWN,
+            ],
         )
-        pantry_items = (
-            InventoryItem.objects.select_related("ingredient")
-            .filter(
-                household=household,
-                status__in=[
-                    InventoryItem.Status.NEEDS_REPLENISHMENT,
-                    InventoryItem.Status.UNKNOWN,
-                ],
-            )
-            .exclude(ingredient_id__in=existing_ingredient_ids)
-            .order_by("ingredient__name")
-        )
+        .exclude(ingredient_id__in=existing_ingredient_ids)
+        .order_by("ingredient__name")
     )
     buckets = {"open": [], "purchased": [], "skipped": []}
     for item in items:
