@@ -6,6 +6,17 @@ from . import views
 
 urlpatterns = [
     path("", login_required(views.recipe_list), name="recipe-list"),
+    path("import/", login_required(views.recipe_import_page), name="recipe-import"),
+    path(
+        "import/url/",
+        login_required(views.recipe_url_import_page),
+        name="recipe-url-import",
+    ),
+    path(
+        "import/ai/",
+        login_required(views.recipe_ai_import_page),
+        name="recipe-ai-import",
+    ),
     path(
         "recommendations/",
         login_required(views.recommendation_list_page),

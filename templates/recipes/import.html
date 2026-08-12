@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Rezept hinzufügen · Odori{% endblock %}
+
+{% block content %}
+<div class="import-page">
+  <a class="back-link" href="{% url 'recipe-list' %}">← Zum Rezeptbuch</a>
+  <header class="import-page__intro">
+    <p class="hero__eyebrow">La tua cucina</p>
+    <h1>Wie kommt dein Rezept ins Buch?</h1>
+    <p>Wähle den Weg, der gerade am besten passt. Jede Option führt dich durch die nächsten Schritte.</p>
+  </header>
+
+  <section class="import-options" aria-label="Importmöglichkeiten">
+    <a class="import-card import-card--terracotta" href="{% url 'recipe-url-import' %}">
+      <span class="import-card__icon"><svg aria-hidden="true"><use href="#i-link"></use></svg></span>
+      <span class="import-card__body">
+        <strong>Von einer URL importieren</strong>
+        <span>Füge den Link zu einer Rezeptseite ein. Odori liest die Zutaten und Zubereitung aus.</span>
+      </span>
+      <span class="import-card__arrow" aria-hidden="true">→</span>
+    </a>
+    <a class="import-card import-card--olive" href="{% url 'recipe-ai-import' %}">
+      <span class="import-card__icon"><svg aria-hidden="true"><use href="#i-wand"></use></svg></span>
+      <span class="import-card__body">
+        <strong>KI-Vorschläge nutzen</strong>
+        <span>Beschreibe deine Idee oder füge Notizen ein. Daraus entsteht ein bearbeitbarer Entwurf.</span>
+      </span>
+      <span class="import-card__arrow" aria-hidden="true">→</span>
+    </a>
+    <a class="import-card import-card--saffron" href="{% url 'recipe-create' %}">
+      <span class="import-card__icon"><svg aria-hidden="true"><use href="#i-pencil"></use></svg></span>
+      <span class="import-card__body">
+        <strong>Manuell anlegen</strong>
+        <span>Du weißt schon, was du kochen möchtest? Schreibe Zutaten und Schritte direkt auf.</span>
+      </span>
+      <span class="import-card__arrow" aria-hidden="true">→</span>
+    </a>
+  </section>
+
+  <div class="import-section-heading"><h2>Demnächst</h2><span>In Vorbereitung</span></div>
+  <section class="import-options import-options--upcoming" aria-label="Kommende Importmöglichkeiten">
+    <div class="import-card import-card--disabled" aria-disabled="true">
+      <span class="import-card__icon"><svg aria-hidden="true"><use href="#i-file"></use></svg></span>
+      <span class="import-card__body">
+        <strong>PDF oder Bild importieren</strong>
+        <span>Scanne ein Kochbuch oder lade einen Schnappschuss deiner Lieblingsseite hoch.</span>
+      </span>
+      <span class="import-card__badge">Bald</span>
+    </div>
+    <div class="import-card import-card--disabled" aria-disabled="true">
+      <span class="import-card__icon"><svg aria-hidden="true"><use href="#i-camera"></use></svg></span>
+      <span class="import-card__body">
+        <strong>Mit der Kamera aufnehmen</strong>
+        <span>Halte ein Rezept in den Kamerastream und übertrage es direkt in dein Kochbuch.</span>
+      </span>
+      <span class="import-card__badge">Bald</span>
+    </div>
+  </section>
+</div>
+{% endblock %}
