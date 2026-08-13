@@ -63,6 +63,7 @@
               <input id="ingredient-canonical-{{ forloop.counter0 }}-search" type="search"
                      autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
                      aria-controls="ingredient-canonical-{{ forloop.counter0 }}-results"
+                     maxlength="120"
                      placeholder="Vorratszutat suchen"
                      value="{% for ingredient in canonical_ingredients %}{% if ingredient.id == row.canonical_ingredient_id %}{{ ingredient.name }}{% endif %}{% endfor %}">
               <input id="ingredient-canonical-{{ forloop.counter0 }}" type="hidden"
@@ -128,6 +129,32 @@
       closeResults();
     }
 
+    function csrfToken() {
+      var cookie = document.cookie.split("; ").find(function (item) { return item.indexOf("csrftoken=") === 0; });
+      return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
+    }
+
+    function quickCreate(name, option) {
+      option.disabled = true;
+      option.textContent = "Wird angelegt …";
+      fetch(searchEndpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken()
+        },
+        body: JSON.stringify({name: name})
+      })
+        .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+        .then(selectIngredient)
+        .catch(function () {
+          option.disabled = false;
+          option.textContent = "„" + name + "“ schnell anlegen";
+        });
+    }
+
     function showResults(ingredients) {
       results.replaceChildren();
       ingredients.forEach(function (ingredient) {
@@ -142,8 +169,21 @@
         });
         results.appendChild(option);
       });
-      results.hidden = ingredients.length === 0;
-      input.setAttribute("aria-expanded", String(ingredients.length > 0));
+      var query = input.value.trim();
+      if (query) {
+        var createOption = document.createElement("button");
+        createOption.type = "button";
+        createOption.className = "ingredient-search__option";
+        createOption.setAttribute("role", "option");
+        createOption.textContent = "„" + query + "“ schnell anlegen";
+        createOption.addEventListener("mousedown", function (event) {
+          event.preventDefault();
+          quickCreate(query, createOption);
+        });
+        results.appendChild(createOption);
+      }
+      results.hidden = !ingredients.length && !query;
+      input.setAttribute("aria-expanded", String(Boolean(ingredients.length || query)));
     }
 
     function search() {
