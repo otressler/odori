@@ -371,6 +371,14 @@ class ShoppingPageTests(ShoppingTestCase):
         self.assertContains(response, "Mehl")
         self.assertContains(response, "500")
 
+    def test_ingredient_picker_offers_quick_create(self):
+        shopping_list = self.generate()
+
+        response = self.client.get(f"/shopping/{shopping_list.id}/")
+
+        self.assertContains(response, "schnell anlegen")
+        self.assertContains(response, 'method: "POST"')
+
     def test_viewing_a_list_does_not_queue_paid_icon_generation(self):
         from pantry.models import IngredientIconJob
 
