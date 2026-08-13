@@ -15,6 +15,29 @@ Implementation agents must treat the following documents as contracts:
 
 When implementation reveals an ambiguity, update the relevant contract in the same change. Do not silently invent a conflicting rule in code.
 
+## Feature plan index
+
+The following feature has a detailed, future-agent implementation plan. Verify it against the
+repository before starting work:
+
+- [Ingredient-to-pantry-item mapping](ingredient-to-pantry-item-mapping-plan.md) — household-scoped
+  matching of recipe/import/manual ingredient text to canonical pantry items, with vector-assisted
+  ranking, review UX, correction learning, inventory safety, rollout controls, and test guidance.
+
+### Rough outline
+
+1. Verify the existing canonical-ingredient, recipe-line, inventory, shopping, semantic-search, and
+   worker contracts.
+2. Consolidate matching behind one household-scoped service with exact, alias, fuzzy, and optional
+   vector signals.
+3. Add only the persistence required for confidence, review state, model/policy versions, and
+   correction provenance.
+4. Add review-safe APIs and responsive accessible UI for accepting, changing, or creating mappings.
+5. Reuse the existing worker for bounded embedding refresh and comparison/backfill jobs.
+6. Roll out read-only comparison first, then enable new automatic mappings behind feature switches.
+7. Validate household isolation, stale-write behavior, provider fallback, shopping integration, and
+   accessibility before enabling broad backfills.
+
 ## Delivery strategy
 
 Build one vertical slice at a time. Each milestone must be deployable to the Pi, preserve data from the previous milestone, and include its own migrations, tests, operator notes, and accessible UI states. AI is deliberately late in the sequence: the useful catalog, pantry, planner, and shopping flows must work without Azure.
