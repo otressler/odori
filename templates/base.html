@@ -42,7 +42,7 @@
               {% endfor %}
             </select>
           </form>
-          {% if is_household_owner %}<a class="icon-button ghost household-settings-link" href="{% url 'household-settings' %}" aria-label="Haushalt verwalten" title="Haushalt verwalten"><svg aria-hidden="true"><use href="#i-settings"></use></svg></a>{% endif %}
+          {% if is_household_admin %}<a class="icon-button ghost household-settings-link" href="{% url 'household-settings' %}" aria-label="Haushalt verwalten" title="Haushalt verwalten"><svg aria-hidden="true"><use href="#i-settings"></use></svg></a>{% endif %}
         {% endif %}
         <span class="sr-only">Angemeldet als {{ user.name_for_display }}</span>
         <form method="post" action="/accounts/logout/">{% csrf_token %}

@@ -44,6 +44,18 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("households/new/", core_views.household_onboarding, name="household-onboarding"),
     path("households/", core_views.household_settings, name="household-settings"),
+    path("households/leave/", core_views.leave_household, name="household-leave"),
+    path("households/delete/", core_views.delete_household, name="household-delete"),
+    path(
+        "households/members/<uuid:user_id>/kick/",
+        core_views.kick_member,
+        name="household-kick-member",
+    ),
+    path(
+        "households/members/<uuid:user_id>/appoint-admin/",
+        core_views.appoint_admin,
+        name="household-appoint-admin",
+    ),
     path("households/switch/", core_views.switch_household, name="household-switch"),
     path(
         "households/join/<uuid:token>/",
