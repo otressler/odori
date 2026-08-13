@@ -1,6 +1,10 @@
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "odori.settings"
 python_files = ["tests.py", "test_*.py"]
+markers = [
+	"unit: fast tests that do not require Django's database or external services",
+	"integration: tests that exercise Django persistence, HTTP flows, jobs, files, or commands",
+]
 
 [tool.ruff]
 target-version = "py310"

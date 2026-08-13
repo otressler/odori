@@ -1,4 +1,4 @@
-.PHONY: format lint test test-container migrate seed build
+.PHONY: format lint test test-container test-unit-container test-integration-container migrate seed build
 
 format:
 	python -m ruff format .
@@ -8,6 +8,10 @@ test:
 	python -m pytest
 test-container:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --build test
+test-unit-container:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --build test python -m pytest -m unit -q
+test-integration-container:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --build test python -m pytest -m integration -q
 migrate:
 	python manage.py migrate
 seed:
