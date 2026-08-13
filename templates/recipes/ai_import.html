@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}KI-Vorschläge · Odori{% endblock %}
+
+{% block content %}
+<div class="import-page import-page--narrow">
+  <a class="back-link" href="{% url 'recipe-import' %}">← Importweg ändern</a>
+  <header class="import-page__intro">
+    <span class="import-card__icon import-card__icon--standalone"><svg aria-hidden="true"><use href="#i-wand"></use></svg></span>
+    <p class="hero__eyebrow">Mit ein bisschen Inspiration</p>
+    <h1>Aus deiner Idee wird ein Rezept</h1>
+    <p>Schreibe auf, was du im Kühlschrank hast, worauf du Lust hast oder welche Notizen du gesammelt hast. Die KI macht daraus einen Entwurf.</p>
+  </header>
+  <section class="panel import-form-panel">
+    <h2>Einfach losschreiben</h2>
+    <ol class="instruction-list">
+      <li>Nenne Zutaten, Geschmack oder Anlass – Stichpunkte reichen.</li>
+      <li>Je mehr du verrätst, desto passender wird der Vorschlag.</li>
+      <li>Prüfe den Entwurf und passe ihn nach deinem Geschmack an.</li>
+    </ol>
+    <form class="import-form" id="recipe-text-import-form">
+      {% csrf_token %}
+      <div class="field">
+        <label for="recipe-import-text">Deine Idee oder Rezeptnotizen</label>
+        <textarea id="recipe-import-text" name="text" required maxlength="20000" rows="9"
+                  placeholder="Zum Beispiel: Kichererbsen, Tomaten und Spinat für zwei Personen, schnell und würzig"></textarea>
+        <span class="field__hint">Bis zu 20.000 Zeichen · der Entwurf bleibt bearbeitbar.</span>
+      </div>
+      <button class="primary" type="submit" id="recipe-text-import-submit">Vorschlag erstellen</button>
+    </form>
+    <p class="message" id="recipe-text-import-status" role="status" aria-live="polite" hidden></p>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("recipe-text-import-form");
+  var input = document.getElementById("recipe-import-text");
+  var submit = document.getElementById("recipe-text-import-submit");
+  var status = document.getElementById("recipe-text-import-status");
+  function show(text, kind) {
+    status.hidden = false;
+    status.className = "message" + (kind ? " message--" + kind : "");
+    status.textContent = text;
+  }
+  function poll(url, remaining) {
+    fetch(url, {headers: {"Accept": "application/json"}}).then(function (response) {
+      return response.ok ? response.json() : Promise.reject();
+    }).then(function (data) {
+      if (data.state === "succeeded" && data.recipe) {
+        window.location.href = "/recipes/" + data.recipe.id + "/";
+      } else if (data.state === "failed" || data.state === "cancelled") {
+        show("Der Vorschlag konnte nicht erstellt werden. Bitte versuche es mit anderen Notizen erneut.", "error");
+        submit.disabled = false;
+      } else if (remaining <= 0) {
+        show("Die Erstellung dauert länger als erwartet. Du kannst später im Rezeptbuch nachsehen.", "warning");
+        submit.disabled = false;
+      } else {
+        show("Dein Vorschlag wird zubereitet …");
+        window.setTimeout(function () { poll(url, remaining - 1); }, 1500);
+      }
+    }).catch(function () {
+      show("Der Status konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
+      submit.disabled = false;
+    });
+  }
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    submit.disabled = true;
+    show("Dein Vorschlag wird vorbereitet …");
+    fetch("/api/v1/recipe-imports", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value, "Accept": "application/json"},
+      body: JSON.stringify({text: input.value.trim()})
+    }).then(function (response) {
+      return response.json().then(function (data) { return response.ok ? data : Promise.reject(data); });
+    }).then(function (data) { poll(data.statusUrl, 120); }).catch(function (data) {
+      show(data && data.error && data.error.message || "Der Vorschlag konnte nicht gestartet werden. Bitte versuche es erneut.", "error");
+      submit.disabled = false;
+    });
+  });
+}());
+</script>
+{% endblock %}

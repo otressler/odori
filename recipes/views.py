@@ -57,6 +57,18 @@ def recipe_list(request):
     )
 
 
+def recipe_import_page(request):
+    return render(request, "recipes/import.html")
+
+
+def recipe_url_import_page(request):
+    return render(request, "recipes/url_import.html")
+
+
+def recipe_ai_import_page(request):
+    return render(request, "recipes/ai_import.html")
+
+
 def recommendation_list_page(request):
     result = recommend_for_user(user=request.user)
     return render(
