@@ -1,10 +1,24 @@
-FROM python:3.10-slim
+FROM python:3.10-slim AS dependencies
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN addgroup --system odori && adduser --system --ingroup odori odori
 COPY requirements-prod.txt .
 RUN pip install --no-cache-dir -r requirements-prod.txt
+
+FROM dependencies AS test
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+RUN mkdir -p /app/data/uploads /app/staticfiles \
+	&& DEBUG=true SESSION_SECRET=test-only-build-secret python manage.py collectstatic --noinput \
+	&& chown -R odori:odori /app
+USER odori
+CMD ["python", "-m", "pytest", "-q"]
+
+FROM dependencies AS production
+
 COPY . .
 RUN mkdir -p /app/data/uploads /app/staticfiles && chown -R odori:odori /app
 USER odori

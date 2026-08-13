@@ -212,6 +212,17 @@ class PageRenderTests(TestCase):
         self.assertEqual(membership.role, HouseholdMembership.Role.OWNER)
         self.assertRedirects(response, "/")
 
+    def test_household_admin_can_open_new_household_flow(self):
+        response = self.client.get("/households/")
+
+        self.assertContains(response, 'href="/households/new/"')
+
+        response = self.client.post("/households/new/", {"name": "Casa Nuova"})
+
+        membership = HouseholdMembership.objects.get(user=self.user, household__name="Casa Nuova")
+        self.assertEqual(membership.role, HouseholdMembership.Role.OWNER)
+        self.assertRedirects(response, "/")
+
     def test_user_can_join_with_registration_code(self):
         invitation = HouseholdInvitation.objects.create(
             household=self.household,
