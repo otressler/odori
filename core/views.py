@@ -29,7 +29,7 @@ from .models import (
     WorkerHeartbeat,
 )
 from .observability import log_event
-from .services import household_for, owner_household_for
+from .services import household_admin_for, household_for, is_global_admin, owner_household_for
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,9 @@ def retry_import_job(request, job_id):
 def home(request):
     if not request.user.is_authenticated:
         return render(request, "landing.html")
-    if not HouseholdMembership.objects.filter(user=request.user).exists():
+    if not HouseholdMembership.objects.filter(user=request.user).exists() and not is_global_admin(
+        request.user
+    ):
         return redirect("household-onboarding")
     household = household_for(request.user)
     today = timezone.localdate()
@@ -346,9 +348,15 @@ def join_household(request, token=None, invitation=None):
 @login_required
 @require_POST
 def switch_household(request):
+    household_id = request.POST.get("household_id")
     membership = HouseholdMembership.objects.filter(
-        user=request.user, household_id=request.POST.get("household_id")
+        user=request.user, household_id=household_id
     ).first()
+    if is_global_admin(request.user):
+        household = Household.objects.filter(id=household_id).first()
+        if household:
+            request.session["active_household_id"] = str(household.id)
+            return redirect(request.POST.get("next") or "home")
     if not membership:
         raise Http404
     request.session["active_household_id"] = str(membership.household_id)
@@ -357,7 +365,10 @@ def switch_household(request):
 
 @login_required
 def household_settings(request):
-    household = owner_household_for(request.user)
+    household = household_admin_for(request.user)
+    current_membership = HouseholdMembership.objects.filter(
+        household=household, user=request.user
+    ).first()
     if request.method == "POST":
         HouseholdInvitation.objects.create(household=household, created_by=request.user)
         messages.success(request, "Einladung erstellt.")
@@ -370,5 +381,85 @@ def household_settings(request):
             "invitations": HouseholdInvitation.objects.filter(
                 household=household, active=True
             ).order_by("-created_at"),
+            "memberships": HouseholdMembership.objects.filter(household=household)
+            .select_related("user")
+            .order_by("role", "user__display_name", "user__username"),
+            "is_global_admin": is_global_admin(request.user),
+            "can_delete": is_global_admin(request.user)
+            or (current_membership and current_membership.role == HouseholdMembership.Role.OWNER),
         },
     )
+
+
+@login_required
+@require_POST
+def leave_household(request):
+    household = household_for(request.user)
+    membership = HouseholdMembership.objects.filter(
+        household=household, user=request.user
+    ).first()
+    if not membership:
+        raise Http404
+    admin_memberships = HouseholdMembership.objects.filter(
+        household=household,
+        role__in=[HouseholdMembership.Role.OWNER, HouseholdMembership.Role.ADMIN],
+    )
+    if membership.role in (
+        HouseholdMembership.Role.OWNER,
+        HouseholdMembership.Role.ADMIN,
+    ) and admin_memberships.count() <= 1:
+        messages.error(request, "Der letzte Haushaltsadministrator kann nicht gehen.")
+        return redirect("household-settings")
+    with transaction.atomic():
+        if membership.role == HouseholdMembership.Role.OWNER:
+            successor = admin_memberships.exclude(pk=membership.pk).order_by("joined_at").first()
+            successor.role = HouseholdMembership.Role.OWNER
+            successor.save(update_fields=["role"])
+        membership.delete()
+    request.session.pop("active_household_id", None)
+    messages.success(request, "Du hast den Haushalt verlassen.")
+    return redirect("household-onboarding")
+
+
+@login_required
+@require_POST
+def delete_household(request):
+    household = household_for(request.user)
+    if not is_global_admin(request.user):
+        owner_household_for(request.user)
+    household.delete()
+    request.session.pop("active_household_id", None)
+    messages.success(request, "Haushalt gelöscht.")
+    return redirect("household-onboarding")
+
+
+def _managed_membership(request, user_id):
+    household = household_admin_for(request.user)
+    membership = HouseholdMembership.objects.filter(household=household, user_id=user_id).first()
+    if not membership:
+        raise Http404
+    if not is_global_admin(request.user) and membership.role != HouseholdMembership.Role.MEMBER:
+        messages.error(request, "Administratoren können nur Mitglieder verwalten.")
+        return None
+    return membership
+
+
+@login_required
+@require_POST
+def kick_member(request, user_id):
+    membership = _managed_membership(request, user_id)
+    if membership:
+        membership.delete()
+        messages.success(request, "Mitglied entfernt.")
+    return redirect("household-settings")
+
+
+@login_required
+@require_POST
+def appoint_admin(request, user_id):
+    membership = _managed_membership(request, user_id)
+    if membership and membership.role == HouseholdMembership.Role.MEMBER:
+        membership.role = HouseholdMembership.Role.ADMIN
+        membership.save(update_fields=["role"])
+        messages.success(request, "Mitglied ist jetzt Haushaltsadministrator.")
+    return redirect("household-settings")

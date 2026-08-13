@@ -30,6 +30,7 @@ class User(AbstractUser):
 class HouseholdMembership(models.Model):
     class Role(models.TextChoices):
         OWNER = "owner", "Owner"
+        ADMIN = "admin", "Admin"
         MEMBER = "member", "Member"
 
     household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="memberships")

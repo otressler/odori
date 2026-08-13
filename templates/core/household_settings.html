@@ -25,4 +25,32 @@
     <p class="muted">Noch keine aktiven Einladungen. Erstelle eine, um Link und Code zu teilen.</p>
   {% endif %}
 </section>
+
+<section class="panel">
+  <div class="panel__head"><h2>Mitglieder</h2></div>
+  <div class="invitation-list">
+    {% for membership in memberships %}
+      <article class="invitation-row">
+        <div><strong>{{ membership.user.name_for_display }}</strong><span class="muted">{{ membership.get_role_display }}</span></div>
+        {% if membership.user_id != user.id %}
+          <div class="header-actions">
+            {% if membership.role == "member" %}
+              <form method="post" action="{% url 'household-appoint-admin' membership.user_id %}">{% csrf_token %}<button class="secondary" type="submit">Zum Admin ernennen</button></form>
+            {% endif %}
+            <form method="post" action="{% url 'household-kick-member' membership.user_id %}">{% csrf_token %}<button class="ghost" type="submit">Entfernen</button></form>
+          </div>
+        {% endif %}
+      </article>
+    {% empty %}
+      <p class="muted">Noch keine Mitglieder.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="header-actions">
+    <form method="post" action="{% url 'household-leave' %}">{% csrf_token %}<button class="secondary" type="submit">Haushalt verlassen</button></form>
+  </div>
+  {% if can_delete %}<form method="post" action="{% url 'household-delete' %}">{% csrf_token %}<button class="ghost" type="submit">Haushalt löschen</button></form>{% endif %}
+</section>
 {% endblock %}
