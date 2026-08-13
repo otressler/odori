@@ -8,6 +8,7 @@ from django.db.models import Count
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from pantry.models import (
@@ -356,11 +357,21 @@ def switch_household(request):
         household = Household.objects.filter(id=household_id).first()
         if household:
             request.session["active_household_id"] = str(household.id)
-            return redirect(request.POST.get("next") or "home")
+            next_url = request.POST.get("next")
+            if next_url and url_has_allowed_host_and_scheme(
+                next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+            ):
+                return redirect(next_url)
+            return redirect("home")
     if not membership:
         raise Http404
     request.session["active_household_id"] = str(membership.household_id)
-    return redirect(request.POST.get("next") or "home")
+    next_url = request.POST.get("next")
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return redirect(next_url)
+    return redirect("home")
 
 
 @login_required
