@@ -1,4 +1,14 @@
 services:
+  test:
+    build:
+      context: .
+      target: test
+    environment:
+      DEBUG: "true"
+      DATABASE_URL: sqlite:////tmp/odori-test.sqlite3
+      SESSION_SECRET: test-only-secret
+      ORBIT_ENABLED: "false"
+    networks: !override [net]
   odori-web:
     build: .
     environment: !override

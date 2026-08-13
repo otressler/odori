@@ -4,7 +4,10 @@
 {% block content %}
 <header class="page-heading split">
   <div><p class="section-kicker">Haushalt</p><h1>{{ household.name }}</h1></div>
-  <form method="post">{% csrf_token %}<button class="primary" type="submit">Einladung erstellen</button></form>
+  <div class="header-actions">
+    <a class="button secondary" href="{% url 'household-onboarding' %}">Neuen Haushalt erstellen</a>
+    <form method="post">{% csrf_token %}<button class="primary" type="submit">Einladung erstellen</button></form>
+  </div>
 </header>
 
 <section class="panel">
