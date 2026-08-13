@@ -565,6 +565,54 @@ Tasks:
 - Run dependency/security scanning, upload/URL abuse tests, accessibility checks, ARM64 soak testing, and representative performance checks.
 - Confirm Azure budgets/alerts, application quotas, and feature switches in the production environment.
 
+## Candidate follow-up ideas
+
+These ideas are intentionally not committed milestones. Promote them into a detailed
+implementation packet only after the core workflow has usage evidence and the relevant
+privacy, safety, cost, and provider-boundary questions are resolved.
+
+### Household profiles and personalization
+
+- Let users create a household profile containing household size, preferred dishes or cuisines,
+  allergies, dietary constraints, and region.
+- Use household size to auto-scale planned meal servings while retaining explicit per-meal
+  overrides for guests and unusual occasions.
+- Include household profile signals in recommendation ranking and explain when a preference,
+  allergy, or regional preference affected the result.
+- Add an LLM-assisted seasonality signal for ingredients, with region and date as explicit inputs,
+  so seasonal availability can contribute to recommendation ranking without blocking planning.
+- Estimate a nutrition profile per serving for approved recipes, label estimates as approximate,
+  and keep them separate from medical or dietary advice.
+- Add a household health coach that offers cautious, explainable diet tips such as identifying
+  consistently low fiber intake; require user-visible assumptions and avoid diagnosis or treatment
+  claims.
+
+### Planning and menus
+
+- Support multi-recipe menus within one time slot, such as starters, entrees, sides, and desserts,
+  while preserving recipe-level provenance for shopping and cooking.
+- Add a dinner planner that recommends compatible multi-course pairings based on preparation time,
+  ingredients, household preferences, seasonality, and serving size.
+- Add a fast meal-week planning chat that can propose a complete week and convert accepted choices
+  through the existing plan and shopping contracts.
+
+### Conversational cooking and recipe creation
+
+- Add a draft recipe chat where users can ask questions about technique, clarify steps, and revise a
+  draft with an LLM; all changes remain reviewable draft edits until explicitly accepted.
+- Add a cooking chat for technique questions and last-minute pantry-based replacements, with clear
+  distinction between suggestions and confirmed ingredient substitutions.
+- Offer voice chat for recipe-draft, cooking, and meal-week planning conversations, with a text
+  transcript that users can review and correct.
+
+### Agent integrations
+
+- Provide MCP tools for agents to retrieve authorized household profile data, search the recipe
+  catalog, inspect relevant pantry state, and read or propose planning changes through existing
+  application services.
+- Enforce household authorization, least-privilege tool scopes, confirmation for mutations, audit
+  records, redaction, and provider-disable behavior for every MCP operation.
+
 ## Parallel-agent coordination
 
 Use one integration branch or coordinator and assign packets, not whole milestones, to implementation agents. Before parallel work begins, the coordinator freezes the relevant migration names, entity IDs/version semantics, API examples, and shared test fixtures.
