@@ -37,6 +37,10 @@ urlpatterns = [
     path("shopping-lists", shopping_api.shopping_lists),
     path("shopping-lists/<uuid:list_id>", shopping_api.shopping_list_detail),
     path("shopping-lists/<uuid:list_id>/items", shopping_api.shopping_items),
+    path(
+        "shopping-lists/<uuid:list_id>/pantry-items",
+        shopping_api.shopping_pantry_item,
+    ),
     path("shopping-lists/<uuid:list_id>/items/<uuid:item_id>", shopping_api.shopping_item_detail),
     path("shopping-lists/<uuid:list_id>/items/<uuid:item_id>/purchase", shopping_api.purchase),
 ]
