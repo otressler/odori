@@ -18,6 +18,11 @@ urlpatterns = [
         name="shopping-item-create",
     ),
     path(
+        "<uuid:list_id>/pantry-items/",
+        login_required(require_POST(views.shopping_pantry_items)),
+        name="shopping-pantry-items",
+    ),
+    path(
         "<uuid:list_id>/complete/",
         login_required(require_POST(views.shopping_complete)),
         name="shopping-complete",

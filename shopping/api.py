@@ -10,6 +10,7 @@ from .models import ShoppingList
 from .services import (
     StaleItemVersion,
     add_manual_item,
+    add_pantry_item,
     delete_item,
     generate_from_plan,
     list_for_user,
@@ -93,6 +94,23 @@ def shopping_items(request, list_id):
     except ValueError as exc:
         return error("validation_failed", str(exc), fields={"label": "Required."})
     return JsonResponse(item_json(item), status=201)
+
+
+@login_required
+@require_http_methods(["POST"])
+def shopping_pantry_item(request, list_id):
+    data = read_json(request)
+    if not isinstance(data, dict):
+        return error("malformed_input", "Expected a JSON object.", 400)
+    try:
+        item = add_pantry_item(
+            user=request.user,
+            list_id=list_id,
+            ingredient_id=data.get("ingredientId"),
+        )
+    except Http404:
+        return error("not_found", "Pantry item is no longer available.", 404)
+    return JsonResponse(item_json(item) if item else {}, status=201 if item else 200)
 
 
 @login_required

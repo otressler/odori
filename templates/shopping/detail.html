@@ -53,6 +53,24 @@
   <p class="field__hint">Verknüpfte Einträge setzen den Vorrat beim Abhaken automatisch auf „vorrätig“.</p>
 </section>
 
+{% if pantry_items %}
+  <section class="panel shopping-add-item">
+    <h2>Aus dem Vorrat hinzufügen</h2>
+    <p>Diese Zutaten sind als „Nachkaufen“ oder „Unbekannt“ markiert.</p>
+    <div class="button-row" data-pantry-picker data-list-id="{{ list.id }}">
+      <button class="primary" type="button" data-pantry-add-all>Alle „Nachkaufen“ hinzufügen</button>
+    </div>
+    <ul class="shopping-pantry-picker">
+      {% for pantry_item in pantry_items %}
+        <li data-pantry-option data-status="{{ pantry_item.status }}" data-ingredient-id="{{ pantry_item.ingredient_id }}">
+          <span>{{ pantry_item.ingredient.name }} — {{ pantry_item.get_status_display }}</span>
+          <button type="button" data-pantry-add>Hinzufügen</button>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
 <div class="shopping-list" data-shopping-list>
   <section class="shopping-section shopping-section--open">
     <div class="rule-heading"><h2>Offen ({{ open_items|length }})</h2></div>
@@ -113,6 +131,37 @@
 {% block scripts %}
 <script>
   (function () {
+    var pantryPicker = document.querySelector("[data-pantry-picker]");
+    if (pantryPicker) {
+      var pickerUrl = "/api/v1/shopping-lists/" + pantryPicker.dataset.listId + "/pantry-items";
+      var csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value;
+      function addPantryItem(option) {
+        return fetch(pickerUrl, {
+          method: "POST",
+          headers: {"Accept": "application/json", "Content-Type": "application/json", "X-CSRFToken": csrfToken},
+          body: JSON.stringify({ingredientId: option.dataset.ingredientId})
+        }).then(function (response) {
+          if (!response.ok && response.status !== 204) throw new Error();
+          option.remove();
+        });
+      }
+      pantryPicker.querySelectorAll("[data-pantry-add]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          button.disabled = true;
+          addPantryItem(button.closest("[data-pantry-option]")).catch(function () { button.disabled = false; });
+        });
+      });
+      pantryPicker.querySelector("[data-pantry-add-all]").addEventListener("click", function (event) {
+        var button = event.currentTarget;
+        button.disabled = true;
+        var options = Array.from(pantryPicker.querySelectorAll('[data-pantry-option]')).filter(function (option) {
+          return option.dataset.status === "needs_replenishment";
+        });
+        Promise.all(options.map(addPantryItem)).then(function () {
+          button.disabled = true;
+        }).catch(function () { button.disabled = false; });
+      });
+    }
     var search = document.querySelector("[data-ingredient-search]");
     if (search) {
       var input = search.querySelector('[type="search"]');
