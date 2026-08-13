@@ -12,6 +12,9 @@ Implementation agents must treat the following documents as contracts:
 - [API specification](api-specification.md) defines browser/server contracts.
 - [Deployment and operations](deployment-operations.md) defines the production environment.
 - [Product backlog](backlog.md) contains candidate work that is not committed until promoted through its decision checklist.
+- [Ingredient substitutions handoff](ingredient-substitutions.md) defines the
+  post-core substitution work packet and its mandatory planning, shopping, and
+  pantry integration.
 
 When implementation reveals an ambiguity, update the relevant contract in the same change. Do not silently invent a conflicting rule in code.
 
@@ -317,6 +320,67 @@ Tests:
 - Non-owners cannot view operations data or retry another household's work.
 - Diagnostics never retain prompts, embeddings, provider payloads, cookies, or credentials and prune to the configured retention bound.
 - A stale worker heartbeat and a failed provider request produce actionable, non-sensitive operational states.
+
+## Post-core follow-up: Ingredient substitutions
+
+**Entry gate:** Canonical ingredient normalization and aliases are stable enough
+that a household can reliably author directional substitution rules. Promote
+this work only after the core plan/shop/cook loop has usage evidence; it is not
+part of the Milestone 2 exit gate.
+
+**Detailed handoff:** [Ingredient substitutions: implementation
+handoff](ingredient-substitutions.md). An implementation agent must first
+verify the handoff against the current codebase and update it for any drift.
+
+**Owner:** planning and shopping agent
+**Depends on:** Milestone 2 planning, shopping, and Kitchen Mode; stable
+canonical ingredient normalization; versioned slot and shopping mutations.
+
+Tasks:
+
+- Implement household-owned, directional substitution rules and explicit,
+  reversible meal-slot ingredient decisions without mutating recipes.
+- Add an accessible pre-cooking ingredient-review page from the week plan, and
+  render the same effective ingredient list in Kitchen Mode.
+- Make accepted substitutions and omissions alter calculated shopping
+  contributions for only their affected meal-slot ingredient lines; preserve
+  original/effective provenance and existing manual, purchased, and skipped
+  list behavior.
+- Surface eligible alternatives in calculated shopping items only when the
+  action can be tied to a concrete upcoming meal slot and explicitly accepted.
+- Derive high-confidence “used before” suggestions solely from prior explicit
+  household decisions; post-add prompts remain non-blocking and never apply a
+  choice automatically.
+- Maintain household isolation, slot/list optimistic concurrency, and
+  meaningful stale-version recovery across pre-cooking, shopping, and Kitchen
+  Mode.
+
+Cross-feature constraints:
+
+- The effective-ingredient resolver must be shared by planning, shopping,
+  Kitchen Mode, and any future recommendation coverage logic; do not duplicate
+  resolution rules in templates or views.
+- A substitute’s pantry status controls its shopping exclusion; the original
+  ingredient is not inferred as unavailable or consumed.
+- Cooking inventory changes must validate effective substituted ingredients
+  without inferring depletion.
+- Omission is a deliberate per-slot decision, not a fake pantry ingredient or
+  globally applicable substitution rule.
+- Rules, confidence, availability, or prior choices may suggest options but
+  never bypass explicit acceptance. Household notes are not allergen, dietary,
+  or nutritional advice.
+
+Tests:
+
+- Directional, household-scoped rule authorization and acceptance/revert
+  behavior, including cooked, stale, mismatched-line, and foreign-household
+  rejections.
+- Effective planning and Kitchen Mode lines remain consistent while original
+  recipe data remains unchanged.
+- Shopping aggregation, stock exclusion, recalculation provenance, omission,
+  and retention of manual/purchased/skipped items.
+- Learned suggestions and post-add prompts never apply or recalculate a list
+  without a new explicit decision.
 
 ## Milestone 3: Assisted import
 

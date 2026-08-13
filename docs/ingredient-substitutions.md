@@ -1,5 +1,10 @@
 # Ingredient substitutions: implementation handoff
 
+> **Before implementation:** Verify this handoff against the current models,
+> services, APIs, templates, migrations, and tests. Update the plan and its
+> linked contracts for any implementation drift; do not assume the structures
+> named here still exist or have the same responsibilities.
+
 ## Purpose
 
 Allow a household to deliberately use a different ingredient for one planned
@@ -421,4 +426,3 @@ decision:
 - applying substitutions directly to manual shopping items
 - treating substitutes as full recommendation coverage
 - multi-slot bulk acceptance without reviewing each affected meal
-
