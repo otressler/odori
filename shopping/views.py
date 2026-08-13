@@ -4,13 +4,14 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from core.services import household_for
-from pantry.models import CanonicalIngredient
+from pantry.models import CanonicalIngredient, InventoryItem
 from planning.services import current_week_start, parse_week_start
 
 from .models import ShoppingItem, ShoppingList
 from .services import (
     StaleItemVersion,
     add_manual_item,
+    add_pantry_items,
     delete_item,
     generate_from_plan,
     item_for_user,
@@ -68,6 +69,21 @@ def shopping_detail(request, list_id):
             "label",
         )
     )
+    existing_ingredient_ids = {
+        item.canonical_ingredient_id for item in items if item.canonical_ingredient_id
+    }
+    pantry_items = (
+        InventoryItem.objects.select_related("ingredient")
+        .filter(
+            household=household,
+            status__in=[
+                InventoryItem.Status.NEEDS_REPLENISHMENT,
+                InventoryItem.Status.UNKNOWN,
+            ],
+        )
+        .exclude(ingredient_id__in=existing_ingredient_ids)
+        .order_by("ingredient__name")
+    )
     buckets = {"open": [], "purchased": [], "skipped": []}
     for item in items:
         buckets[item.state].append(item)
@@ -82,11 +98,21 @@ def shopping_detail(request, list_id):
             "ingredients": CanonicalIngredient.objects.filter(
                 household=household, active=True
             ).order_by("name"),
+            "pantry_items": pantry_items,
             "week_start": shopping_list.plan.week_start_date.isoformat()
             if shopping_list.plan_id
             else current_week_start().isoformat(),
         },
     )
+
+
+def shopping_pantry_items(request, list_id):
+    added = add_pantry_items(user=request.user, list_id=list_id)
+    if added:
+        messages.success(request, f"{added} Vorratszutat(en) zur Einkaufsliste hinzugefügt.")
+    else:
+        messages.info(request, "Keine neuen markierten Vorratszutaten verfügbar.")
+    return redirect("shopping-detail", list_id=list_id)
 
 
 def read_version(request):

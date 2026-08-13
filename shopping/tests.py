@@ -12,7 +12,14 @@ from planning.services import add_slot, current_week_start, get_or_create_plan, 
 from recipes.models import Recipe, RecipeIngredient, RecipeSource
 
 from .models import ShoppingItem, ShoppingList
-from .services import add_manual_item, generate_from_plan, purchase_item, set_item_state
+from .services import (
+    add_manual_item,
+    add_pantry_item,
+    add_pantry_items,
+    generate_from_plan,
+    purchase_item,
+    set_item_state,
+)
 from .units import normalize_unit
 
 
@@ -194,6 +201,49 @@ class RegenerationTests(ShoppingTestCase):
         self.assertGreater(shopping_list.version, before)
 
 
+class PantryShoppingTests(ShoppingTestCase):
+    def test_marked_pantry_items_are_added_once(self):
+        InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.flour,
+            status=InventoryItem.Status.NEEDS_REPLENISHMENT,
+        )
+        InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.oil,
+            status=InventoryItem.Status.UNKNOWN,
+        )
+        shopping_list = ShoppingList.objects.create(
+            household=self.household, name="Erledigungen"
+        )
+
+        self.assertEqual(add_pantry_items(user=self.user, list_id=shopping_list.id), 1)
+        self.assertEqual(add_pantry_items(user=self.user, list_id=shopping_list.id), 0)
+        self.assertEqual(shopping_list.items.count(), 1)
+        self.assertIsNone(add_pantry_item(
+            user=self.user, list_id=shopping_list.id, ingredient_id=self.flour.id
+        ))
+        unknown = add_pantry_item(
+            user=self.user, list_id=shopping_list.id, ingredient_id=self.oil.id
+        )
+        self.assertTrue(unknown.needs_confirmation)
+
+    def test_pantry_addition_page_action(self):
+        InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.flour,
+            status=InventoryItem.Status.NEEDS_REPLENISHMENT,
+        )
+        shopping_list = ShoppingList.objects.create(
+            household=self.household, name="Erledigungen"
+        )
+
+        response = self.client.post(f"/shopping/{shopping_list.id}/pantry-items/")
+
+        self.assertRedirects(response, f"/shopping/{shopping_list.id}/")
+        self.assertTrue(shopping_list.items.filter(canonical_ingredient=self.flour).exists())
+
+
 class PurchaseTests(ShoppingTestCase):
     def setUp(self):
         super().setUp()
@@ -275,6 +325,27 @@ class ShoppingAuthorizationTests(ShoppingTestCase):
 
 
 class ShoppingApiTests(ShoppingTestCase):
+    def test_pantry_item_can_be_added_with_json(self):
+        InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.oil,
+            status=InventoryItem.Status.UNKNOWN,
+        )
+        shopping_list = ShoppingList.objects.create(
+            household=self.household, name="Erledigungen"
+        )
+
+        response = self.client.post(
+            f"/api/v1/shopping-lists/{shopping_list.id}/pantry-items",
+            json.dumps({"ingredientId": str(self.oil.id)}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            shopping_list.items.get(canonical_ingredient=self.oil).needs_confirmation
+        )
+
     def test_item_delete_rejects_a_stale_version(self):
         shopping_list = ShoppingList.objects.create(household=self.household, name="Erledigungen")
         item = add_manual_item(user=self.user, list_id=shopping_list.id, label="Servietten")
