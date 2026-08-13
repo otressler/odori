@@ -71,6 +71,9 @@
               <div id="ingredient-canonical-{{ forloop.counter0 }}-results" class="ingredient-search__results" role="listbox" hidden></div>
             </div>
           </div>
+          <button class="icon-button ghost row-remove" type="button" data-remove-row aria-label="Zutatenzeile entfernen" title="Zutatenzeile entfernen">
+            <svg aria-hidden="true"><use href="#i-trash"></use></svg>
+          </button>
         </div>
       {% endfor %}
     </div>
@@ -84,10 +87,15 @@
     </div>
     <div class="stack" id="step-rows">
       {% for row in step_rows %}
-        <div class="field">
-          <label for="step-{{ forloop.counter0 }}">Schritt {{ forloop.counter }}</label>
-          <textarea id="step-{{ forloop.counter0 }}" name="step-{{ forloop.counter0 }}" rows="3"
-                    placeholder="Zwiebeln in Olivenöl glasig dünsten.">{{ row.body|default:'' }}</textarea>
+        <div class="step-row">
+          <div class="field">
+            <label for="step-{{ forloop.counter0 }}">Schritt {{ forloop.counter }}</label>
+            <textarea id="step-{{ forloop.counter0 }}" name="step-{{ forloop.counter0 }}" rows="3"
+                      placeholder="Zwiebeln in Olivenöl glasig dünsten.">{{ row.body|default:'' }}</textarea>
+          </div>
+          <button class="icon-button ghost row-remove" type="button" data-remove-row aria-label="Schritt entfernen" title="Schritt entfernen">
+            <svg aria-hidden="true"><use href="#i-trash"></use></svg>
+          </button>
         </div>
       {% endfor %}
     </div>
@@ -219,8 +227,45 @@
   ingredients.querySelectorAll("[data-ingredient-search]").forEach(configureIngredientSearch);
 
   function nextIndex(container, selector) {
-    return container.querySelectorAll(selector).length;
+    var maxIndex = -1;
+    container.querySelectorAll(selector).forEach(function (row) {
+      var field = row.matches("[name]") ? row : row.querySelector("[name]");
+      var match = field && field.name.match(/-(\d+)$/);
+      if (match) { maxIndex = Math.max(maxIndex, Number(match[1])); }
+    });
+    return maxIndex + 1;
   }
+
+  function clearRow(row) {
+    row.querySelectorAll("input, textarea").forEach(function (input) {
+      input.value = "";
+    });
+    row.querySelectorAll('[role="listbox"]').forEach(function (results) {
+      results.hidden = true;
+      results.replaceChildren();
+    });
+    var search = row.querySelector('[data-ingredient-search] input[type="search"]');
+    if (search) { search.setAttribute("aria-expanded", "false"); }
+  }
+
+  function removeRow(container, rowSelector, row) {
+    var rows = container.querySelectorAll(rowSelector);
+    if (rows.length === 1) {
+      clearRow(row);
+    } else {
+      row.remove();
+    }
+  }
+
+  ingredients.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-remove-row]");
+    if (button) { removeRow(ingredients, ".ingredient-row", button.closest(".ingredient-row")); }
+  });
+
+  steps.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-remove-row]");
+    if (button) { removeRow(steps, ".step-row", button.closest(".step-row")); }
+  });
 
   document.querySelectorAll("[data-add]").forEach(function (button) {
     button.hidden = false;
@@ -251,12 +296,14 @@
         clone.querySelector("input").focus();
       } else {
         var index = nextIndex(steps, "textarea");
-        var field = document.createElement("div");
-        field.className = "field";
-        field.innerHTML = '<label for="step-' + index + '">Schritt ' + (index + 1) + '</label>' +
-          '<textarea id="step-' + index + '" name="step-' + index + '" rows="3"></textarea>';
-        steps.appendChild(field);
-        field.querySelector("textarea").focus();
+        var row = document.createElement("div");
+        row.className = "step-row";
+        row.innerHTML = '<div class="field"><label for="step-' + index + '">Schritt ' + (index + 1) + '</label>' +
+          '<textarea id="step-' + index + '" name="step-' + index + '" rows="3"></textarea></div>' +
+          '<button class="icon-button ghost row-remove" type="button" data-remove-row aria-label="Schritt entfernen" title="Schritt entfernen">' +
+          '<svg aria-hidden="true"><use href="#i-trash"></use></svg></button>';
+        steps.appendChild(row);
+        row.querySelector("textarea").focus();
       }
     });
   });

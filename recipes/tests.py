@@ -268,6 +268,14 @@ class RecipeLifecycleTests(TestCase):
         self.assertContains(response, "schnell anlegen")
         self.assertContains(response, 'method: "POST"')
 
+    def test_recipe_form_has_remove_buttons_for_ingredients_and_steps(self):
+        response = self.client.get("/recipes/new/")
+
+        self.assertContains(response, 'aria-label="Zutatenzeile entfernen"')
+        self.assertContains(response, 'aria-label="Schritt entfernen"')
+        self.assertContains(response, 'use href="#i-trash"')
+        self.assertContains(response, "data-remove-row")
+
     def test_recipe_form_accepts_more_than_twelve_steps(self):
         form_data = {"title": "Viele Schritte", "servings": "2"}
         for index in range(13):

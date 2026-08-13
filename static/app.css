@@ -1916,7 +1916,18 @@ textarea:focus {
   gap: 0.5rem;
   grid-template-columns:
     minmax(5rem, 0.6fr) minmax(4.5rem, 0.5fr)
-    minmax(11rem, 2fr) minmax(10rem, 1.5fr);
+    minmax(11rem, 2fr) minmax(10rem, 1.5fr) auto;
+}
+
+.row-remove {
+  align-self: end;
+}
+
+.step-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.5rem;
 }
 
 .ingredient-search {
@@ -3021,6 +3032,14 @@ body.kitchen main {
 
   .ingredient-row {
     grid-template-columns: 1fr;
+  }
+
+  .step-row {
+    grid-template-columns: 1fr;
+  }
+
+  .row-remove {
+    justify-self: start;
   }
 
   .inline-form {
