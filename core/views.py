@@ -448,6 +448,9 @@ def _managed_membership(request, user_id):
 @require_POST
 def kick_member(request, user_id):
     membership = _managed_membership(request, user_id)
+    if membership and membership.user_id == request.user.id:
+        messages.error(request, "Du kannst dich nicht selbst entfernen.")
+        return redirect("household-settings")
     if membership:
         membership.delete()
         messages.success(request, "Mitglied entfernt.")

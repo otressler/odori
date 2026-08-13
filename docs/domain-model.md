@@ -12,7 +12,7 @@ Inventory deliberately models availability, not stock levels. This avoids false 
 | --- | --- | --- |
 | `household` | id, name, created_at | Ownership boundary for all shared food-planning data. |
 | `user` | id, display_name, locale | A person with an authenticated local account. |
-| `household_membership` | household_id, user_id, role, joined_at | `owner` or `member`; determines shared-data access. |
+| `household_membership` | household_id, user_id, role, joined_at | `owner`, `admin`, or `member`; determines shared-data access. |
 | `ingredient_category` | id, household_id, name, sort_order | Examples: produce, dairy, pantry, spice. Seeded defaults are copied into a household so they remain locally editable. |
 | `canonical_ingredient` | id, household_id, name, category_id, aliases, icon, icon_status, active | Household-scoped stable identity shared by recipes, inventory, and lists. |
 | `recipe` | id, household_id, title, status, servings, source_id, created_by, archived_at | Status is `draft`, `approved`, or `archived`. |
