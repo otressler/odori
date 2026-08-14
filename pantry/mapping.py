@@ -33,7 +33,7 @@ class MappingResult:
 
 def candidate_payload(candidate):
     return {
-        "ingredient_id": str(candidate.ingredient_id),
+        "ingredient_id": str(candidate.ingredient.id),
         "name": candidate.ingredient.name,
         "score": candidate.score,
         "text_score": candidate.text_score,
