@@ -14,6 +14,7 @@ from .models import (
     IngredientCategoryExample,
     InventoryItem,
 )
+from .mapping import map_source_text
 from .semantic import embed_with_diagnostics, rank_ingredients
 from .services import (
     PlannedIngredientInUse,
@@ -126,6 +127,44 @@ def ingredients(request):
         )
     queue_category_suggestions(user=request.user)
     return JsonResponse(ingredient_json(ingredient), status=201)
+
+
+@login_required
+@require_http_methods(["GET"])
+def ingredient_mapping(request):
+    source_text = request.GET.get("text", "")
+    if not isinstance(source_text, str) or len(source_text) > 300:
+        return error("invalid_text", "Ingredient text must be at most 300 characters.", 422)
+    result = map_source_text(
+        household=household_for(request.user),
+        source_text=source_text,
+    )
+
+    def candidate_json(candidate):
+        return {
+            "ingredientId": str(candidate.ingredient.id),
+            "name": candidate.ingredient.name,
+            "score": round(candidate.score, 3),
+            "textScore": round(candidate.text_score, 3),
+            "embeddingScore": (
+                round(candidate.embedding_score, 3)
+                if candidate.embedding_score is not None
+                else None
+            ),
+            "method": candidate.method,
+        }
+
+    return JsonResponse(
+        {
+            "state": result.state,
+            "requiresConfirmation": result.requires_confirmation,
+            "providerState": result.provider_state,
+            "modelVersion": result.model_version or None,
+            "policyVersion": result.policy_version,
+            "candidate": candidate_json(result.candidate) if result.candidate else None,
+            "alternatives": [candidate_json(item) for item in result.alternatives],
+        }
+    )
 
 
 @login_required

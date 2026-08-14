@@ -7,6 +7,8 @@ from django.views.decorators.http import require_http_methods
 
 from core.api import error, read_json
 from core.services import household_for
+from pantry.mapping import assign_recipe_ingredient
+from pantry.models import CanonicalIngredient
 
 from .generation import GeneratedDraftError, queue_recipe_generation
 from .imports import create_import
@@ -133,6 +135,32 @@ def recipe_detail(request, recipe_id):
     except ValueError as exc:
         return error("validation_failed", str(exc))
     return JsonResponse(recipe_json(recipe, request.user))
+
+
+@login_required
+@require_http_methods(["POST"])
+def map_ingredient(request, recipe_id, ingredient_id):
+    recipe = visible_recipe(request.user, recipe_id)
+    line = recipe.ingredients.filter(id=ingredient_id).first()
+    if not line:
+        raise Http404
+    data = read_json(request)
+    canonical_id = data.get("canonicalIngredientId") if isinstance(data, dict) else None
+    ingredient = CanonicalIngredient.objects.filter(
+        id=canonical_id, household=household_for(request.user), active=True
+    ).first()
+    if not ingredient:
+        return error("ingredient_not_found", "Ingredient was not found.", 404)
+    try:
+        assign_recipe_ingredient(
+            user=request.user,
+            recipe=recipe,
+            line=line,
+            ingredient=ingredient,
+        )
+    except ValueError as exc:
+        return error("validation_failed", str(exc), 422)
+    return JsonResponse(ingredient_json(line, Decimal(1)))
 
 
 @login_required

@@ -7,6 +7,7 @@ from shopping import api as shopping_api
 
 urlpatterns = [
     path("ingredients", pantry_api.ingredients),
+    path("ingredient-mappings", pantry_api.ingredient_mapping),
     path("ingredients/category-scores", pantry_api.ingredient_category_scores),
     path("ingredients/<uuid:ingredient_id>", pantry_api.ingredient_detail),
     path("inventory", pantry_api.inventory),
@@ -17,6 +18,10 @@ urlpatterns = [
     ),
     path("recipes", recipes_api.recipe_collection),
     path("recipes/<uuid:recipe_id>", recipes_api.recipe_detail),
+    path(
+        "recipes/<uuid:recipe_id>/ingredients/<uuid:ingredient_id>/map",
+        recipes_api.map_ingredient,
+    ),
     path("recipes/<uuid:recipe_id>/approve", recipes_api.approve),
     path("recipes/<uuid:recipe_id>/favorite", recipes_api.favorite),
     path("recommendations", recipes_api.recommendations),
