@@ -6,6 +6,7 @@ from . import views
 
 urlpatterns = [
     path("", login_required(views.inventory_page), name="inventory-page"),
+    path("check/", login_required(views.pantry_check_page), name="pantry-check"),
     path(
         "icons/<uuid:ingredient_id>/",
         login_required(views.ingredient_icon),

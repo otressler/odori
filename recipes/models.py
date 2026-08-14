@@ -213,6 +213,11 @@ class RecipeIngredient(models.Model):
     match_state = models.CharField(
         max_length=20, choices=MatchState.choices, default=MatchState.UNRESOLVED
     )
+    match_method = models.CharField(max_length=20, blank=True)
+    match_score = models.FloatField(null=True, blank=True)
+    match_policy_version = models.CharField(max_length=40, blank=True)
+    match_embedding_model = models.CharField(max_length=120, blank=True)
+    match_candidates = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["sort_order"]

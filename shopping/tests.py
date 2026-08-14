@@ -16,6 +16,7 @@ from .services import (
     add_manual_item,
     add_pantry_item,
     add_pantry_items,
+    collect_requirements_until,
     generate_from_plan,
     purchase_item,
     set_item_state,
@@ -71,6 +72,25 @@ class ShoppingTestCase(TestCase):
 
 
 class CalculationTests(ShoppingTestCase):
+    def test_pantry_check_sums_matching_units_through_date_only(self):
+        self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
+        self.plan_recipe(
+            self.recipe_with("Focaccia", [("Mehl", 250, "g", self.flour)]), day_offset=1
+        )
+        self.plan_recipe(
+            self.recipe_with("Pizza", [("Mehl", 1, "kg", self.flour)]), day_offset=2
+        )
+
+        requirements = collect_requirements_until(
+            household=self.household, until_date=self.week_start + timedelta(days=1)
+        )
+
+        components = requirements["ingredient:" + str(self.flour.id)].components()
+        self.assertEqual(
+            {(component["amount"], component["unit"]) for component in components},
+            {("750", "g")},
+        )
+
     def test_same_ingredient_across_recipes_is_summed_once(self):
         self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
         self.plan_recipe(

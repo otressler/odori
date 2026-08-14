@@ -4,6 +4,16 @@
 > current codebase, migrations, templates, routes, settings, and tests before implementation.
 > This is a forward-looking plan, not an assertion that all described extension points still exist.
 
+## Verified implementation notes
+
+The first implementation slice confirms that `RecipeIngredient` already has the planned
+`match_state`, while candidate scores, methods, and policy/model metadata were previously absent.
+The existing matcher also selected either fuzzy or vector score rather than combining compatible
+signals, and the runner-up margin was hard-coded. Manual recipe assignment created a canonical
+ingredient directly from source text, so it could duplicate an existing pantry ingredient. The new
+mapping service addresses these gaps for recipe creation, candidate lookup, and explicit assignment;
+durable review records, correction provenance, and free-text shopping capture remain follow-up work.
+
 ## Purpose
 
 Provide a reliable way to map ingredient text from recipes, imports, shopping entries, and manual
