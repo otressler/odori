@@ -14,6 +14,7 @@ from planning.services import add_slot, current_week_start, get_or_create_plan, 
 from recipes.models import Recipe, RecipeIngredient, RecipeSource
 
 from .jobs import run_next_category_job
+from .mapping import map_source_text
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
@@ -117,6 +118,29 @@ class PantryApiTests(TestCase):
         result = response.json()["ingredients"]
         self.assertEqual(result[0]["id"], str(self.ingredient.id))
         self.assertGreaterEqual(result[0]["matchScore"], 0.84)
+
+    def test_mapping_endpoint_returns_household_scoped_candidates_and_explanation(self):
+        self.ingredient.aliases = ["Paradeiser"]
+        self.ingredient.save(update_fields=["aliases"])
+
+        response = self.client.get("/api/v1/ingredient-mappings?text=Paradeiser")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["state"], "matched")
+        self.assertEqual(body["candidate"]["ingredientId"], str(self.ingredient.id))
+        self.assertEqual(body["candidate"]["method"], "exact_alias")
+
+    def test_mapping_excludes_inactive_and_other_household_ingredients(self):
+        self.ingredient.active = False
+        self.ingredient.save(update_fields=["active"])
+        other_household = Household.objects.create(name="Other")
+        CanonicalIngredient.objects.create(household=other_household, name="Tomate")
+
+        result = map_source_text(household=self.household, source_text="Tomate")
+
+        self.assertEqual(result.state, "unresolved")
+        self.assertIsNone(result.candidate)
 
     @patch("pantry.semantic.embed", return_value=[1.0, 0.0])
     def test_query_embeddings_are_cached(self, embed):

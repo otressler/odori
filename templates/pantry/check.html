@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Pantry prüfen · Odori{% endblock %}
+
+{% block content %}
+<div class="week-head">
+  <div>
+    <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Vorratsprüfung</p>
+    <h1 style="margin:0">Was wird bis wann gebraucht?</h1>
+  </div>
+  <a class="button" href="{% url 'inventory-page' %}">← Vorrat</a>
+</div>
+
+<section class="panel">
+  <form class="inline-form" method="get">
+    <div class="field">
+      <label for="pantry-check-until">Plan bis einschließlich</label>
+      <input id="pantry-check-until" name="until" type="date" value="{{ until_value }}" required>
+    </div>
+    <button class="primary" type="submit">Bedarf anzeigen</button>
+  </form>
+  <p class="field__hint">Gekochte Mahlzeiten und Zutaten ohne Mengen werden nicht als offene Mengen gezählt.</p>
+</section>
+
+<section class="panel">
+  <h2>Gesamtbedarf bis {{ until_date|date:"l, j. F Y" }}</h2>
+  {% if requirements %}
+    <div class="ingredient-list">
+      {% for requirement in requirements %}
+        <article>
+          <strong>{{ requirement.label }}</strong>
+          {% for component in requirement.components %}
+            <span class="amount">
+              {% if component.amount %}{{ component.amount }} {% else %}Menge unbekannt{% endif %}{{ component.unit }}
+              {% if component.mentions %} ({{ component.mentions }}×){% endif %}
+            </span>
+          {% endfor %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <h3>Kein offener Bedarf</h3>
+      <p>Bis zu diesem Tag sind keine ungekochten Rezepte eingeplant.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

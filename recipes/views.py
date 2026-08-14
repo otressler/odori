@@ -6,6 +6,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 
 from core.services import household_for
+from pantry.mapping import assign_recipe_ingredient, map_source_text
 from pantry.models import CanonicalIngredient, InventoryItem
 from pantry.services import change_inventory_status
 
@@ -240,12 +241,14 @@ def recipe_ingredient_to_pantry_page(request, recipe_id, ingredient_id):
     if not line:
         raise Http404
     household = household_for(request.user)
-    ingredient, created = CanonicalIngredient.objects.get_or_create(
-        household=household, name=line.source_text
-    )
-    line.canonical_ingredient = ingredient
-    line.match_state = RecipeIngredient.MatchState.MATCHED
-    line.save(update_fields=["canonical_ingredient", "match_state"])
+    result = map_source_text(household=household, source_text=line.source_text)
+    ingredient = result.candidate.ingredient if result.candidate else None
+    created = False
+    if ingredient is None:
+        ingredient, created = CanonicalIngredient.objects.get_or_create(
+            household=household, name=line.source_text
+        )
+    assign_recipe_ingredient(user=request.user, recipe=recipe, line=line, ingredient=ingredient)
     item = InventoryItem.objects.filter(household=household, ingredient=ingredient).first()
     if not item:
         change_inventory_status(
