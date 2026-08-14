@@ -65,7 +65,9 @@ def map_source_text(*, household, source_text, limit=3):
     policy_version = settings.INGREDIENT_MAPPING_POLICY_VERSION
     model_version = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
     if not source_text:
-        return MappingResult(None, (), "unresolved", "skipped", model_version, policy_version, False)
+        return MappingResult(
+            None, (), "unresolved", "skipped", model_version, policy_version, False
+        )
 
     ingredients = CanonicalIngredient.objects.filter(household=household, active=True)
     embedding_result = embed_with_diagnostics(
@@ -74,7 +76,10 @@ def map_source_text(*, household, source_text, limit=3):
         operation="ingredient_mapping",
     )
     ranked = sorted(
-        (_candidate(ingredient, source_text, embedding_result.vector) for ingredient in ingredients),
+        (
+            _candidate(ingredient, source_text, embedding_result.vector)
+            for ingredient in ingredients
+        ),
         key=lambda item: (-item.score, item.ingredient.name.casefold()),
     )
     ranked = [item for item in ranked if item.score >= settings.INGREDIENT_MAPPING_REVIEW_MIN_SCORE]

@@ -14,6 +14,7 @@ from planning.services import add_slot, current_week_start, get_or_create_plan, 
 from recipes.models import Recipe, RecipeIngredient, RecipeSource
 
 from .jobs import run_next_category_job
+from .mapping import map_source_text
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
@@ -23,7 +24,6 @@ from .models import (
     PantryCategorizationJob,
 )
 from .semantic import query_embedding
-from .mapping import map_source_text
 from .services import classify_category, similar_ingredient_recommendations
 
 

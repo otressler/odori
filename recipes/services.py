@@ -103,8 +103,12 @@ def create_or_update_recipe(
                         if mapping and mapping.state == "review_needed"
                         else RecipeIngredient.MatchState.UNRESOLVED
                     ),
-                    match_method=(mapping.candidate.method if mapping and mapping.candidate else ""),
-                    match_score=(mapping.candidate.score if mapping and mapping.candidate else None),
+                    match_method=(
+                        mapping.candidate.method if mapping and mapping.candidate else ""
+                    ),
+                    match_score=(
+                        mapping.candidate.score if mapping and mapping.candidate else None
+                    ),
                     match_policy_version=(mapping.policy_version if mapping else ""),
                     match_embedding_model=(mapping.model_version if mapping else ""),
                 )

@@ -8,13 +8,13 @@ from core.api import error, read_json
 from core.services import household_for
 
 from .catalog import sync_starter_catalog
+from .mapping import map_source_text
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
     IngredientCategoryExample,
     InventoryItem,
 )
-from .mapping import map_source_text
 from .semantic import embed_with_diagnostics, rank_ingredients
 from .services import (
     PlannedIngredientInUse,
