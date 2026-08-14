@@ -25,6 +25,7 @@
 </section>
 
 <div class="button-row" style="margin-bottom:1.25rem">
+  <a class="button secondary" href="{% url 'pantry-check' %}">Pantry bis zu einem Tag prüfen</a>
   <a class="button" href="{% url 'inventory-condense' %}">Ähnliche Zutaten prüfen</a>
   <form method="post" action="{% url 'inventory-category-suggestions' %}">
     {% csrf_token %}

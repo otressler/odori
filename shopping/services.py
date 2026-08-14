@@ -104,6 +104,40 @@ def collect_aggregates(plan):
     return aggregates
 
 
+def collect_requirements_until(*, household, until_date):
+    """Collect remaining planned recipe requirements through an inclusive date."""
+
+    aggregates = {}
+    slots = (
+        MealSlot.objects.select_related("recipe")
+        .prefetch_related("recipe__ingredients__canonical_ingredient")
+        .filter(
+            plan__household=household,
+            date__lte=until_date,
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe__isnull=False,
+            cooked_at__isnull=True,
+        )
+        .order_by("date", "created_at")
+    )
+    for slot in slots:
+        factor = scaling_factor(slot)
+        for line in slot.recipe.ingredients.all():
+            if line.canonical_ingredient_id:
+                key = f"ingredient:{line.canonical_ingredient_id}"
+                label = line.canonical_ingredient.name
+            else:
+                key = f"text:{line.source_text.strip().lower()}"
+                label = line.source_text.strip()
+            if not label:
+                continue
+            aggregate = aggregates.setdefault(
+                key, Aggregate(key, label, line.canonical_ingredient)
+            )
+            aggregate.add_line(line.amount, line.unit, factor)
+    return aggregates
+
+
 def excluded_ingredient_ids(household):
     return set(
         InventoryItem.objects.filter(
