@@ -36,6 +36,17 @@ def ingredient_json(line, factor):
         "unit": line.unit,
         "optional": line.optional,
         "matchState": line.match_state,
+        "matchCandidates": [
+            {
+                "ingredientId": candidate.get("ingredient_id"),
+                "name": candidate.get("name"),
+                "score": candidate.get("score"),
+                "textScore": candidate.get("text_score"),
+                "embeddingScore": candidate.get("embedding_score"),
+                "method": candidate.get("method"),
+            }
+            for candidate in line.match_candidates
+        ],
     }
 
 

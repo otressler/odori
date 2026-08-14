@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.services import household_for
-from pantry.mapping import map_source_text
+from pantry.mapping import candidate_payload, map_source_text
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
@@ -111,6 +111,14 @@ def create_or_update_recipe(
                     ),
                     match_policy_version=(mapping.policy_version if mapping else ""),
                     match_embedding_model=(mapping.model_version if mapping else ""),
+                    match_candidates=(
+                        [
+                            candidate_payload(mapping.candidate),
+                            *(candidate_payload(candidate) for candidate in mapping.alternatives),
+                        ]
+                        if mapping and mapping.candidate
+                        else []
+                    ),
                 )
         if "steps" in data:
             RecipeStep.objects.filter(recipe=recipe).delete()
@@ -173,6 +181,11 @@ def create_recipe_revision(recipe, user):
                 optional=line.optional,
                 sort_order=line.sort_order,
                 match_state=line.match_state,
+                match_method=line.match_method,
+                match_score=line.match_score,
+                match_policy_version=line.match_policy_version,
+                match_embedding_model=line.match_embedding_model,
+                match_candidates=line.match_candidates,
             )
             for line in recipe.ingredients.all()
         ]

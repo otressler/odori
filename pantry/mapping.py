@@ -31,6 +31,17 @@ class MappingResult:
     requires_confirmation: bool
 
 
+def candidate_payload(candidate):
+    return {
+        "ingredient_id": str(candidate.ingredient_id),
+        "name": candidate.ingredient.name,
+        "score": candidate.score,
+        "text_score": candidate.text_score,
+        "embedding_score": candidate.embedding_score,
+        "method": candidate.method,
+    }
+
+
 def _candidate(ingredient, source, query_vector):
     normalized_source = normalized_text(source)
     normalized_name = normalized_text(ingredient.name)
@@ -114,6 +125,10 @@ def assign_recipe_ingredient(*, user, recipe, line, ingredient):
     line.match_score = result.candidate.score if result.candidate else None
     line.match_policy_version = result.policy_version
     line.match_embedding_model = result.model_version
+    line.match_candidates = [
+        candidate_payload(result.candidate),
+        *(candidate_payload(candidate) for candidate in result.alternatives),
+    ]
     line.save(
         update_fields=[
             "canonical_ingredient",
@@ -122,6 +137,7 @@ def assign_recipe_ingredient(*, user, recipe, line, ingredient):
             "match_score",
             "match_policy_version",
             "match_embedding_model",
+            "match_candidates",
         ]
     )
     return line

@@ -363,6 +363,12 @@ class RecipeLifecycleTests(TestCase):
         self.assertEqual(line.match_state, RecipeIngredient.MatchState.MATCHED)
         self.assertEqual(line.match_method, "fuzzy")
         self.assertEqual(line.match_policy_version, "v1")
+        self.assertEqual(line.match_candidates[0]["ingredient_id"], str(tomato.id))
+
+        detail = self.client.get(f"/api/v1/recipes/{response.json()['id']}").json()
+        self.assertEqual(
+            detail["ingredients"][0]["matchCandidates"][0]["ingredientId"], str(tomato.id)
+        )
 
     def test_recipe_mapping_endpoint_rejects_other_household_ingredient(self):
         response = self.create_recipe(ingredients=[{"sourceText": "Basilikum"}])
