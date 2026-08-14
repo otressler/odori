@@ -361,6 +361,25 @@ class RecipeLifecycleTests(TestCase):
         line = Recipe.objects.get(id=response.json()["id"]).ingredients.get()
         self.assertEqual(line.canonical_ingredient_id, tomato.id)
         self.assertEqual(line.match_state, RecipeIngredient.MatchState.MATCHED)
+        self.assertEqual(line.match_method, "fuzzy")
+        self.assertEqual(line.match_policy_version, "v1")
+
+    def test_recipe_mapping_endpoint_rejects_other_household_ingredient(self):
+        response = self.create_recipe(ingredients=[{"sourceText": "Basilikum"}])
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        line = recipe.ingredients.get()
+        other_household = Household.objects.create(name="Other")
+        other = CanonicalIngredient.objects.create(household=other_household, name="Basilikum")
+
+        response = self.client.post(
+            f"/api/v1/recipes/{recipe.id}/ingredients/{line.id}/map",
+            json.dumps({"canonicalIngredientId": str(other.id)}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        line.refresh_from_db()
+        self.assertIsNone(line.canonical_ingredient)
 
     def test_recipe_detail_quick_inserts_unresolved_ingredient_into_pantry(self):
         response = self.create_recipe(ingredients=[{"sourceText": "Basilikum"}])
