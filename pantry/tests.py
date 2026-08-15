@@ -56,6 +56,17 @@ class PantryApiTests(TestCase):
         self.assertEqual(item.status, "available")
         self.assertEqual(InventoryEvent.objects.filter(item=item).count(), 1)
 
+    def test_single_status_change_returns_shopping_intent(self):
+        response = self.client.post(
+            f"/api/v1/inventory/{self.ingredient.id}/change-status",
+            json.dumps({"status": "unavailable", "version": 1}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], InventoryItem.Status.UNAVAILABLE)
+        self.assertFalse(response.json()["onShoppingList"])
+
     def test_stale_inventory_version_conflicts(self):
         self.patch_inventory(
             {

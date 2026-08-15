@@ -122,7 +122,12 @@ def shopping_item_detail(request, list_id, item_id):
         if not isinstance(data, dict):
             return error("malformed_input", "Expected a JSON object.", 400)
         try:
-            delete_item(user=request.user, item_id=item_id, version=data.get("version"))
+            delete_item(
+                user=request.user,
+                item_id=item_id,
+                version=data.get("version"),
+                confirm_planned_use=bool(data.get("confirmPlannedUse")),
+            )
         except StaleItemVersion as conflict:
             return error(
                 "stale_version",
