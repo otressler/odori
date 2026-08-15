@@ -7,6 +7,7 @@
 | [Domain model](domain-model.md) | Data entities, relationships, lifecycle rules, and inventory semantics |
 | [API specification](api-specification.md) | HTTP resources, asynchronous jobs, and error conventions |
 | [Deployment and operations](deployment-operations.md) | Raspberry Pi, Docker Compose, Traefik, Tailscale, configuration, backups, and observability |
+| [Developer onboarding](development.md) | Local setup, Google sign-in, and currently built AI integrations |
 | [Implementation plan](implementation-plan.md) | Milestones, implementation-agent packets, dependencies, release gates, Pi budgets, and Azure cost controls |
 | [Product backlog](backlog.md) | Candidate features, design-risk mitigations, detailed delivery plans, priorities, and open product questions |
 
