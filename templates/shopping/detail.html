@@ -58,7 +58,7 @@
     <h2>Aus dem Vorrat hinzufügen</h2>
     <p>Diese Zutaten sind als „Nicht verfügbar“ oder „Unbekannt“ markiert.</p>
     <div class="button-row" data-pantry-picker data-list-id="{{ list.id }}">
-      <button class="primary" type="button" data-pantry-add-all>Alle markierten hinzufügen</button>
+      <button class="primary" type="button" data-pantry-add-all>Alle „Nicht verfügbar“ hinzufügen</button>
     </div>
     <ul class="shopping-pantry-picker">
       {% for pantry_item in pantry_items %}
@@ -155,7 +155,7 @@
         var button = event.currentTarget;
         button.disabled = true;
         var options = Array.from(pantryPicker.querySelectorAll('[data-pantry-option]')).filter(function (option) {
-          return option.dataset.status === "unavailable" || option.dataset.status === "unknown";
+          return option.dataset.status === "unavailable";
         });
         Promise.all(options.map(addPantryItem)).then(function () {
           button.disabled = true;

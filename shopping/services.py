@@ -306,6 +306,10 @@ def add_pantry_item(*, user, list_id, ingredient_id):
         .filter(
             household=household,
             ingredient_id=ingredient_id,
+            status__in=[
+                InventoryItem.Status.UNAVAILABLE,
+                InventoryItem.Status.UNKNOWN,
+            ],
         )
         .first()
     )
@@ -326,22 +330,15 @@ def add_pantry_item(*, user, list_id, ingredient_id):
 
 
 @transaction.atomic
-def add_pantry_items(*, user, list_id, status=None):
+def add_pantry_items(*, user, list_id, status=InventoryItem.Status.UNAVAILABLE):
     """Add pantry ingredients with the requested status."""
 
     household = household_for(user)
     shopping_list = list_for_user(user, list_id)
-    pantry_items = InventoryItem.objects.filter(household=household)
-    if status is not None:
-        pantry_items = pantry_items.filter(status=status)
-    else:
-        pantry_items = pantry_items.filter(
-            status__in=[
-                InventoryItem.Status.UNKNOWN,
-                InventoryItem.Status.UNAVAILABLE,
-            ]
-        )
-    pantry_items = pantry_items.select_related("ingredient")
+    pantry_items = InventoryItem.objects.filter(
+        household=household,
+        status=status,
+    ).select_related("ingredient")
     existing_ingredient_ids = set(
         ShoppingItem.objects.filter(
             shopping_list=shopping_list,
