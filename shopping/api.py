@@ -8,6 +8,7 @@ from planning.services import parse_week_start
 
 from .models import ShoppingList
 from .services import (
+    ShoppingItemPlannedUse,
     StaleItemVersion,
     add_manual_item,
     add_pantry_item,
@@ -128,6 +129,26 @@ def shopping_item_detail(request, list_id, item_id):
                 "This shopping item changed elsewhere.",
                 409,
                 fields={"version": conflict.item.version},
+            )
+        except ShoppingItemPlannedUse as conflict:
+            return JsonResponse(
+                {
+                    "error": {
+                        "code": "planned_ingredient_in_use",
+                        "message": "Diese Zutat wird für geplante Mahlzeiten gebraucht.",
+                        "plannedSlots": [
+                            {
+                                "slotId": str(slot.id),
+                                "date": slot.date.isoformat(),
+                                "slot": slot.slot,
+                                "recipeId": str(slot.recipe_id) if slot.recipe_id else None,
+                                "title": slot.recipe.title if slot.recipe_id else slot.notes,
+                            }
+                            for slot in conflict.slots
+                        ],
+                    }
+                },
+                status=409,
             )
         return JsonResponse({}, status=204)
     data = read_json(request)

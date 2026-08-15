@@ -27,8 +27,9 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 | `GET/POST /ingredients` | Search canonical tags; create a reviewed tag when permitted. |
 | `GET/PATCH /ingredients/{id}` | Read or update a canonical ingredient. |
 | `GET /ingredients/category-scores` | Return ingredient-category classification diagnostics. |
-| `GET/PATCH /inventory` | List and batch-update availability statuses. |
+| `GET/PATCH /inventory` | List and batch-update availability statuses; responses also expose current active-list restock intent. |
 | `POST /inventory/{ingredientId}/change-status` | Request or confirm an availability status change; returns planned-meal conflicts when confirmation is needed. |
+| `PATCH /inventory/{ingredientId}/shopping-intent` | Add or remove the ingredient from the active shopping list; returns planned-meal conflicts when removal needs confirmation. |
 | `GET/PUT /meal-plans/{weekStart}` | Retrieve a week plan, creating it when absent. `PUT` currently has the same behavior as `GET`; replacement is not implemented. |
 | `POST /meal-plans/{weekStart}/slots` | Create a planned meal. |
 | `PATCH/DELETE /meal-slots/{id}` | Move, update, or remove a planned meal. |
@@ -52,10 +53,10 @@ Use `201` for creation, `202` for accepted asynchronous work, `204` for successf
 An inventory status change that could remove an ingredient from an upcoming plan is a two-step action. The initial request:
 
 ```json
-{ "status": "needs_replenishment", "version": 7 }
+{ "status": "unavailable", "version": 7 }
 ```
 
-returns `409` with `error.code: "planned_ingredient_in_use"` and affected meal slots unless it includes `confirmPlannedUse: true`. The confirmation is an explicit user decision and is written to inventory history. `POST /meal-slots/{id}/mark-cooked` performs the linked `cook_recipe` inventory update internally and never requests this confirmation.
+returns `409` with `error.code: "planned_ingredient_in_use"` and affected meal slots unless it includes `confirmPlannedUse: true`. The confirmation is an explicit user decision and is written to inventory history. Removing an ingredient from the active shopping list uses the same conflict code but changes only shopping intent. `POST /meal-slots/{id}/mark-cooked` performs the linked `cook_recipe` inventory update internally and never requests this confirmation.
 
 ## Planned API surfaces
 
@@ -117,7 +118,7 @@ Marking a recipe slot cooked records history but does not assume all ingredients
   "inventoryChanges": [
     {
       "ingredientId": "ingredient_uuid",
-      "status": "needs_replenishment",
+      "status": "unavailable",
       "version": 7
     }
   ]

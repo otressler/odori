@@ -16,6 +16,11 @@ urlpatterns = [
         pantry_api.change_status,
         name="api-v1-inventory-change-status",
     ),
+    path(
+        "inventory/<uuid:ingredient_id>/shopping-intent",
+        pantry_api.shopping_intent,
+        name="api-v1-inventory-shopping-intent",
+    ),
     path("recipes", recipes_api.recipe_collection),
     path("recipes/<uuid:recipe_id>", recipes_api.recipe_detail),
     path(

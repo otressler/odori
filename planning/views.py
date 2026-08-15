@@ -202,7 +202,7 @@ def slot_cook_page(request, slot_id):
         changes.append(
             {
                 "ingredientId": ingredient_id,
-                "status": InventoryItem.Status.NEEDS_REPLENISHMENT,
+                "status": InventoryItem.Status.UNAVAILABLE,
                 "version": item.version if item else None,
             }
         )

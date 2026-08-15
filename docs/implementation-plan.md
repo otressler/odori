@@ -250,7 +250,7 @@ Tasks:
 
 - Implement deterministic expansion and grouping by canonical ingredient while preserving recipe provenance.
 - Scale numeric amounts and sum only compatible normalized units; preserve unknown and incompatible quantity components without unit conversion.
-- Generate/refresh calculated entries, exclude `in_stock` by default, visibly include `unknown`, and preserve manual/purchased/skipped entries.
+- Generate/refresh calculated entries, exclude `available` by default, visibly include `unknown` and `unavailable`, and preserve manual/purchased/skipped entries.
 - Implement manual items and open/purchased/skipped transitions with versions.
 - Purchase a mapped item and update pantry state in one transaction through an application service/domain event.
 
@@ -270,7 +270,7 @@ Tasks:
 
 - Build Kitchen Mode with stable progress, optional timers, Wake Lock request/reacquisition, and a clear fallback when unsupported.
 - Implement mark-cooked/undo and cook history. Let users explicitly select any recipe ingredients whose inventory status should change; do not infer depletion for all ingredients.
-- Implement the two-step planned-stock confirmation for manual transitions away from `in_stock`.
+- Implement the two-step planned-stock confirmation for manual transitions away from `available` and for removing planned ingredients from the active shopping list.
 - Bypass that warning only for the transactional `cook_recipe` path tied to a valid meal slot; retain origin and slot in audit history.
 
 Tests:

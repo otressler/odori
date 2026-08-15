@@ -51,9 +51,9 @@ class Command(BaseCommand):
 
         # A mix of states so the pantry screen shows all three at once.
         for ingredient, status in (
-            (tomato, "in_stock"),
-            (oil, "in_stock"),
-            (pasta, "needs_replenishment"),
+            (tomato, "available"),
+            (oil, "available"),
+            (pasta, "unavailable"),
             (beans, "unknown"),
         ):
             InventoryItem.objects.get_or_create(

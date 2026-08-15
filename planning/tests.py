@@ -192,25 +192,25 @@ class CookingTests(PlanningTestCase):
     def test_cooking_does_not_infer_depletion(self):
         slot = self.make_slot()
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.tomato, status="in_stock"
+            household=self.household, ingredient=self.tomato, status="available"
         )
         mark_cooked(user=self.user, slot_id=slot.id, slot_version=slot.version)
         item = InventoryItem.objects.get(ingredient=self.tomato)
-        self.assertEqual(item.status, "in_stock")
+        self.assertEqual(item.status, "available")
 
     def test_selected_changes_use_the_cook_origin_and_reference_the_slot(self):
         slot = self.make_slot()
         item = InventoryItem.objects.create(
-            household=self.household, ingredient=self.tomato, status="in_stock"
+            household=self.household, ingredient=self.tomato, status="available"
         )
         mark_cooked(
             user=self.user,
             slot_id=slot.id,
             slot_version=slot.version,
-            inventory_changes=[{"ingredient_id": self.tomato.id, "status": "needs_replenishment"}],
+            inventory_changes=[{"ingredient_id": self.tomato.id, "status": "unavailable"}],
         )
         item.refresh_from_db()
-        self.assertEqual(item.status, "needs_replenishment")
+        self.assertEqual(item.status, "unavailable")
         event = InventoryEvent.objects.get(item=item)
         self.assertEqual(event.origin, InventoryEvent.Origin.COOK_RECIPE)
         self.assertEqual(event.meal_slot_id, slot.id)
@@ -223,7 +223,7 @@ class CookingTests(PlanningTestCase):
                 slot_id=slot.id,
                 slot_version=slot.version,
                 inventory_changes=[
-                    {"ingredient_id": self.basil.id, "status": "needs_replenishment"}
+                    {"ingredient_id": self.basil.id, "status": "unavailable"}
                 ],
             )
         slot.refresh_from_db()
@@ -268,7 +268,7 @@ class PlannedStockTests(PlanningTestCase):
             servings=4,
         )
         self.item = InventoryItem.objects.create(
-            household=self.household, ingredient=self.tomato, status="in_stock"
+            household=self.household, ingredient=self.tomato, status="available"
         )
 
     def patch_inventory(self, body):
@@ -282,7 +282,7 @@ class PlannedStockTests(PlanningTestCase):
                 "items": [
                     {
                         "ingredientId": str(self.tomato.id),
-                        "status": "needs_replenishment",
+                        "status": "unavailable",
                         "version": self.item.version,
                     }
                 ]
@@ -293,7 +293,7 @@ class PlannedStockTests(PlanningTestCase):
         self.assertEqual(body["error"]["code"], "planned_ingredient_in_use")
         self.assertEqual(len(body["error"]["plannedSlots"]), 1)
         self.item.refresh_from_db()
-        self.assertEqual(self.item.status, "in_stock")
+        self.assertEqual(self.item.status, "available")
 
     def test_confirmation_lets_the_change_through(self):
         response = self.patch_inventory(
@@ -301,7 +301,7 @@ class PlannedStockTests(PlanningTestCase):
                 "items": [
                     {
                         "ingredientId": str(self.tomato.id),
-                        "status": "needs_replenishment",
+                        "status": "unavailable",
                         "version": self.item.version,
                         "confirmPlannedUse": True,
                     }
@@ -310,7 +310,7 @@ class PlannedStockTests(PlanningTestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.item.refresh_from_db()
-        self.assertEqual(self.item.status, "needs_replenishment")
+        self.assertEqual(self.item.status, "unavailable")
         self.assertEqual(
             InventoryEvent.objects.get(item=self.item).origin, InventoryEvent.Origin.MANUAL
         )
@@ -322,7 +322,7 @@ class PlannedStockTests(PlanningTestCase):
                 "items": [
                     {
                         "ingredientId": str(self.tomato.id),
-                        "status": "needs_replenishment",
+                        "status": "unavailable",
                         "version": self.item.version,
                     }
                 ]
@@ -338,7 +338,7 @@ class PlannedStockTests(PlanningTestCase):
                 "items": [
                     {
                         "ingredientId": str(self.tomato.id),
-                        "status": "in_stock",
+                        "status": "available",
                         "version": self.item.version,
                     }
                 ]
@@ -354,7 +354,7 @@ class PlannedStockTests(PlanningTestCase):
                 "items": [
                     {
                         "ingredientId": str(self.tomato.id),
-                        "status": "needs_replenishment",
+                        "status": "unavailable",
                         "version": self.item.version,
                         "confirmPlannedUse": True,
                         "origin": "cook_recipe",
