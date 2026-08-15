@@ -455,6 +455,7 @@ def inventory(request):
 def change_status(request, ingredient_id):
     """Two-step availability change: `confirmPlannedUse` is an explicit user decision."""
 
+    household = household_for(request.user)
     data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected a JSON object.", 400)
