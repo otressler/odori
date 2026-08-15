@@ -6,6 +6,9 @@ The product is designed for a Raspberry Pi 5 deployment behind Traefik and Tails
 
 ## Development
 
+See the [developer onboarding guide](docs/development.md) for complete local
+setup, Google sign-in, and currently built AI integrations.
+
 Install Python 3.10+, then run `python -m pip install -r requirements.txt`, `python manage.py migrate`,
 and `python manage.py bootstrap_owner --username mara --household "Unser Haushalt"`. Start the app with
 `python manage.py runserver`. On systems with GNU Make, `make lint`, `make test`, and `make build` run
