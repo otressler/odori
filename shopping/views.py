@@ -9,6 +9,7 @@ from planning.services import current_week_start, parse_week_start
 
 from .models import ShoppingItem, ShoppingList
 from .services import (
+    ShoppingItemPlannedUse,
     StaleItemVersion,
     add_manual_item,
     add_pantry_items,
@@ -77,8 +78,8 @@ def shopping_detail(request, list_id):
         .filter(
             household=household,
             status__in=[
-                InventoryItem.Status.NEEDS_REPLENISHMENT,
                 InventoryItem.Status.UNKNOWN,
+                InventoryItem.Status.UNAVAILABLE,
             ],
         )
         .exclude(ingredient_id__in=existing_ingredient_ids)
@@ -170,9 +171,26 @@ def shopping_item_delete(request, item_id):
     item = item_for_user(request.user, item_id)
     list_id = item.shopping_list_id
     try:
-        delete_item(user=request.user, item_id=item_id, version=read_version(request))
+        delete_item(
+            user=request.user,
+            item_id=item_id,
+            version=read_version(request),
+            confirm_planned_use=request.POST.get("confirm_planned_use") == "true",
+        )
     except StaleItemVersion:
         messages.error(request, "Der Eintrag wurde inzwischen geändert. Bitte erneut prüfen.")
+    except ShoppingItemPlannedUse as conflict:
+        return render(
+            request,
+            "shopping/planned_use.html",
+            {
+                "item": item,
+                "ingredient": conflict.ingredient,
+                "slots": conflict.slots,
+                "version": read_version(request),
+            },
+            status=409,
+        )
     else:
         messages.success(request, "Eintrag entfernt.")
     return redirect("shopping-detail", list_id=list_id)

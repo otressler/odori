@@ -308,14 +308,40 @@ def ingredient_category_scores(request):
     )
 
 
-def inventory_json(item):
-    return {
+def inventory_json(item, *, on_shopping_list=None, shopping_item=None):
+    body = {
         "id": str(item.id),
         "ingredientId": str(item.ingredient_id),
         "ingredient": item.ingredient.name,
         "status": item.status,
         "version": item.version,
         "updatedAt": item.updated_at.isoformat(),
+    }
+    if on_shopping_list is not None:
+        body["onShoppingList"] = on_shopping_list
+        body["shoppingItem"] = shopping_item_json(shopping_item)
+    return body
+
+
+def current_shopping_item(household, ingredient_id):
+    from shopping.services import active_list_for_household
+
+    shopping_list = active_list_for_household(household)
+    if not shopping_list:
+        return None
+    return shopping_list.items.filter(
+        canonical_ingredient_id=ingredient_id,
+        state="open",
+    ).order_by("created_at").first()
+
+
+def shopping_item_json(item):
+    if not item:
+        return None
+    return {
+        "id": str(item.id),
+        "version": item.version,
+        "state": item.state,
     }
 
 
@@ -353,7 +379,32 @@ def inventory(request):
             .filter(household=household)
             .order_by("ingredient__name")
         )
-        return JsonResponse({"items": [inventory_json(item) for item in items]})
+        from shopping.services import active_list_for_household
+
+        shopping_list = active_list_for_household(household)
+        shopping_items = (
+            {
+                item.canonical_ingredient_id: item
+                for item in shopping_list.items.filter(
+                    canonical_ingredient__isnull=False,
+                    state="open",
+                )
+            }
+            if shopping_list
+            else {}
+        )
+        return JsonResponse(
+            {
+                "items": [
+                    inventory_json(
+                        item,
+                        on_shopping_list=item.ingredient_id in shopping_items,
+                        shopping_item=shopping_items.get(item.ingredient_id),
+                    )
+                    for item in items
+                ]
+            }
+        )
     data = read_json(request)
     changes = data.get("items") if data else None
     if not isinstance(changes, list):
@@ -384,7 +435,16 @@ def inventory(request):
                     raise InventoryBatchError(
                         error("stale_version", "This inventory item changed elsewhere.", 409)
                     )
-                updated.append(inventory_json(result))
+                shopping_item = current_shopping_item(
+                    household, result.ingredient_id
+                )
+                updated.append(
+                    inventory_json(
+                        result,
+                        on_shopping_list=shopping_item is not None,
+                        shopping_item=shopping_item,
+                    )
+                )
     except InventoryBatchError as exc:
         return exc.response
     return JsonResponse({"items": updated})
@@ -414,4 +474,61 @@ def change_status(request, ingredient_id):
         return planned_conflict(conflict)
     if result is None:
         return error("stale_version", "This inventory item changed elsewhere.", 409)
-    return JsonResponse(inventory_json(result))
+    shopping_item = current_shopping_item(household, result.ingredient_id)
+    return JsonResponse(
+        inventory_json(
+            result,
+            on_shopping_list=shopping_item is not None,
+            shopping_item=shopping_item,
+        )
+    )
+
+
+@login_required
+@require_http_methods(["PATCH"])
+def shopping_intent(request, ingredient_id):
+    data = read_json(request)
+    if not isinstance(data, dict) or not isinstance(data.get("onShoppingList"), bool):
+        return error(
+            "validation_failed",
+            "onShoppingList must be a boolean.",
+            fields={"onShoppingList": "Required."},
+        )
+    from shopping.services import (
+        ShoppingItemPlannedUse,
+        StaleItemVersion,
+        toggle_pantry_restock,
+    )
+
+    try:
+        item = toggle_pantry_restock(
+            user=request.user,
+            ingredient_id=ingredient_id,
+            on_shopping_list=data["onShoppingList"],
+            version=data.get("version"),
+            confirm_planned_use=bool(data.get("confirmPlannedUse")),
+        )
+    except ShoppingItemPlannedUse as conflict:
+        return JsonResponse(
+            {
+                "error": {
+                    "code": "planned_ingredient_in_use",
+                    "message": "Diese Zutat wird für geplante Mahlzeiten gebraucht.",
+                    "plannedSlots": planned_slots_json(conflict.slots),
+                }
+            },
+            status=409,
+        )
+    except StaleItemVersion as conflict:
+        return error(
+            "stale_version",
+            "This shopping item changed elsewhere.",
+            409,
+            fields={"version": conflict.item.version},
+        )
+    return JsonResponse(
+        {
+            "onShoppingList": item is not None,
+            "shoppingItem": shopping_item_json(item),
+        }
+    )

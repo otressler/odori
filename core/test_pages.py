@@ -21,7 +21,7 @@ class PageRenderTests(TestCase):
         HouseholdMembership.objects.create(household=self.household, user=self.user, role="owner")
         self.tomato = CanonicalIngredient.objects.create(household=self.household, name="Tomate")
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.tomato, status="needs_replenishment"
+            household=self.household, ingredient=self.tomato, status="unavailable"
         )
         source = RecipeSource.objects.create(household=self.household)
         self.recipe = Recipe.objects.create(

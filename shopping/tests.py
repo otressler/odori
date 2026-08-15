@@ -13,6 +13,7 @@ from recipes.models import Recipe, RecipeIngredient, RecipeSource
 
 from .models import ShoppingItem, ShoppingList
 from .services import (
+    ShoppingItemPlannedUse,
     add_manual_item,
     add_pantry_item,
     add_pantry_items,
@@ -20,6 +21,7 @@ from .services import (
     generate_from_plan,
     purchase_item,
     set_item_state,
+    toggle_pantry_restock,
 )
 from .units import normalize_unit
 
@@ -131,20 +133,20 @@ class CalculationTests(ShoppingTestCase):
         self.assertEqual(item.quantity_components[0]["amount"], None)
         self.assertIn("nach Bedarf", item.quantity_text)
 
-    def test_in_stock_ingredients_are_left_out(self):
+    def test_available_ingredients_are_left_out(self):
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.flour, status="in_stock"
+            household=self.household, ingredient=self.flour, status="available"
         )
         self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
         shopping_list = self.generate()
         self.assertFalse(shopping_list.items.filter(canonical_ingredient=self.flour).exists())
 
-    def test_in_stock_can_be_included_on_request(self):
+    def test_available_can_be_included_on_request(self):
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.flour, status="in_stock"
+            household=self.household, ingredient=self.flour, status="available"
         )
         self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
-        shopping_list = self.generate(include_in_stock=True)
+        shopping_list = self.generate(include_available=True)
         self.assertTrue(shopping_list.items.filter(canonical_ingredient=self.flour).exists())
 
     def test_unknown_stock_is_included_and_flagged(self):
@@ -154,6 +156,16 @@ class CalculationTests(ShoppingTestCase):
         self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
         item = self.generate().items.get(canonical_ingredient=self.flour)
         self.assertTrue(item.needs_confirmation)
+
+    def test_unavailable_stock_is_included_without_confirmation(self):
+        InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.flour,
+            status=InventoryItem.Status.UNAVAILABLE,
+        )
+        self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
+        item = self.generate().items.get(canonical_ingredient=self.flour)
+        self.assertFalse(item.needs_confirmation)
 
     def test_cooked_meals_drop_out_of_the_calculation(self):
         slot = self.plan_recipe(self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]))
@@ -226,7 +238,7 @@ class PantryShoppingTests(ShoppingTestCase):
         InventoryItem.objects.create(
             household=self.household,
             ingredient=self.flour,
-            status=InventoryItem.Status.NEEDS_REPLENISHMENT,
+            status=InventoryItem.Status.UNAVAILABLE,
         )
         InventoryItem.objects.create(
             household=self.household,
@@ -248,11 +260,76 @@ class PantryShoppingTests(ShoppingTestCase):
         )
         self.assertTrue(unknown.needs_confirmation)
 
+
+class RestockIntentTests(ShoppingTestCase):
+    def test_toggle_is_independent_of_pantry_availability_and_idempotent(self):
+        pantry_item = InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.flour,
+            status=InventoryItem.Status.UNAVAILABLE,
+        )
+
+        item = toggle_pantry_restock(
+            user=self.user,
+            ingredient_id=self.flour.id,
+            on_shopping_list=True,
+        )
+        same_item = toggle_pantry_restock(
+            user=self.user,
+            ingredient_id=self.flour.id,
+            on_shopping_list=True,
+            version=item.version,
+        )
+
+        self.assertEqual(item.id, same_item.id)
+        self.assertEqual(ShoppingItem.objects.filter(
+            shopping_list=item.shopping_list,
+            canonical_ingredient=self.flour,
+            state=ShoppingItem.State.OPEN,
+        ).count(), 1)
+        pantry_item.refresh_from_db()
+        self.assertEqual(pantry_item.status, InventoryItem.Status.UNAVAILABLE)
+
+    def test_removing_restock_intent_warns_about_future_meals(self):
+        slot = self.plan_recipe(
+            self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)])
+        )
+        item = toggle_pantry_restock(
+            user=self.user,
+            ingredient_id=self.flour.id,
+            on_shopping_list=True,
+        )
+
+        with self.assertRaises(ShoppingItemPlannedUse) as raised:
+            toggle_pantry_restock(
+                user=self.user,
+                ingredient_id=self.flour.id,
+                on_shopping_list=False,
+                version=item.version,
+            )
+
+        self.assertEqual(str(raised.exception), "planned_ingredient_in_use")
+        self.assertEqual(raised.exception.slots, [slot])
+        toggle_pantry_restock(
+            user=self.user,
+            ingredient_id=self.flour.id,
+            on_shopping_list=False,
+            version=item.version,
+            confirm_planned_use=True,
+        )
+        self.assertFalse(
+            ShoppingItem.objects.filter(
+                shopping_list=item.shopping_list,
+                canonical_ingredient=self.flour,
+                state=ShoppingItem.State.OPEN,
+            ).exists()
+        )
+
     def test_pantry_addition_page_action(self):
         InventoryItem.objects.create(
             household=self.household,
             ingredient=self.flour,
-            status=InventoryItem.Status.NEEDS_REPLENISHMENT,
+            status=InventoryItem.Status.UNAVAILABLE,
         )
         shopping_list = ShoppingList.objects.create(
             household=self.household, name="Erledigungen"
@@ -276,7 +353,7 @@ class PurchaseTests(ShoppingTestCase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.state, ShoppingItem.State.PURCHASED)
         inventory = InventoryItem.objects.get(ingredient=self.flour)
-        self.assertEqual(inventory.status, "in_stock")
+        self.assertEqual(inventory.status, "available")
         self.assertEqual(
             InventoryEvent.objects.get(item=inventory).origin, InventoryEvent.Origin.PURCHASE
         )
@@ -298,10 +375,10 @@ class PurchaseTests(ShoppingTestCase):
 
     def test_purchase_never_asks_about_planned_use(self):
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.flour, status="needs_replenishment"
+            household=self.household, ingredient=self.flour, status="unavailable"
         )
         purchase_item(user=self.user, item_id=self.item.id, version=self.item.version)
-        self.assertEqual(InventoryItem.objects.get(ingredient=self.flour).status, "in_stock")
+        self.assertEqual(InventoryItem.objects.get(ingredient=self.flour).status, "available")
 
     def test_unlinked_items_do_not_touch_the_pantry(self):
         manual = add_manual_item(user=self.user, list_id=self.list.id, label="Servietten")

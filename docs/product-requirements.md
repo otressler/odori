@@ -45,16 +45,16 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 ### Plan, shop, and cook
 
 1. The user drags catalog recipes or suggestions onto days and meal slots in a week.
-2. The app calculates ingredients required by the plan and omits ingredients whose inventory status is `in_stock`.
+2. The app calculates ingredients required by the plan and omits ingredients whose inventory status is `available`.
 3. The user creates or refreshes a shopping list; manually added items are preserved.
-4. Checking off an item marks it purchased and sets its mapped inventory item to `in_stock`.
+4. Checking off an item marks it purchased and sets its mapped inventory item to `available`.
 5. Opening a planned recipe starts Kitchen Mode, which can request a screen wake lock.
 6. Marking a meal cooked records history; this reduces the score of recently cooked recipes in future suggestions.
 
 ### Protect planned ingredients
 
 1. The plan derives a current set of inventory ingredients required by upcoming meals.
-2. When a user manually changes a required `in_stock` item to `needs_replenishment`, the app warns that one or more upcoming meals need it and names those meals.
+2. When a user manually changes a required `available` item to another status, the app warns that one or more upcoming meals need it and names those meals.
 3. The user may cancel or explicitly confirm the change; the confirmed change is recorded in history.
 4. When the change originates from cooking its linked planned recipe, the app updates inventory without a warning because that consumption is expected.
 
@@ -91,14 +91,14 @@ Odori helps a household decide what to cook, remember recipes, and buy only what
 | FR-02 | Import recipes from a URL. | The system fetches permitted public pages, extracts readable recipe content, and presents a reviewable draft. |
 | FR-03 | Normalize ingredients using an LLM. | Each ingredient retains its source text and has a canonical inventory tag plus a confidence or review state. |
 | FR-04 | Maintain a recipe catalog. | Users can create, edit, archive, search, tag, and open recipes with ingredients, servings, and ordered steps. |
-| FR-05 | Track coarse inventory. | An inventory item can be `in_stock`, `needs_replenishment`, or `unknown`; no quantity is required. |
+| FR-05 | Track coarse inventory. | An inventory item can be `available`, `unavailable`, or `unknown`; no quantity is required. |
 | FR-06 | Suggest recipes using stock and history. | Suggestions identify ingredient coverage, missing items, and a reason; users can save a generated suggestion as a catalog recipe. |
 | FR-07 | Create a weekly meal plan. | Users can assign, move, remove, and resize recipe servings for meal slots in a selected week. |
-| FR-08 | Generate shopping lists from a plan. | The list aggregates planned ingredients, excludes `in_stock` items by default, and retains manual items when regenerated. |
-| FR-09 | Update inventory from purchases. | Checking off a list item records the purchase and changes its linked inventory item to `in_stock`. |
+| FR-08 | Generate shopping lists from a plan. | The list aggregates planned ingredients, excludes `available` items by default, includes unavailable and unknown requirements visibly, and retains manual items when regenerated. |
+| FR-09 | Update inventory from purchases. | Checking off a list item records the purchase and changes its linked inventory item to `available`. |
 | FR-10 | Provide Kitchen Mode. | A cooking view has large readable steps, progress controls, timers, and requests a Wake Lock when browser support and user permission allow it. |
 | FR-11 | Deploy privately. | The app is containerized, routed through Traefik, and not exposed by host ports to the public internet. |
-| FR-12 | Warn about removal of planned stock. | A manual status change away from `in_stock` warns when an upcoming meal requires the item; explicit ingredient changes selected while cooking that planned recipe do not produce this warning. Marking cooked alone does not infer depletion. |
+| FR-12 | Warn about removal of planned stock. | A manual status change away from `available`, or removal from the active shopping list, warns when an upcoming meal requires the item; explicit ingredient changes selected while cooking that planned recipe do not produce this warning. Marking cooked alone does not infer depletion. |
 | FR-13 | Support household collaboration. | Authorized users can share inventory and lists, and active viewers receive authenticated real-time item/list updates. |
 | FR-14 | Support recipe curation. | Users can edit extraction results, tag, favorite, archive, search, and scale recipes while preserving their source and original ingredient lines. |
 | FR-15 | Preserve shopping-list intent. | Users can add manual household items, see recipe provenance for calculated items, skip entries, and retain manual/purchased/skipped entries through regeneration. |

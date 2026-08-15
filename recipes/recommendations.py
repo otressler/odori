@@ -83,7 +83,7 @@ def _score_recipe(*, recipe, inventory, duplicate_counts, recently_cooked, feedb
     unknown_count = 0
     for ingredient_id, name in ingredients.items():
         status = inventory.get(ingredient_id)
-        if status == InventoryItem.Status.IN_STOCK:
+        if status == InventoryItem.Status.AVAILABLE:
             matched.append(name)
         else:
             missing.append(name)

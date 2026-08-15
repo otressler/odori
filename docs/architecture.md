@@ -73,14 +73,14 @@ URL and file imports are not implemented. The intended pipeline is:
 
 1. Expand every planned recipe's ingredient list according to planned servings.
 2. Group entries by canonical ingredient tag and compatible normalized unit; retain original lines and separate incompatible/unknown quantity components as traceability.
-3. Exclude `in_stock` items by default. Treat `unknown` and `needs_replenishment` as needed, with a visible status.
+3. Exclude `available` items by default. Treat `unknown` and `unavailable` as needed, with a visible status. Shopping-list membership is an independent restock decision.
 4. Upsert calculated entries while preserving manual entries and checked/purchased state.
 5. Purchasing an entry changes linked inventory status transactionally.
 
 ### Planned-stock warning
 
 1. When inventory is changed manually, Planning finds upcoming meal slots whose approved recipes reference that canonical ingredient.
-2. If the item is currently `in_stock` and the requested status is not, the API returns the affected upcoming meals and requires an explicit confirmation.
+2. If the item is currently `available` and the requested status is not, the API returns the affected upcoming meals and requires an explicit confirmation. Removing a shopping item required by an upcoming meal uses the same confirmation pattern.
 3. Marking a recipe meal slot cooked may include explicit ingredient status changes selected in the cooking flow. The server verifies that each ingredient belongs to the recipe, applies those changes with origin `cook_recipe`, bypasses confirmation, and retains the meal-slot reference in each audit event. It never assumes all recipe ingredients were depleted.
 4. The resulting inventory change and any affected shopping-list updates publish real-time events.
 

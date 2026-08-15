@@ -80,7 +80,7 @@ Priority reflects household value and risk reduction, not implementation novelty
 
 ### BL-002: Low-maintenance pantry and stale-state review
 
-**Problem:** `in_stock` can remain true after unrecorded consumption, while demanding constant pantry maintenance would cause users to stop updating it.
+**Problem:** `available` can remain true after unrecorded consumption, while demanding constant pantry maintenance would cause users to stop updating it.
 
 **Outcome:** Pantry state is quick to confirm, visibly ages, and remains advisory rather than presenting false certainty.
 
@@ -92,7 +92,7 @@ Priority reflects household value and risk reduction, not implementation novelty
 2. Add a household-configurable staleness threshold, initially one global default rather than per-category rules.
 3. Build a “check the kitchen” flow ordered by store/pantry category, showing stale and unknown items first.
 4. Provide bulk category confirmation with a reviewable summary and one audit event per changed item.
-5. Add an `always_check` shopping policy for ingredients that should not be automatically excluded merely because they are `in_stock`.
+5. Add an `always_check` shopping policy for ingredients that should not be automatically excluded merely because they are `available`.
 6. Create inventory items lazily when a recipe mapping, shopping purchase, or explicit pantry action first needs them.
 7. Seed sensible categories and allow a household to mark common non-purchased ingredients such as water as ignored for shopping.
 8. Do not silently mutate stale items to `unknown`; show age and let the user confirm or change them.
@@ -100,7 +100,7 @@ Priority reflects household value and risk reduction, not implementation novelty
 **Acceptance criteria:**
 
 - A user can review a representative pantry on a phone without opening every item.
-- Old `in_stock` values are visibly distinguishable from recently confirmed values.
+- Old `available` values are visibly distinguishable from recently confirmed values.
 - `always_check` items remain on calculated shopping lists with an explanation.
 - Bulk confirmation is auditable and can recover cleanly from a stale version conflict.
 - Recipe creation does not require up-front pantry setup.

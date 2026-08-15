@@ -185,9 +185,9 @@ class IngredientIconJob(models.Model):
 
 class InventoryItem(models.Model):
     class Status(models.TextChoices):
-        IN_STOCK = "in_stock", "Vorrätig"
-        NEEDS_REPLENISHMENT = "needs_replenishment", "Nachkaufen"
+        AVAILABLE = "available", "Vorrätig"
         UNKNOWN = "unknown", "Unbekannt"
+        UNAVAILABLE = "unavailable", "Nicht verfügbar"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(

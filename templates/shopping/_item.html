@@ -67,7 +67,7 @@
         </button>
       </form>
     {% else %}
-      <span class="status status--{% if item.state == 'purchased' %}in_stock{% else %}unknown{% endif %}">{{ item.get_state_display }}</span>
+      <span class="status status--{% if item.state == 'purchased' %}available{% else %}unknown{% endif %}">{{ item.get_state_display }}</span>
       <form method="post" action="{% url 'shopping-item-state' item.id %}">
         {% csrf_token %}
         <input type="hidden" name="version" value="{{ item.version }}">
