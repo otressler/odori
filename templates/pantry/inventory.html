@@ -25,6 +25,7 @@
 </section>
 
 <div class="button-row" style="margin-bottom:1.25rem">
+  <a class="button secondary" href="{% url 'pantry-check' %}">Pantry bis zu einem Tag prüfen</a>
   <a class="button" href="{% url 'inventory-condense' %}">Ähnliche Zutaten prüfen</a>
   <form method="post" action="{% url 'inventory-category-suggestions' %}">
     {% csrf_token %}
@@ -95,11 +96,19 @@
         <div class="segmented inventory-card__control" data-inventory-status data-url="{% url 'api-v1-inventory-change-status' item.ingredient.id %}" data-version="{{ item.version }}" data-status="{{ item.status }}">
           {% for value, label in status_choices %}
             <button type="button" data-status-value="{{ value }}" aria-pressed="{% if value == item.status %}true{% else %}false{% endif %}">
-              <svg aria-hidden="true"><use href="#i-{% if value == 'in_stock' %}check{% elif value == 'needs_replenishment' %}basket{% else %}question{% endif %}"></use></svg>
+              <svg aria-hidden="true"><use href="#i-{% if value == 'available' %}check{% elif value == 'unavailable' %}jar{% else %}question{% endif %}"></use></svg>
               <span class="sr-only">{{ label }} für {{ item.ingredient.name }}</span>
             </button>
           {% endfor %}
         </div>
+        <button type="button"
+                class="button{% if item.on_shopping_list %} secondary{% endif %} inventory-card__restock"
+                data-pantry-restock
+                data-url="{% url 'api-v1-inventory-shopping-intent' item.ingredient.id %}"
+                data-version="{{ item.shopping_item_version }}"
+                data-on-shopping-list="{{ item.on_shopping_list|yesno:'true,false' }}">
+          {% if item.on_shopping_list %}Von Einkaufsliste entfernen{% else %}Zur Einkaufsliste{% endif %}
+        </button>
         </article>
         {% endfor %}
       </div>
@@ -153,6 +162,49 @@
           window.clearTimeout(timeout);
           control.dataset.pending = "false";
         });
+      });
+    });
+  });
+  document.querySelectorAll("[data-pantry-restock]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      if (button.disabled) return;
+      var onShoppingList = button.dataset.onShoppingList === "true";
+      var body = {
+        onShoppingList: !onShoppingList,
+        version: button.dataset.version ? Number(button.dataset.version) : null
+      };
+      button.disabled = true;
+      function send(confirmPlannedUse) {
+        if (confirmPlannedUse) body.confirmPlannedUse = true;
+        return fetch(button.dataset.url, {
+          method: "PATCH",
+          headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken(), "Accept": "application/json"},
+          body: JSON.stringify(body)
+        });
+      }
+      send(false).then(function (response) {
+        if (response.status === 409) {
+          return response.json().then(function (data) {
+            if (data.error && data.error.code === "planned_ingredient_in_use" &&
+                window.confirm("Diese Zutat wird für geplante Mahlzeiten gebraucht. Trotzdem von der Einkaufsliste entfernen?")) {
+              return send(true);
+            }
+            throw new Error("planned use");
+          });
+        }
+        return response;
+      }).then(function (response) {
+        if (!response.ok) throw new Error("shopping intent update failed");
+        return response.json();
+      }).then(function (data) {
+        button.dataset.onShoppingList = String(data.onShoppingList);
+        button.dataset.version = data.shoppingItem ? data.shoppingItem.version : "";
+        button.textContent = data.onShoppingList ? "Von Einkaufsliste entfernen" : "Zur Einkaufsliste";
+        button.classList.toggle("secondary", data.onShoppingList);
+      }).catch(function () {
+        window.location.reload();
+      }).finally(function () {
+        button.disabled = false;
       });
     });
   });

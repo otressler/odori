@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}URL importieren · Odori{% endblock %}
+
+{% block content %}
+<div class="import-page import-page--narrow">
+  <a class="back-link" href="{% url 'recipe-import' %}">← Importweg ändern</a>
+  <header class="import-page__intro">
+    <span class="import-card__icon import-card__icon--standalone"><svg aria-hidden="true"><use href="#i-link"></use></svg></span>
+    <p class="hero__eyebrow">Rezept aus dem Internet</p>
+    <h1>Ein Link genügt</h1>
+    <p>Odori liest die Rezeptseite und erstellt einen Entwurf. Du prüfst ihn anschließend, bevor er in deinem Kochbuch landet.</p>
+  </header>
+  <section class="panel import-form-panel">
+    <h2>So funktioniert es</h2>
+    <ol class="instruction-list">
+      <li>Kopiere die vollständige URL einer Rezeptseite.</li>
+      <li>Füge sie unten ein und starte den Import.</li>
+      <li>Prüfe Zutaten und Schritte im fertigen Entwurf.</li>
+    </ol>
+    <form class="import-form" id="recipe-import-form">
+      {% csrf_token %}
+      <div class="field">
+        <label for="recipe-import-url">Rezept-URL</label>
+        <input id="recipe-import-url" name="url" type="url" required maxlength="2048"
+               placeholder="https://www.example.com/mein-rezept" autocomplete="url">
+        <span class="field__hint">Funktioniert am besten mit einer öffentlichen Rezeptseite.</span>
+      </div>
+      <button class="primary" type="submit" id="recipe-import-submit">Rezept importieren</button>
+    </form>
+    <p class="message" id="recipe-import-status" role="status" aria-live="polite" hidden></p>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("recipe-import-form");
+  var input = document.getElementById("recipe-import-url");
+  var submit = document.getElementById("recipe-import-submit");
+  var status = document.getElementById("recipe-import-status");
+  var csrf = form.querySelector("[name=csrfmiddlewaretoken]").value;
+  var pollLimit = 120;
+  function show(text, kind) {
+    status.hidden = false;
+    status.className = "message" + (kind ? " message--" + kind : "");
+    status.textContent = text;
+  }
+  function poll(url, remaining) {
+    fetch(url, {headers: {"Accept": "application/json"}}).then(function (response) {
+      return response.ok ? response.json() : Promise.reject();
+    }).then(function (data) {
+      if (data.state === "succeeded" && data.recipe) {
+        window.location.href = "/recipes/" + data.recipe.id + "/";
+      } else if (data.state === "failed" || data.state === "cancelled") {
+        show("Der Import konnte nicht abgeschlossen werden. Bitte prüfe die URL und versuche es erneut.", "error");
+        submit.disabled = false;
+      } else if (remaining <= 0) {
+        show("Der Import dauert länger als erwartet. Du kannst später im Rezeptbuch nachsehen.", "warning");
+        submit.disabled = false;
+      } else {
+        show("Die Rezeptdaten werden gelesen …");
+        window.setTimeout(function () { poll(url, remaining - 1); }, 1500);
+      }
+    }).catch(function () {
+      show("Der Importstatus konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
+      submit.disabled = false;
+    });
+  }
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    submit.disabled = true;
+    show("Import wird vorbereitet …");
+    fetch("/api/v1/recipe-imports", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": csrf, "Accept": "application/json"},
+      body: JSON.stringify({url: input.value.trim()})
+    }).then(function (response) {
+      return response.json().then(function (data) { return response.ok ? data : Promise.reject(data); });
+    }).then(function (data) { poll(data.statusUrl, pollLimit); }).catch(function (data) {
+      show(data && data.error && data.error.message || "Der Import konnte nicht gestartet werden. Bitte prüfe die URL.", "error");
+      submit.disabled = false;
+    });
+  });
+}());
+</script>
+{% endblock %}

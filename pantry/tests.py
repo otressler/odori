@@ -12,8 +12,10 @@ from core.models import Household, HouseholdMembership, User
 from planning.models import MealSlot
 from planning.services import add_slot, current_week_start, get_or_create_plan, week_start_for
 from recipes.models import Recipe, RecipeIngredient, RecipeSource
+from shopping.models import ShoppingItem, ShoppingList
 
 from .jobs import run_next_category_job
+from .mapping import map_source_text
 from .models import (
     CanonicalIngredient,
     IngredientCategory,
@@ -45,20 +47,31 @@ class PantryApiTests(TestCase):
         response = self.patch_inventory(
             {
                 "items": [
-                    {"ingredientId": str(self.ingredient.id), "status": "in_stock", "version": 1}
+                    {"ingredientId": str(self.ingredient.id), "status": "available", "version": 1}
                 ]
             }
         )
         self.assertEqual(response.status_code, 200)
         item = InventoryItem.objects.get(ingredient=self.ingredient)
-        self.assertEqual(item.status, "in_stock")
+        self.assertEqual(item.status, "available")
         self.assertEqual(InventoryEvent.objects.filter(item=item).count(), 1)
+
+    def test_single_status_change_returns_shopping_intent(self):
+        response = self.client.post(
+            f"/api/v1/inventory/{self.ingredient.id}/change-status",
+            json.dumps({"status": "unavailable", "version": 1}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], InventoryItem.Status.UNAVAILABLE)
+        self.assertFalse(response.json()["onShoppingList"])
 
     def test_stale_inventory_version_conflicts(self):
         self.patch_inventory(
             {
                 "items": [
-                    {"ingredientId": str(self.ingredient.id), "status": "in_stock", "version": 1}
+                    {"ingredientId": str(self.ingredient.id), "status": "available", "version": 1}
                 ]
             }
         )
@@ -70,6 +83,48 @@ class PantryApiTests(TestCase):
             }
         )
         self.assertEqual(response.status_code, 409)
+
+    def test_shopping_intent_is_separate_from_availability(self):
+        item = InventoryItem.objects.create(
+            household=self.household,
+            ingredient=self.ingredient,
+            status=InventoryItem.Status.UNAVAILABLE,
+        )
+
+        response = self.client.patch(
+            f"/api/v1/inventory/{self.ingredient.id}/shopping-intent",
+            json.dumps({"onShoppingList": True}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["onShoppingList"])
+        shopping_item = ShoppingItem.objects.get(
+            canonical_ingredient=self.ingredient,
+            state=ShoppingItem.State.OPEN,
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.UNAVAILABLE)
+        self.assertEqual(body["shoppingItem"]["id"], str(shopping_item.id))
+
+        response = self.client.patch(
+            f"/api/v1/inventory/{self.ingredient.id}/shopping-intent",
+            json.dumps(
+                {"onShoppingList": False, "version": shopping_item.version}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["onShoppingList"])
+        self.assertFalse(
+            ShoppingList.objects.filter(
+                household=self.household,
+                items__canonical_ingredient=self.ingredient,
+                items__state=ShoppingItem.State.OPEN,
+            ).exists()
+        )
 
     def test_inventory_batch_rolls_back_changes_when_a_later_item_is_stale(self):
         other = CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
@@ -85,12 +140,12 @@ class PantryApiTests(TestCase):
                 "items": [
                     {
                         "ingredientId": str(self.ingredient.id),
-                        "status": InventoryItem.Status.IN_STOCK,
+                        "status": InventoryItem.Status.AVAILABLE,
                         "version": 1,
                     },
                     {
                         "ingredientId": str(other.id),
-                        "status": InventoryItem.Status.IN_STOCK,
+                        "status": InventoryItem.Status.AVAILABLE,
                         "version": 1,
                     },
                 ]
@@ -106,7 +161,7 @@ class PantryApiTests(TestCase):
         other_household = Household.objects.create(name="Other")
         other = CanonicalIngredient.objects.create(household=other_household, name="Basilikum")
         response = self.patch_inventory(
-            {"items": [{"ingredientId": str(other.id), "status": "in_stock", "version": 1}]}
+            {"items": [{"ingredientId": str(other.id), "status": "available", "version": 1}]}
         )
         self.assertEqual(response.status_code, 404)
 
@@ -117,6 +172,29 @@ class PantryApiTests(TestCase):
         result = response.json()["ingredients"]
         self.assertEqual(result[0]["id"], str(self.ingredient.id))
         self.assertGreaterEqual(result[0]["matchScore"], 0.84)
+
+    def test_mapping_endpoint_returns_household_scoped_candidates_and_explanation(self):
+        self.ingredient.aliases = ["Paradeiser"]
+        self.ingredient.save(update_fields=["aliases"])
+
+        response = self.client.get("/api/v1/ingredient-mappings?text=Paradeiser")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["state"], "matched")
+        self.assertEqual(body["candidate"]["ingredientId"], str(self.ingredient.id))
+        self.assertEqual(body["candidate"]["method"], "exact_alias")
+
+    def test_mapping_excludes_inactive_and_other_household_ingredients(self):
+        self.ingredient.active = False
+        self.ingredient.save(update_fields=["active"])
+        other_household = Household.objects.create(name="Other")
+        CanonicalIngredient.objects.create(household=other_household, name="Tomate")
+
+        result = map_source_text(household=self.household, source_text="Tomate")
+
+        self.assertEqual(result.state, "unresolved")
+        self.assertIsNone(result.candidate)
 
     @patch("pantry.semantic.embed", return_value=[1.0, 0.0])
     def test_query_embeddings_are_cached(self, embed):
@@ -430,12 +508,12 @@ class PantryApiTests(TestCase):
 
     def test_inventory_page_creates_an_ingredient_and_initial_status(self):
         response = self.client.post(
-            "/pantry/add/", {"name": "Basilikum", "status": InventoryItem.Status.IN_STOCK}
+            "/pantry/add/", {"name": "Basilikum", "status": InventoryItem.Status.AVAILABLE}
         )
 
         self.assertRedirects(response, "/pantry/")
         item = InventoryItem.objects.get(ingredient__name="Basilikum")
-        self.assertEqual(item.status, InventoryItem.Status.IN_STOCK)
+        self.assertEqual(item.status, InventoryItem.Status.AVAILABLE)
 
     def test_inventory_page_updates_status_with_version(self):
         item = InventoryItem.objects.create(
@@ -445,12 +523,12 @@ class PantryApiTests(TestCase):
         )
         response = self.client.post(
             f"/pantry/{self.ingredient.id}/status/",
-            {"status": InventoryItem.Status.NEEDS_REPLENISHMENT, "version": item.version},
+            {"status": InventoryItem.Status.UNAVAILABLE, "version": item.version},
         )
 
         self.assertRedirects(response, "/pantry/")
         item.refresh_from_db()
-        self.assertEqual(item.status, InventoryItem.Status.NEEDS_REPLENISHMENT)
+        self.assertEqual(item.status, InventoryItem.Status.UNAVAILABLE)
 
     def test_inventory_page_removes_item_and_its_history(self):
         item = InventoryItem.objects.create(
@@ -461,7 +539,7 @@ class PantryApiTests(TestCase):
         InventoryEvent.objects.create(
             item=item,
             previous_status=InventoryItem.Status.UNKNOWN,
-            new_status=InventoryItem.Status.IN_STOCK,
+            new_status=InventoryItem.Status.AVAILABLE,
             actor=self.user,
         )
 

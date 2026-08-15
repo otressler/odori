@@ -12,8 +12,34 @@ Implementation agents must treat the following documents as contracts:
 - [API specification](api-specification.md) defines browser/server contracts.
 - [Deployment and operations](deployment-operations.md) defines the production environment.
 - [Product backlog](backlog.md) contains candidate work that is not committed until promoted through its decision checklist.
+- [Ingredient substitutions handoff](ingredient-substitutions.md) defines the
+  post-core substitution work packet and its mandatory planning, shopping, and
+  pantry integration.
 
 When implementation reveals an ambiguity, update the relevant contract in the same change. Do not silently invent a conflicting rule in code.
+
+## Feature plan index
+
+The following feature has a detailed, future-agent implementation plan. Verify it against the
+repository before starting work:
+
+- [Ingredient-to-pantry-item mapping](ingredient-to-pantry-item-mapping-plan.md) — household-scoped
+  matching of recipe/import/manual ingredient text to canonical pantry items, with vector-assisted
+  ranking, review UX, correction learning, inventory safety, rollout controls, and test guidance.
+
+### Rough outline
+
+1. Verify the existing canonical-ingredient, recipe-line, inventory, shopping, semantic-search, and
+   worker contracts.
+2. Consolidate matching behind one household-scoped service with exact, alias, fuzzy, and optional
+   vector signals.
+3. Add only the persistence required for confidence, review state, model/policy versions, and
+   correction provenance.
+4. Add review-safe APIs and responsive accessible UI for accepting, changing, or creating mappings.
+5. Reuse the existing worker for bounded embedding refresh and comparison/backfill jobs.
+6. Roll out read-only comparison first, then enable new automatic mappings behind feature switches.
+7. Validate household isolation, stale-write behavior, provider fallback, shopping integration, and
+   accessibility before enabling broad backfills.
 
 ## Delivery strategy
 
@@ -224,7 +250,7 @@ Tasks:
 
 - Implement deterministic expansion and grouping by canonical ingredient while preserving recipe provenance.
 - Scale numeric amounts and sum only compatible normalized units; preserve unknown and incompatible quantity components without unit conversion.
-- Generate/refresh calculated entries, exclude `in_stock` by default, visibly include `unknown`, and preserve manual/purchased/skipped entries.
+- Generate/refresh calculated entries, exclude `available` by default, visibly include `unknown` and `unavailable`, and preserve manual/purchased/skipped entries.
 - Implement manual items and open/purchased/skipped transitions with versions.
 - Purchase a mapped item and update pantry state in one transaction through an application service/domain event.
 
@@ -244,7 +270,7 @@ Tasks:
 
 - Build Kitchen Mode with stable progress, optional timers, Wake Lock request/reacquisition, and a clear fallback when unsupported.
 - Implement mark-cooked/undo and cook history. Let users explicitly select any recipe ingredients whose inventory status should change; do not infer depletion for all ingredients.
-- Implement the two-step planned-stock confirmation for manual transitions away from `in_stock`.
+- Implement the two-step planned-stock confirmation for manual transitions away from `available` and for removing planned ingredients from the active shopping list.
 - Bypass that warning only for the transactional `cook_recipe` path tied to a valid meal slot; retain origin and slot in audit history.
 
 Tests:
@@ -317,6 +343,67 @@ Tests:
 - Non-owners cannot view operations data or retry another household's work.
 - Diagnostics never retain prompts, embeddings, provider payloads, cookies, or credentials and prune to the configured retention bound.
 - A stale worker heartbeat and a failed provider request produce actionable, non-sensitive operational states.
+
+## Post-core follow-up: Ingredient substitutions
+
+**Entry gate:** Canonical ingredient normalization and aliases are stable enough
+that a household can reliably author directional substitution rules. Promote
+this work only after the core plan/shop/cook loop has usage evidence; it is not
+part of the Milestone 2 exit gate.
+
+**Detailed handoff:** [Ingredient substitutions: implementation
+handoff](ingredient-substitutions.md). An implementation agent must first
+verify the handoff against the current codebase and update it for any drift.
+
+**Owner:** planning and shopping agent
+**Depends on:** Milestone 2 planning, shopping, and Kitchen Mode; stable
+canonical ingredient normalization; versioned slot and shopping mutations.
+
+Tasks:
+
+- Implement household-owned, directional substitution rules and explicit,
+  reversible meal-slot ingredient decisions without mutating recipes.
+- Add an accessible pre-cooking ingredient-review page from the week plan, and
+  render the same effective ingredient list in Kitchen Mode.
+- Make accepted substitutions and omissions alter calculated shopping
+  contributions for only their affected meal-slot ingredient lines; preserve
+  original/effective provenance and existing manual, purchased, and skipped
+  list behavior.
+- Surface eligible alternatives in calculated shopping items only when the
+  action can be tied to a concrete upcoming meal slot and explicitly accepted.
+- Derive high-confidence “used before” suggestions solely from prior explicit
+  household decisions; post-add prompts remain non-blocking and never apply a
+  choice automatically.
+- Maintain household isolation, slot/list optimistic concurrency, and
+  meaningful stale-version recovery across pre-cooking, shopping, and Kitchen
+  Mode.
+
+Cross-feature constraints:
+
+- The effective-ingredient resolver must be shared by planning, shopping,
+  Kitchen Mode, and any future recommendation coverage logic; do not duplicate
+  resolution rules in templates or views.
+- A substitute’s pantry status controls its shopping exclusion; the original
+  ingredient is not inferred as unavailable or consumed.
+- Cooking inventory changes must validate effective substituted ingredients
+  without inferring depletion.
+- Omission is a deliberate per-slot decision, not a fake pantry ingredient or
+  globally applicable substitution rule.
+- Rules, confidence, availability, or prior choices may suggest options but
+  never bypass explicit acceptance. Household notes are not allergen, dietary,
+  or nutritional advice.
+
+Tests:
+
+- Directional, household-scoped rule authorization and acceptance/revert
+  behavior, including cooked, stale, mismatched-line, and foreign-household
+  rejections.
+- Effective planning and Kitchen Mode lines remain consistent while original
+  recipe data remains unchanged.
+- Shopping aggregation, stock exclusion, recalculation provenance, omission,
+  and retention of manual/purchased/skipped items.
+- Learned suggestions and post-add prompts never apply or recalculate a list
+  without a new explicit decision.
 
 ## Milestone 3: Assisted import
 
@@ -477,6 +564,54 @@ Tasks:
 - Document and execute a clean-host restore, application rollback constraints, secret rotation, and provider-disable procedure.
 - Run dependency/security scanning, upload/URL abuse tests, accessibility checks, ARM64 soak testing, and representative performance checks.
 - Confirm Azure budgets/alerts, application quotas, and feature switches in the production environment.
+
+## Candidate follow-up ideas
+
+These ideas are intentionally not committed milestones. Promote them into a detailed
+implementation packet only after the core workflow has usage evidence and the relevant
+privacy, safety, cost, and provider-boundary questions are resolved.
+
+### Household profiles and personalization
+
+- Let users create a household profile containing household size, preferred dishes or cuisines,
+  allergies, dietary constraints, and region.
+- Use household size to auto-scale planned meal servings while retaining explicit per-meal
+  overrides for guests and unusual occasions.
+- Include household profile signals in recommendation ranking and explain when a preference,
+  allergy, or regional preference affected the result.
+- Add an LLM-assisted seasonality signal for ingredients, with region and date as explicit inputs,
+  so seasonal availability can contribute to recommendation ranking without blocking planning.
+- Estimate a nutrition profile per serving for approved recipes, label estimates as approximate,
+  and keep them separate from medical or dietary advice.
+- Add a household health coach that offers cautious, explainable diet tips such as identifying
+  consistently low fiber intake; require user-visible assumptions and avoid diagnosis or treatment
+  claims.
+
+### Planning and menus
+
+- Support multi-recipe menus within one time slot, such as starters, entrees, sides, and desserts,
+  while preserving recipe-level provenance for shopping and cooking.
+- Add a dinner planner that recommends compatible multi-course pairings based on preparation time,
+  ingredients, household preferences, seasonality, and serving size.
+- Add a fast meal-week planning chat that can propose a complete week and convert accepted choices
+  through the existing plan and shopping contracts.
+
+### Conversational cooking and recipe creation
+
+- Add a draft recipe chat where users can ask questions about technique, clarify steps, and revise a
+  draft with an LLM; all changes remain reviewable draft edits until explicitly accepted.
+- Add a cooking chat for technique questions and last-minute pantry-based replacements, with clear
+  distinction between suggestions and confirmed ingredient substitutions.
+- Offer voice chat for recipe-draft, cooking, and meal-week planning conversations, with a text
+  transcript that users can review and correct.
+
+### Agent integrations
+
+- Provide MCP tools for agents to retrieve authorized household profile data, search the recipe
+  catalog, inspect relevant pantry state, and read or propose planning changes through existing
+  application services.
+- Enforce household authorization, least-privilege tool scopes, confirmation for mutations, audit
+  records, redaction, and provider-disable behavior for every MCP operation.
 
 ## Parallel-agent coordination
 

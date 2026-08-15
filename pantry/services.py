@@ -25,7 +25,7 @@ from .semantic import (
 
 
 class PlannedIngredientInUse(Exception):
-    """A manual transition away from `in_stock` would affect upcoming planned meals."""
+    """A manual transition away from `available` would affect upcoming planned meals."""
 
     def __init__(self, slots):
         self.slots = list(slots)
@@ -58,8 +58,8 @@ def write_status(*, item, status, actor, origin, meal_slot=None):
 
 def removes_planned_stock(previous_status, new_status):
     return (
-        previous_status == InventoryItem.Status.IN_STOCK
-        and new_status != InventoryItem.Status.IN_STOCK
+        previous_status == InventoryItem.Status.AVAILABLE
+        and new_status != InventoryItem.Status.AVAILABLE
     )
 
 
@@ -103,7 +103,7 @@ def record_purchase(*, user, household, ingredient):
     item, _ = locked_item(household, ingredient)
     return write_status(
         item=item,
-        status=InventoryItem.Status.IN_STOCK,
+        status=InventoryItem.Status.AVAILABLE,
         actor=user,
         origin=InventoryEvent.Origin.PURCHASE,
     )

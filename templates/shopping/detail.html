@@ -42,6 +42,7 @@
       <div class="ingredient-search" data-ingredient-search>
         <input id="manual-ingredient-search" type="search" autocomplete="off" role="combobox"
                aria-autocomplete="list" aria-expanded="false" aria-controls="manual-ingredient-results"
+               maxlength="120"
                placeholder="Vorratszutat suchen">
         <input id="manual-ingredient" type="hidden" name="ingredient_id">
         <div id="manual-ingredient-results" class="ingredient-search__results" role="listbox" hidden></div>
@@ -55,9 +56,9 @@
 {% if pantry_items %}
   <section class="panel shopping-add-item">
     <h2>Aus dem Vorrat hinzufügen</h2>
-    <p>Diese Zutaten sind als „Nachkaufen“ oder „Unbekannt“ markiert.</p>
+    <p>Diese Zutaten sind als „Nicht verfügbar“ oder „Unbekannt“ markiert.</p>
     <div class="button-row" data-pantry-picker data-list-id="{{ list.id }}">
-      <button class="primary" type="button" data-pantry-add-all>Alle „Nachkaufen“ hinzufügen</button>
+      <button class="primary" type="button" data-pantry-add-all>Alle „Nicht verfügbar“ hinzufügen</button>
     </div>
     <ul class="shopping-pantry-picker">
       {% for pantry_item in pantry_items %}
@@ -154,7 +155,7 @@
         var button = event.currentTarget;
         button.disabled = true;
         var options = Array.from(pantryPicker.querySelectorAll('[data-pantry-option]')).filter(function (option) {
-          return option.dataset.status === "needs_replenishment";
+          return option.dataset.status === "unavailable";
         });
         Promise.all(options.map(addPantryItem)).then(function () {
           button.disabled = true;
@@ -172,6 +173,34 @@
         results.replaceChildren();
         input.setAttribute("aria-expanded", "false");
       }
+      function csrfToken() {
+        var cookie = document.cookie.split("; ").find(function (item) { return item.indexOf("csrftoken=") === 0; });
+        return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
+      }
+      function quickCreate(name, option) {
+        option.disabled = true;
+        option.textContent = "Wird angelegt …";
+        fetch("/api/v1/ingredients", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken()
+          },
+          body: JSON.stringify({name: name})
+        })
+          .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+          .then(function (item) {
+            value.value = item.id;
+            input.value = item.name;
+            closeResults();
+          })
+          .catch(function () {
+            option.disabled = false;
+            option.textContent = "„" + name + "“ schnell anlegen";
+          });
+      }
       function showResults(items) {
         results.replaceChildren();
         items.forEach(function (item) {
@@ -188,8 +217,21 @@
           });
           results.appendChild(option);
         });
-        results.hidden = !items.length;
-        input.setAttribute("aria-expanded", String(Boolean(items.length)));
+        var query = input.value.trim();
+        if (query) {
+          var createOption = document.createElement("button");
+          createOption.type = "button";
+          createOption.className = "ingredient-search__option";
+          createOption.setAttribute("role", "option");
+          createOption.textContent = "„" + query + "“ schnell anlegen";
+          createOption.addEventListener("mousedown", function (event) {
+            event.preventDefault();
+            quickCreate(query, createOption);
+          });
+          results.appendChild(createOption);
+        }
+        results.hidden = !items.length && !query;
+        input.setAttribute("aria-expanded", String(Boolean(items.length || query)));
       }
       input.addEventListener("input", function () {
         value.value = "";

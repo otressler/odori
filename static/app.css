@@ -925,14 +925,14 @@ textarea:focus {
   flex: none;
 }
 
-.status--in_stock,
+.status--available,
 .status--approved {
   background: var(--olive-soft);
   color: var(--olive-deep);
   border-color: color-mix(in srgb, var(--olive) 35%, transparent);
 }
 
-.status--needs_replenishment,
+.status--unavailable,
 .status--draft {
   background: var(--saffron-soft);
   color: var(--saffron-ink);
@@ -1408,6 +1408,203 @@ textarea:focus {
 
 /* ---------- 10. Recipe catalogue ---------- */
 
+.import-page {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+.import-page--narrow {
+  max-width: 48rem;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.import-page__intro {
+  max-width: 48rem;
+  margin-bottom: 2rem;
+}
+
+.import-page__intro h1 {
+  max-width: 15ch;
+  margin-bottom: 0.6rem;
+}
+
+.import-page__intro > p:last-child {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+.import-options {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.import-card {
+  position: relative;
+  display: flex;
+  min-height: 13rem;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.import-card:not(.import-card--disabled):hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lift);
+}
+
+.import-card--terracotta { border-top: 0.35rem solid var(--terracotta); }
+.import-card--olive { border-top: 0.35rem solid var(--olive); }
+.import-card--saffron { border-top: 0.35rem solid var(--saffron); }
+
+.import-card__icon {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-sunk);
+  color: var(--terracotta-deep);
+}
+
+.import-card__icon svg {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.import-card__icon--standalone {
+  margin-bottom: 0.75rem;
+}
+
+.import-card__body {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.import-card__body strong {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.import-card__body span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.import-card__arrow {
+  margin-top: auto;
+  align-self: end;
+  color: var(--terracotta-deep);
+  font-size: 1.5rem;
+}
+
+.import-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 3rem 0 1rem;
+}
+
+.import-section-heading h2 {
+  margin: 0;
+}
+
+.import-section-heading > span,
+.import-card__badge {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.import-options--upcoming {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.import-card--disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.import-card__badge {
+  margin-top: auto;
+  align-self: end;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.import-form-panel {
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+}
+
+.import-form-panel h2 {
+  margin-bottom: 0.75rem;
+}
+
+.instruction-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  padding-left: 1.5rem;
+  color: var(--text-muted);
+}
+
+.import-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.import-form button {
+  justify-self: start;
+}
+
+.recipe-import-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.recipe-import-callout h2 {
+  margin-bottom: 0.25rem;
+}
+
+@media (max-width: 48rem) {
+  .import-options,
+  .import-options--upcoming {
+    grid-template-columns: 1fr;
+  }
+
+  .import-card {
+    min-height: 0;
+  }
+
+  .recipe-import-callout {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .recipe-grid {
   display: grid;
   gap: 1rem;
@@ -1719,7 +1916,18 @@ textarea:focus {
   gap: 0.5rem;
   grid-template-columns:
     minmax(5rem, 0.6fr) minmax(4.5rem, 0.5fr)
-    minmax(11rem, 2fr) minmax(10rem, 1.5fr);
+    minmax(11rem, 2fr) minmax(10rem, 1.5fr) auto;
+}
+
+.row-remove {
+  align-self: end;
+}
+
+.step-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.5rem;
 }
 
 .ingredient-search {
@@ -2034,12 +2242,12 @@ textarea:focus {
   box-shadow: var(--shadow-soft);
 }
 
-.inventory-card[data-status="in_stock"] .segmented button[aria-pressed="true"] {
+.inventory-card[data-status="available"] .segmented button[aria-pressed="true"] {
   background: var(--olive);
   color: #fff;
 }
 
-.inventory-card[data-status="needs_replenishment"] .segmented button[aria-pressed="true"] {
+.inventory-card[data-status="unavailable"] .segmented button[aria-pressed="true"] {
   background: var(--saffron);
   color: #33210b;
 }
@@ -2824,6 +3032,14 @@ body.kitchen main {
 
   .ingredient-row {
     grid-template-columns: 1fr;
+  }
+
+  .step-row {
+    grid-template-columns: 1fr;
+  }
+
+  .row-remove {
+    justify-self: start;
   }
 
   .inline-form {

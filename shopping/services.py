@@ -19,6 +19,13 @@ class StaleItemVersion(Exception):
         super().__init__("stale_version")
 
 
+class ShoppingItemPlannedUse(Exception):
+    def __init__(self, ingredient, slots):
+        self.ingredient = ingredient
+        self.slots = list(slots)
+        super().__init__("planned_ingredient_in_use")
+
+
 def quantize(value):
     quantized = value.quantize(Decimal("0.01")).normalize()
     if quantized == quantized.to_integral_value():
@@ -104,10 +111,44 @@ def collect_aggregates(plan):
     return aggregates
 
 
+def collect_requirements_until(*, household, until_date):
+    """Collect remaining planned recipe requirements through an inclusive date."""
+
+    aggregates = {}
+    slots = (
+        MealSlot.objects.select_related("recipe")
+        .prefetch_related("recipe__ingredients__canonical_ingredient")
+        .filter(
+            plan__household=household,
+            date__lte=until_date,
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe__isnull=False,
+            cooked_at__isnull=True,
+        )
+        .order_by("date", "created_at")
+    )
+    for slot in slots:
+        factor = scaling_factor(slot)
+        for line in slot.recipe.ingredients.all():
+            if line.canonical_ingredient_id:
+                key = f"ingredient:{line.canonical_ingredient_id}"
+                label = line.canonical_ingredient.name
+            else:
+                key = f"text:{line.source_text.strip().lower()}"
+                label = line.source_text.strip()
+            if not label:
+                continue
+            aggregate = aggregates.setdefault(
+                key, Aggregate(key, label, line.canonical_ingredient)
+            )
+            aggregate.add_line(line.amount, line.unit, factor)
+    return aggregates
+
+
 def excluded_ingredient_ids(household):
     return set(
         InventoryItem.objects.filter(
-            household=household, status=InventoryItem.Status.IN_STOCK
+            household=household, status=InventoryItem.Status.AVAILABLE
         ).values_list("ingredient_id", flat=True)
     )
 
@@ -120,8 +161,20 @@ def unknown_ingredient_ids(household):
     )
 
 
+def active_list_for_household(household, *, create=False):
+    queryset = ShoppingList.objects.filter(
+        household=household, state=ShoppingList.State.ACTIVE
+    ).order_by("-created_at")
+    shopping_list = queryset.first()
+    if not shopping_list and create:
+        shopping_list = ShoppingList.objects.create(
+            household=household, name="Einkaufsliste"
+        )
+    return shopping_list
+
+
 @transaction.atomic
-def generate_from_plan(*, user, week_start, include_in_stock=False):
+def generate_from_plan(*, user, week_start, include_available=False):
     """Idempotent regeneration: only calculated, still-open entries are rewritten."""
 
     household = household_for(user)
@@ -130,7 +183,8 @@ def generate_from_plan(*, user, week_start, include_in_stock=False):
         raise Http404
     shopping_list = (
         ShoppingList.objects.select_for_update()
-        .filter(household=household, plan=plan, state=ShoppingList.State.ACTIVE)
+        .filter(household=household, state=ShoppingList.State.ACTIVE)
+        .order_by("-created_at")
         .first()
     )
     if not shopping_list:
@@ -139,8 +193,12 @@ def generate_from_plan(*, user, week_start, include_in_stock=False):
             plan=plan,
             name=f"Woche ab {plan.week_start_date.strftime('%d.%m.%Y')}",
         )
+    elif shopping_list.plan_id != plan.id:
+        shopping_list.plan = plan
+        shopping_list.name = f"Woche ab {plan.week_start_date.strftime('%d.%m.%Y')}"
+        shopping_list.save(update_fields=["plan", "name"])
     aggregates = collect_aggregates(plan)
-    excluded = set() if include_in_stock else excluded_ingredient_ids(household)
+    excluded = set() if include_available else excluded_ingredient_ids(household)
     unknown = unknown_ingredient_ids(household)
     wanted = {
         key: aggregate
@@ -249,7 +307,7 @@ def add_pantry_item(*, user, list_id, ingredient_id):
             household=household,
             ingredient_id=ingredient_id,
             status__in=[
-                InventoryItem.Status.NEEDS_REPLENISHMENT,
+                InventoryItem.Status.UNAVAILABLE,
                 InventoryItem.Status.UNKNOWN,
             ],
         )
@@ -272,7 +330,7 @@ def add_pantry_item(*, user, list_id, ingredient_id):
 
 
 @transaction.atomic
-def add_pantry_items(*, user, list_id, status=InventoryItem.Status.NEEDS_REPLENISHMENT):
+def add_pantry_items(*, user, list_id, status=InventoryItem.Status.UNAVAILABLE):
     """Add pantry ingredients with the requested status."""
 
     household = household_for(user)
@@ -297,10 +355,68 @@ def add_pantry_items(*, user, list_id, status=InventoryItem.Status.NEEDS_REPLENI
             label=pantry_item.ingredient.name,
             grouping_key=f"pantry:{pantry_item.ingredient_id}",
             source=ShoppingItem.Source.MANUAL,
+            needs_confirmation=pantry_item.status == InventoryItem.Status.UNKNOWN,
         )
         existing_ingredient_ids.add(pantry_item.ingredient_id)
         added += 1
     return added
+
+
+@transaction.atomic
+def toggle_pantry_restock(
+    *, user, ingredient_id, on_shopping_list, version=None, confirm_planned_use=False
+):
+    """Toggle open shopping intent for a pantry ingredient on the active list."""
+
+    household = household_for(user)
+    from pantry.models import CanonicalIngredient
+
+    ingredient = CanonicalIngredient.objects.filter(
+        id=ingredient_id, household=household
+    ).first()
+    if not ingredient:
+        raise Http404
+    shopping_list = active_list_for_household(household, create=on_shopping_list)
+    if not shopping_list:
+        return None
+    inventory_item = InventoryItem.objects.filter(
+        household=household, ingredient=ingredient
+    ).first()
+    items = list(
+        ShoppingItem.objects.select_for_update()
+        .filter(
+            shopping_list=shopping_list,
+            canonical_ingredient=ingredient,
+            state=ShoppingItem.State.OPEN,
+        )
+        .order_by("created_at")
+    )
+    if items and version is not None and items[0].version != version:
+        raise StaleItemVersion(items[0])
+    if on_shopping_list:
+        if items:
+            return items[0]
+        return ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            canonical_ingredient=ingredient,
+            label=ingredient.name,
+            grouping_key=f"pantry:{ingredient.id}",
+            source=ShoppingItem.Source.MANUAL,
+            needs_confirmation=(
+                inventory_item is not None
+                and inventory_item.status == InventoryItem.Status.UNKNOWN
+            ),
+        )
+    if not items:
+        return None
+    from planning.services import upcoming_slots_using_ingredient
+
+    slots = upcoming_slots_using_ingredient(household=household, ingredient=ingredient)
+    if slots and not confirm_planned_use:
+        raise ShoppingItemPlannedUse(ingredient, slots)
+    for item in items:
+        item.delete()
+    return None
 
 
 @transaction.atomic
@@ -339,8 +455,17 @@ def purchase_item(*, user, item_id, version):
 
 
 @transaction.atomic
-def delete_item(*, user, item_id, version):
+def delete_item(*, user, item_id, version, confirm_planned_use=False):
     item = item_for_user(user, item_id, lock=True)
     if item.version != version:
         raise StaleItemVersion(item)
+    if item.canonical_ingredient_id and not confirm_planned_use:
+        from planning.services import upcoming_slots_using_ingredient
+
+        slots = upcoming_slots_using_ingredient(
+            household=household_for(user),
+            ingredient=item.canonical_ingredient,
+        )
+        if slots:
+            raise ShoppingItemPlannedUse(item.canonical_ingredient, slots)
     item.delete()

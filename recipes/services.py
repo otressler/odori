@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.services import household_for
+from pantry.mapping import candidate_payload, map_source_text
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
@@ -39,13 +40,22 @@ def create_or_update_recipe(
     household = household or household_for(user)
     is_new_recipe = recipe is None
     matched_ingredients = {}
+    mapping_results = {}
     if "ingredients" in data:
         active_ingredients = list(
             CanonicalIngredient.objects.filter(household=household, active=True)
         )
         for index, line in enumerate(data["ingredients"]):
             if not line.get("canonicalIngredientId") and line.get("sourceText"):
-                matched_ingredients[index] = best_match(active_ingredients, line["sourceText"])
+                best_match(active_ingredients, line["sourceText"])
+                result = map_source_text(
+                    household=household,
+                    source_text=line["sourceText"],
+                )
+                mapping_results[index] = result
+                matched_ingredients[index] = (
+                    result.candidate.ingredient if result.state == "matched" else None
+                )
     with transaction.atomic():
         if recipe is None:
             source = source or RecipeSource.objects.create(household=household, type=source_type)
@@ -73,10 +83,11 @@ def create_or_update_recipe(
                 ingredient = matched_ingredients.get(index)
                 if line.get("canonicalIngredientId"):
                     ingredient = CanonicalIngredient.objects.filter(
-                        id=line["canonicalIngredientId"], household=household
+                        id=line["canonicalIngredientId"], household=household, active=True
                     ).first()
                     if not ingredient:
                         raise ValueError("Ingredient does not belong to this household.")
+                mapping = mapping_results.get(index)
                 RecipeIngredient.objects.create(
                     recipe=recipe,
                     canonical_ingredient=ingredient,
@@ -87,7 +98,27 @@ def create_or_update_recipe(
                     sort_order=index,
                     match_state=RecipeIngredient.MatchState.MATCHED
                     if ingredient
-                    else RecipeIngredient.MatchState.UNRESOLVED,
+                    else (
+                        RecipeIngredient.MatchState.REVIEW_NEEDED
+                        if mapping and mapping.state == "review_needed"
+                        else RecipeIngredient.MatchState.UNRESOLVED
+                    ),
+                    match_method=(
+                        mapping.candidate.method if mapping and mapping.candidate else ""
+                    ),
+                    match_score=(
+                        mapping.candidate.score if mapping and mapping.candidate else None
+                    ),
+                    match_policy_version=(mapping.policy_version if mapping else ""),
+                    match_embedding_model=(mapping.model_version if mapping else ""),
+                    match_candidates=(
+                        [
+                            candidate_payload(mapping.candidate),
+                            *(candidate_payload(candidate) for candidate in mapping.alternatives),
+                        ]
+                        if mapping and mapping.candidate
+                        else []
+                    ),
                 )
         if "steps" in data:
             RecipeStep.objects.filter(recipe=recipe).delete()
@@ -150,6 +181,11 @@ def create_recipe_revision(recipe, user):
                 optional=line.optional,
                 sort_order=line.sort_order,
                 match_state=line.match_state,
+                match_method=line.match_method,
+                match_score=line.match_score,
+                match_policy_version=line.match_policy_version,
+                match_embedding_model=line.match_embedding_model,
+                match_candidates=line.match_candidates,
             )
             for line in recipe.ingredients.all()
         ]

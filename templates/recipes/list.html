@@ -8,49 +8,20 @@
     <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Il ricettario</p>
     <h1 style="margin:0">Rezeptbuch</h1>
   </div>
-  <a class="button primary" href="/recipes/new/">
+  <a class="button primary" href="{% url 'recipe-import' %}">
     <svg aria-hidden="true" style="width:1.1rem;height:1.1rem"><use href="#i-plus"></use></svg>
-    Neues Rezept
+    Rezept hinzufügen
   </a>
   <a class="button ghost" href="{% url 'recipe-recommendations' %}">Vorschläge</a>
 </div>
 
-<section class="panel recipe-import" aria-labelledby="recipe-import-heading">
-  <div class="panel__head">
-    <div>
-      <h2 id="recipe-import-heading">Rezept aus dem Internet übernehmen</h2>
-      <p class="field__hint">Füge den Link zu einer Rezeptseite ein. Der Entwurf wird im Hintergrund erstellt und muss anschließend geprüft werden.</p>
-    </div>
+<section class="panel recipe-import-callout" aria-labelledby="recipe-import-heading">
+  <div>
+    <p class="hero__eyebrow">Neue Idee?</p>
+    <h2 id="recipe-import-heading">Ein Rezept auf deinem Weg ins Kochbuch</h2>
+    <p class="field__hint">Importiere eine Webseite, lass dir aus Notizen einen Entwurf machen oder schreibe dein Rezept selbst.</p>
   </div>
-  <form class="inline-form" id="recipe-import-form">
-    {% csrf_token %}
-    <div class="field">
-      <label for="recipe-import-url">Rezept-URL</label>
-      <input id="recipe-import-url" name="url" type="url" required maxlength="2048"
-             placeholder="https://www.example.com/mein-rezept">
-    </div>
-    <button class="primary" type="submit" id="recipe-import-submit">Importieren</button>
-  </form>
-  <p class="message" id="recipe-import-status" role="status" aria-live="polite" hidden></p>
-</section>
-
-<section class="panel recipe-import" aria-labelledby="recipe-text-import-heading">
-  <div class="panel__head">
-    <div>
-      <h2 id="recipe-text-import-heading">Rezept aus Text erstellen</h2>
-      <p class="field__hint">Füge ein Rezept oder deine Notizen ein. Odori erstellt daraus einen deutschen Entwurf mit passenden Küchenmaßen.</p>
-    </div>
-  </div>
-  <form class="inline-form" id="recipe-text-import-form">
-    {% csrf_token %}
-    <div class="field">
-      <label for="recipe-import-text">Rezepttext</label>
-      <textarea id="recipe-import-text" name="text" required maxlength="20000" rows="7"
-                placeholder="Zutaten und Zubereitung hier einfügen"></textarea>
-    </div>
-    <button class="primary" type="submit" id="recipe-text-import-submit">Rezept erstellen</button>
-  </form>
-  <p class="message" id="recipe-text-import-status" role="status" aria-live="polite" hidden></p>
+  <a class="button primary" href="{% url 'recipe-import' %}">Importweg auswählen</a>
 </section>
 
 <form class="search-bar" method="get" role="search">
@@ -112,128 +83,4 @@
       <p><a class="button primary" href="/recipes/new/">Rezept anlegen</a></p>
     </div>
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function () {
-  "use strict";
-  var form = document.getElementById("recipe-import-form");
-  var input = document.getElementById("recipe-import-url");
-  var submit = document.getElementById("recipe-import-submit");
-  var status = document.getElementById("recipe-import-status");
-  var csrf = form.querySelector("[name=csrfmiddlewaretoken]").value;
-  var pollLimit = 120;
-
-  function showStatus(text, className) {
-    status.hidden = false;
-    status.className = "message" + (className ? " message--" + className : "");
-    status.textContent = text;
-  }
-
-  function stageLabel(stage) {
-    return {
-      acquire: "Seite wird gelesen",
-      extract: "Rezeptdaten werden erkannt",
-      normalize: "Rezept wird aufbereitet",
-      review: "Entwurf ist bereit"
-    }[stage] || "Import wird verarbeitet";
-  }
-
-  function poll(statusUrl, remaining, currentSubmit, currentStatus) {
-    function updateStatus(text, className) {
-      currentStatus.hidden = false;
-      currentStatus.className = "message" + (className ? " message--" + className : "");
-      currentStatus.textContent = text;
-    }
-    fetch(statusUrl, {headers: {"Accept": "application/json"}})
-      .then(function (response) {
-        return response.ok ? response.json() : Promise.reject();
-      })
-      .then(function (data) {
-        if (data.state === "succeeded" && data.recipe) {
-          updateStatus("Entwurf ist bereit. Die Rezeptprüfung wird geöffnet.");
-          window.location.href = "/recipes/" + data.recipe.id + "/";
-          return;
-        }
-        if (data.state === "failed" || data.state === "cancelled") {
-          updateStatus("Der Import konnte nicht abgeschlossen werden. Bitte prüfe die Eingabe und versuche es erneut.", "error");
-          currentSubmit.disabled = false;
-          return;
-        }
-        if (remaining <= 0) {
-          updateStatus("Der Import dauert länger als erwartet. Der Worker verarbeitet ihn weiter; bitte später erneut nachsehen.", "warning");
-          currentSubmit.disabled = false;
-          return;
-        }
-        updateStatus(stageLabel(data.stage) + ".");
-        window.setTimeout(function () { poll(statusUrl, remaining - 1, currentSubmit, currentStatus); }, 1500);
-      })
-      .catch(function () {
-        updateStatus("Der Importstatus konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
-        currentSubmit.disabled = false;
-      });
-  }
-
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
-    submit.disabled = true;
-    showStatus("Import wird in die Warteschlange gestellt.");
-    fetch("/api/v1/recipe-imports", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": csrf,
-        "Accept": "application/json"
-      },
-      body: JSON.stringify({url: input.value.trim()})
-    })
-      .then(function (response) {
-        return response.json().then(function (data) {
-          return response.ok ? data : Promise.reject(data);
-        });
-      })
-      .then(function (data) { poll(data.statusUrl, pollLimit, submit, status); })
-      .catch(function (data) {
-        var message = data && data.error && data.error.message;
-        showStatus(message || "Der Import konnte nicht gestartet werden. Bitte prüfe die URL.", "error");
-        submit.disabled = false;
-      });
-  });
-
-  var textForm = document.getElementById("recipe-text-import-form");
-  var textInput = document.getElementById("recipe-import-text");
-  var textSubmit = document.getElementById("recipe-text-import-submit");
-  var textStatus = document.getElementById("recipe-text-import-status");
-  textForm.addEventListener("submit", function (event) {
-    event.preventDefault();
-    textSubmit.disabled = true;
-    textStatus.hidden = false;
-    textStatus.className = "message";
-    textStatus.textContent = "Rezept wird in die Warteschlange gestellt.";
-    fetch("/api/v1/recipe-imports", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": textForm.querySelector("[name=csrfmiddlewaretoken]").value,
-        "Accept": "application/json"
-      },
-      body: JSON.stringify({text: textInput.value.trim()})
-    })
-      .then(function (response) {
-        return response.json().then(function (data) {
-          return response.ok ? data : Promise.reject(data);
-        });
-      })
-      .then(function (data) { poll(data.statusUrl, pollLimit, textSubmit, textStatus); })
-      .catch(function (data) {
-        var message = data && data.error && data.error.message;
-        textStatus.hidden = false;
-        textStatus.className = "message message--error";
-        textStatus.textContent = message || "Das Rezept konnte nicht erstellt werden. Bitte versuche es erneut.";
-        textSubmit.disabled = false;
-      });
-  });
-}());
-</script>
 {% endblock %}

@@ -31,7 +31,7 @@ class RecommendationTests(TestCase):
         self.tomato = CanonicalIngredient.objects.create(household=self.household, name="Tomate")
         self.basil = CanonicalIngredient.objects.create(household=self.household, name="Basilikum")
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.tomato, status=InventoryItem.Status.IN_STOCK
+            household=self.household, ingredient=self.tomato, status=InventoryItem.Status.AVAILABLE
         )
         InventoryItem.objects.create(
             household=self.household, ingredient=self.basil, status=InventoryItem.Status.UNKNOWN

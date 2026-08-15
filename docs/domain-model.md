@@ -12,7 +12,7 @@ Inventory deliberately models availability, not stock levels. This avoids false 
 | --- | --- | --- |
 | `household` | id, name, created_at | Ownership boundary for all shared food-planning data. |
 | `user` | id, display_name, locale | A person with an authenticated local account. |
-| `household_membership` | household_id, user_id, role, joined_at | `owner` or `member`; determines shared-data access. |
+| `household_membership` | household_id, user_id, role, joined_at | `owner`, `admin`, or `member`; determines shared-data access. |
 | `ingredient_category` | id, household_id, name, sort_order | Examples: produce, dairy, pantry, spice. Seeded defaults are copied into a household so they remain locally editable. |
 | `canonical_ingredient` | id, household_id, name, category_id, aliases, icon, icon_status, active | Household-scoped stable identity shared by recipes, inventory, and lists. |
 | `recipe` | id, household_id, title, status, servings, source_id, created_by, archived_at | Status is `draft`, `approved`, or `archived`. |
@@ -26,7 +26,7 @@ Inventory deliberately models availability, not stock levels. This avoids false 
 | `generated_recipe_request` | id, household_id, recipe_id, idea, state, attempt_count, provider_deployment, error_code | Durable explicit generated-draft request. A successful request links to a draft recipe. |
 | `pantry_categorization_job` | id, household_id, state, assigned_count, attempt_count, error_code | Durable household ingredient-category assignment work. |
 | `ingredient_icon_job` | id, ingredient_id, prompt, state, attempt_count, available_at, error_code | Durable ingredient-icon work, including a provider rate-limit schedule. |
-| `inventory_item` | id, household_id, canonical_ingredient_id, status, version, updated_at | One active row per household and canonical ingredient. |
+| `inventory_item` | id, household_id, canonical_ingredient_id, status, version, updated_at | One active row per household and canonical ingredient. Status describes availability only; an open shopping item represents restock intent. |
 | `inventory_event` | id, item_id, previous_status, new_status, actor_id, origin, meal_slot_id | Append-only audit record. `origin` includes `manual`, `purchase`, and `cook_recipe`. |
 | `meal_plan` | id, household_id, week_start_date | Week starts on the locale-configured first day. |
 | `meal_slot` | id, plan_id, date, slot, entry_type, recipe_id, servings, notes, cooked_at | `slot`: breakfast, lunch, dinner, or snack. `entry_type`: `recipe`, `leftovers`, or `note`; only `recipe` requires recipe/servings and can be marked cooked. |
@@ -60,11 +60,11 @@ meal_slot 0..1 ── 1 cook_event
 
 | Status | Meaning | Shopping default |
 | --- | --- | --- |
-| `in_stock` | Enough is likely available for normal use. | Exclude from calculated list. |
-| `needs_replenishment` | Present but likely insufficient or desired soon. | Include. |
+| `available` | Enough is likely available for normal use. | Exclude from calculated list. |
+| `unavailable` | Known not to be currently available. | Include as a missing planned ingredient. |
 | `unknown` | Availability is not known. | Include, visibly marked for confirmation. |
 
-There is no `out_of_stock`: use `needs_replenishment`. Removing an inventory item returns it to `unknown` rather than deleting audit history.
+Availability and restock intent are independent. An unavailable ingredient may still be explicitly added to the active shopping list. Removing an inventory item returns it to `unknown` rather than deleting audit history.
 
 ## Lifecycle and integrity rules
 
@@ -73,7 +73,8 @@ There is no `out_of_stock`: use `needs_replenishment`. Removing an inventory ite
 - Generated drafts and manual drafts must not alter an existing approved recipe unless the user explicitly edits it. URL/file import follows the same rule when implemented.
 - Rebuilding a list updates only calculated, unpurchased items. Manual, purchased, and skipped entries are retained.
 - A purchase creates both a shopping-item state transition and an inventory event in one transaction.
-- Before a manual transition from `in_stock` to `needs_replenishment`, calculate all non-cooked upcoming meal slots that use the ingredient. Require explicit confirmation when the set is non-empty.
+- Before a manual transition away from `available`, calculate all non-cooked upcoming meal slots that use the ingredient. Require explicit confirmation when the set is non-empty.
+- Removing an ingredient from the active shopping list also warns when non-cooked upcoming meal slots use it; confirmation records the explicit restock decision without changing pantry availability.
 - Marking a meal cooked does not infer that every recipe ingredient is depleted. The cooking action may include explicit inventory changes selected by the user; only those changes use origin `cook_recipe` and bypass the planned-stock warning.
 - A `cook_recipe` transition is valid only in the same transaction as marking the associated recipe meal slot cooked, must reference its meal slot, and may affect only canonical ingredients on that recipe. It does not require a planned-stock warning.
 - Marking a meal slot cooked creates at most one cook event; undoing it removes/voids the associated event.

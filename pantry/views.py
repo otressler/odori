@@ -1,3 +1,4 @@
+from datetime import date as date_type
 from datetime import timedelta
 
 from django.conf import settings
@@ -32,6 +33,7 @@ from .services import (
     similar_ingredient_recommendations,
     toggle_category_example,
 )
+from shopping.services import active_list_for_household, collect_requirements_until
 
 
 def attach_upcoming_requirements(items, household):
@@ -78,6 +80,20 @@ def inventory_page(request):
     if query:
         items = items.filter(ingredient__name__icontains=query)
     items = list(items)
+    active_shopping_list = active_list_for_household(household)
+    shopping_items = {}
+    if active_shopping_list:
+        shopping_items = {
+            item.canonical_ingredient_id: item
+            for item in active_shopping_list.items.filter(
+                canonical_ingredient__isnull=False,
+                state="open",
+            )
+        }
+    for item in items:
+        shopping_item = shopping_items.get(item.ingredient_id)
+        item.on_shopping_list = shopping_item is not None
+        item.shopping_item_version = shopping_item.version if shopping_item else ""
     if selected_status in InventoryItem.Status.values:
         items = [item for item in items if item.status == selected_status]
     attach_upcoming_requirements(items, household)
@@ -128,6 +144,31 @@ def inventory_page(request):
             "status_filters": status_filters,
             "category_filters": category_filters,
             "category_job": category_job,
+        },
+    )
+
+
+def pantry_check_page(request):
+    household = household_for(request.user)
+    until_value = request.GET.get("until", "").strip()
+    until_date = timezone.localdate()
+    if until_value:
+        try:
+            until_date = date_type.fromisoformat(until_value)
+        except ValueError:
+            messages.error(request, "Bitte ein gültiges Datum auswählen.")
+            until_value = ""
+    requirements = list(
+        collect_requirements_until(household=household, until_date=until_date).values()
+    )
+    requirements.sort(key=lambda aggregate: aggregate.label.lower())
+    return render(
+        request,
+        "pantry/check.html",
+        {
+            "requirements": requirements,
+            "until_date": until_date,
+            "until_value": until_value or until_date.isoformat(),
         },
     )
 

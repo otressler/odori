@@ -21,7 +21,7 @@ class PageRenderTests(TestCase):
         HouseholdMembership.objects.create(household=self.household, user=self.user, role="owner")
         self.tomato = CanonicalIngredient.objects.create(household=self.household, name="Tomate")
         InventoryItem.objects.create(
-            household=self.household, ingredient=self.tomato, status="needs_replenishment"
+            household=self.household, ingredient=self.tomato, status="unavailable"
         )
         source = RecipeSource.objects.create(household=self.household)
         self.recipe = Recipe.objects.create(
@@ -209,6 +209,17 @@ class PageRenderTests(TestCase):
 
         membership = HouseholdMembership.objects.get(user=newcomer)
         self.assertEqual(membership.household.name, "Casa Nuova")
+        self.assertEqual(membership.role, HouseholdMembership.Role.OWNER)
+        self.assertRedirects(response, "/")
+
+    def test_household_admin_can_open_new_household_flow(self):
+        response = self.client.get("/households/")
+
+        self.assertContains(response, 'href="/households/new/"')
+
+        response = self.client.post("/households/new/", {"name": "Casa Nuova"})
+
+        membership = HouseholdMembership.objects.get(user=self.user, household__name="Casa Nuova")
         self.assertEqual(membership.role, HouseholdMembership.Role.OWNER)
         self.assertRedirects(response, "/")
 
