@@ -403,6 +403,9 @@ class RecipeLifecycleTests(TestCase):
         recipe = Recipe.objects.get(id=response.json()["id"])
         line = recipe.ingredients.get()
 
+        detail = self.client.get(f"/recipes/{recipe.id}/")
+        self.assertContains(detail, 'type="button" data-pantry-add')
+
         response = self.client.post(
             f"/recipes/{recipe.id}/ingredients/{line.id}/add-to-pantry/",
             HTTP_ACCEPT="application/json",
