@@ -442,3 +442,20 @@ class RecipeLifecycleTests(TestCase):
         self.assertRedirects(response, f"/recipes/{recipe.id}/")
         line.refresh_from_db()
         self.assertEqual(line.canonical_ingredient.name, "Basilikum")
+
+    def test_recipe_detail_quick_insert_supports_json_requests(self):
+        response = self.create_recipe(ingredients=[{"sourceText": "Basilikum"}])
+        recipe = Recipe.objects.get(id=response.json()["id"])
+        line = recipe.ingredients.get()
+
+        detail = self.client.get(f"/recipes/{recipe.id}/")
+        self.assertContains(detail, 'type="button" data-pantry-add')
+
+        response = self.client.post(
+            f"/recipes/{recipe.id}/ingredients/{line.id}/add-to-pantry/",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ingredient"]["name"], "Basilikum")
+        self.assertEqual(response.json()["message"], "Zutat dem Vorrat hinzugefügt und zugeordnet.")

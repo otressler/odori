@@ -67,11 +67,7 @@
             {{ ingredient.source_text }}
             {% if not ingredient.canonical_ingredient %}
               <span class="flag">nicht zugeordnet</span>
-              <form method="post" action="{% url 'recipe-ingredient-to-pantry' recipe.id ingredient.id %}" style="display:inline">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="unknown">
-                <button type="submit">Zum Vorrat</button>
-              </form>
+              <button type="button" data-pantry-add data-url="{% url 'recipe-ingredient-to-pantry' recipe.id ingredient.id %}">Zum Vorrat</button>
             {% endif %}
           </span>
         </li>
@@ -95,4 +91,35 @@
     </ol>
   </section>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function csrfToken() {
+    var match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+  document.querySelectorAll("[data-pantry-add]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      if (button.disabled) return;
+      button.disabled = true;
+      fetch(button.dataset.url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken(), "Accept": "application/json"},
+        body: JSON.stringify({status: "unknown"})
+      }).then(function (response) {
+        if (!response.ok) throw new Error("pantry add failed");
+        return response.json();
+      }).then(function () {
+        button.textContent = "Zum Vorrat hinzugefügt";
+        var flag = button.parentElement.querySelector(".flag");
+        if (flag) flag.textContent = "zugeordnet";
+      }).catch(function () {
+        button.disabled = false;
+      });
+    });
+  });
+}());
+</script>
 {% endblock %}
