@@ -8,7 +8,13 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from pantry.models import CanonicalIngredient, IngredientIconJob, PantryCategorizationJob
-from recipes.models import Recipe, RecipeImageJob, RecipeImportAttempt, RecipeImportJob, RecipeSource
+from recipes.models import (
+    Recipe,
+    RecipeImageJob,
+    RecipeImportAttempt,
+    RecipeImportJob,
+    RecipeSource,
+)
 
 from .models import Household, HouseholdMembership, ProviderDiagnostic, User, WorkerHeartbeat
 from .views import (

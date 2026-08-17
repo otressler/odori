@@ -19,7 +19,11 @@ class RecipeSource(models.Model):
     type = models.CharField(max_length=20, choices=Type.choices, default=Type.MANUAL)
     attribution = models.CharField(max_length=255, blank=True)
     import_source = models.OneToOneField(
-        "ImportSource", null=True, blank=True, on_delete=models.PROTECT, related_name="recipe_source"
+        "ImportSource",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="recipe_source",
     )
     imported_at = models.DateTimeField(auto_now_add=True)
 
@@ -35,7 +39,9 @@ class ImportSource(models.Model):
         PDF = "pdf", "PDF"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="import_sources")
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="import_sources"
+    )
     source_type = models.CharField(max_length=10, choices=Type.choices)
     url = models.URLField(max_length=2048, blank=True)
     file = models.FileField(upload_to="recipe-imports/", blank=True)
@@ -68,7 +74,9 @@ class RecipeImportJob(models.Model):
         REVIEW = "review", "Review"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="recipe_import_jobs")
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="recipe_import_jobs"
+    )
     source = models.ForeignKey(ImportSource, on_delete=models.PROTECT, related_name="jobs")
     state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
     stage = models.CharField(max_length=12, choices=Stage.choices, default=Stage.ACQUIRE)

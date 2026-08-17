@@ -38,7 +38,11 @@ def create_import(*, household, source_type, content=b"", url="", content_type="
         defaults={
             "source_type": source_type,
             "url": url,
-            "content": content.decode("utf-8", errors="replace") if source_type == ImportSource.Type.TEXT else "",
+            "content": (
+                content.decode("utf-8", errors="replace")
+                if source_type == ImportSource.Type.TEXT
+                else ""
+            ),
             "content_type": content_type,
             "content_length": len(content),
         },

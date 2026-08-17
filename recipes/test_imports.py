@@ -1,7 +1,7 @@
 import json
 from datetime import timedelta
-from urllib.error import HTTPError
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
