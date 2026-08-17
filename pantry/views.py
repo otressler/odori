@@ -9,6 +9,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from core.services import household_for
+from shopping.services import active_list_for_household, collect_requirements_until
 
 from .catalog import sync_starter_catalog
 from .models import (
@@ -33,7 +34,6 @@ from .services import (
     similar_ingredient_recommendations,
     toggle_category_example,
 )
-from shopping.services import active_list_for_household, collect_requirements_until
 
 
 def attach_upcoming_requirements(items, household):
