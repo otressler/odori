@@ -2,7 +2,7 @@ import re
 from decimal import Decimal
 
 from django.contrib import messages
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import formats, translation
 
@@ -278,6 +278,16 @@ def recipe_ingredient_to_pantry_page(request, recipe_id, ingredient_id):
         from pantry.services import queue_category_suggestions
 
         queue_category_suggestions(user=request.user)
+    if request.headers.get("Accept") == "application/json":
+        return JsonResponse(
+            {
+                "ingredient": {
+                    "id": str(ingredient.id),
+                    "name": ingredient.name,
+                },
+                "message": "Zutat dem Vorrat hinzugefügt und zugeordnet.",
+            }
+        )
     messages.success(request, "Zutat dem Vorrat hinzugefügt und zugeordnet.")
     return redirect("recipe-detail", recipe_id=recipe.id)
 
