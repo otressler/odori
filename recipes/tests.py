@@ -257,6 +257,51 @@ class RecipeLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Recipe.objects.get(title="Viele Zutaten").ingredients.count(), 13)
 
+    def test_recipe_form_uses_user_locale_for_amount_display_and_input(self):
+        self.user.locale = "en-us"
+        self.user.save(update_fields=["locale"])
+        recipe = Recipe.objects.get(
+            id=self.create_recipe(
+                ingredients=[{"sourceText": "Pasta", "amount": "1.5", "unit": "g"}]
+            ).json()["id"]
+        )
+
+        response = self.client.get(f"/recipes/{recipe.id}/edit/")
+
+        self.assertContains(response, 'value="1.50"')
+        response = self.client.post(
+            f"/recipes/{recipe.id}/edit/",
+            {
+                "title": recipe.title,
+                "servings": "2",
+                "ingredient-source-0": "Pasta",
+                "ingredient-amount-0": "2.75",
+                "ingredient-unit-0": "g",
+                "step-0": "Kochen.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(str(recipe.ingredients.get().amount), "2.75")
+
+    def test_recipe_form_parses_comma_amounts_for_german_users(self):
+        recipe = Recipe.objects.get(id=self.create_recipe().json()["id"])
+
+        response = self.client.post(
+            f"/recipes/{recipe.id}/edit/",
+            {
+                "title": recipe.title,
+                "servings": "2",
+                "ingredient-source-0": "Pasta",
+                "ingredient-amount-0": "2,75",
+                "ingredient-unit-0": "g",
+                "step-0": "Kochen.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(str(recipe.ingredients.get().amount), "2.75")
+
     def test_recipe_form_uses_semantic_ingredient_search_for_pantry_assignment(self):
         response = self.client.get("/recipes/new/")
 

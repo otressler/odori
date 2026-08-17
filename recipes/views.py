@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
+from django.utils import formats, translation
 
 from core.services import household_for
 from pantry.mapping import assign_recipe_ingredient, map_source_text
@@ -25,6 +26,16 @@ from .services import (
 
 MAX_RECIPE_INGREDIENTS = 100
 MAX_RECIPE_STEPS = 100
+
+
+def localized_recipe_amount(value, locale):
+    with translation.override(locale):
+        return formats.number_format(value, decimal_pos=2, use_l10n=True)
+
+
+def parse_recipe_amount(value, locale):
+    with translation.override(locale):
+        return formats.sanitize_separators(value)
 
 
 def recipe_list(request):
@@ -91,7 +102,11 @@ def recipe_form_context(user, recipe=None):
         ingredient_rows = [
             {
                 "source_text": line.source_text,
-                "amount": line.amount,
+                "amount": (
+                    localized_recipe_amount(line.amount, user.locale)
+                    if line.amount is not None
+                    else ""
+                ),
                 "unit": line.unit,
                 "canonical_ingredient_id": line.canonical_ingredient_id,
             }
@@ -129,6 +144,8 @@ def recipe_form_data(request):
         ingredient = {"sourceText": source_text}
         for key, field in (("amount", "ingredient-amount"), ("unit", "ingredient-unit")):
             value = request.POST.get(f"{field}-{index}", "").strip()
+            if key == "amount" and value:
+                value = parse_recipe_amount(value, request.user.locale)
             if value:
                 ingredient[key] = value
         canonical_id = request.POST.get(f"ingredient-canonical-{index}", "")
