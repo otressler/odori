@@ -63,8 +63,12 @@
       {% for recipe in draft_recipes %}
         <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
           <span class="recipe-card__image-wrap">
-            <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
-            <span class="recipe-card__image-status">Bild wird zubereitet</span>
+            {% if recipe.image_status == "ready" and recipe.thumbnail %}
+              <img class="recipe-card__image" src="{% url 'recipe-thumbnail' recipe.id %}" alt="{{ recipe.title }}">
+            {% else %}
+              <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
+              <span class="recipe-card__image-status">Bild wird zubereitet</span>
+            {% endif %}
           </span>
           <span class="recipe-card__content">
             <span class="recipe-card__title">{{ recipe.title|default:"Unbenannter Entwurf" }}</span>
