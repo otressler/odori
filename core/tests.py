@@ -67,3 +67,28 @@ class BootstrapOwnerCommandTests(TestCase):
             )
 
         self.assertFalse(User.objects.exists())
+
+
+class DataCommandTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="owner")
+        self.household = Household.objects.create(name="Home")
+        HouseholdMembership.objects.create(
+            household=self.household, user=self.user, role=HouseholdMembership.Role.OWNER
+        )
+
+    def test_purge_data_preserves_users(self):
+        from pantry.models import CanonicalIngredient, IngredientCategory, InventoryItem
+
+        category = IngredientCategory.objects.create(household=self.household, name="Pantry")
+        ingredient = CanonicalIngredient.objects.create(
+            household=self.household, name="Rice", category=category
+        )
+        InventoryItem.objects.create(household=self.household, ingredient=ingredient)
+
+        management.call_command("purge_data")
+
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(Household.objects.exists())
+        self.assertFalse(IngredientCategory.objects.exists())
+        self.assertFalse(InventoryItem.objects.exists())

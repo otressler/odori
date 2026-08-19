@@ -3,10 +3,16 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand, CommandError
 
 from core.models import HouseholdMembership
-from pantry.models import CanonicalIngredient, IngredientCategory, InventoryItem
-from planning.models import MealSlot
+from pantry.models import (
+    CanonicalIngredient,
+    IngredientCategory,
+    IngredientCategoryExample,
+    InventoryEvent,
+    InventoryItem,
+)
+from planning.models import CookEvent, MealSlot
 from planning.services import add_slot, current_week_start, get_or_create_plan
-from recipes.models import Recipe
+from recipes.models import Recipe, RecipeFavorite
 from recipes.services import approve_recipe, create_or_update_recipe
 from shopping.services import generate_from_plan
 
@@ -28,11 +34,30 @@ class Command(BaseCommand):
         user = membership.user
 
         produce, _ = IngredientCategory.objects.get_or_create(
-            household=household, name="Gemüse", sort_order=1
+            household=household, name="Gemüse", defaults={"sort_order": 1}
         )
         pantry, _ = IngredientCategory.objects.get_or_create(
-            household=household, name="Vorrat", sort_order=2
+            household=household, name="Vorrat", defaults={"sort_order": 2}
         )
+        dairy, _ = IngredientCategory.objects.get_or_create(
+            household=household, name="Kühlung", defaults={"sort_order": 3}
+        )
+        for category, examples in (
+            (produce, ("Tomaten", "Salat", "Kohl")),
+            (pantry, ("Nudeln", "Bohnen", "Öl")),
+            (dairy, ("Milch", "Joghurt", "Käse")),
+        ):
+            for text in examples:
+                IngredientCategoryExample.objects.get_or_create(
+                    category=category,
+                    normalized_text=text.casefold(),
+                    defaults={
+                        "household": household,
+                        "text": text,
+                        "source": IngredientCategoryExample.Source.STARTER,
+                        "source_key": f"demo-{category.id}-{text.casefold()}",
+                    },
+                )
         tomato, _ = CanonicalIngredient.objects.get_or_create(
             household=household, name="Tomate", category=produce
         )
@@ -48,6 +73,12 @@ class Command(BaseCommand):
         oil, _ = CanonicalIngredient.objects.get_or_create(
             household=household, name="Olivenöl", category=pantry
         )
+        onion, _ = CanonicalIngredient.objects.get_or_create(
+            household=household, name="Zwiebel", category=produce
+        )
+        yogurt, _ = CanonicalIngredient.objects.get_or_create(
+            household=household, name="Joghurt", category=dairy
+        )
 
         # A mix of states so the pantry screen shows all three at once.
         for ingredient, status in (
@@ -55,10 +86,26 @@ class Command(BaseCommand):
             (oil, "available"),
             (pasta, "unavailable"),
             (beans, "unknown"),
+            (kale, "available"),
+            (onion, "unknown"),
+            (yogurt, "unavailable"),
         ):
-            InventoryItem.objects.get_or_create(
-                household=household, ingredient=ingredient, defaults={"status": status}
+            item, created = InventoryItem.objects.get_or_create(
+                household=household,
+                ingredient=ingredient,
+                defaults={"status": status},
             )
+            if not created and item.status != status:
+                previous_status = item.status
+                item.status = status
+                item.save(update_fields=["status", "updated_at"])
+                InventoryEvent.objects.get_or_create(
+                    item=item,
+                    previous_status=previous_status,
+                    new_status=status,
+                    actor=user,
+                    origin=InventoryEvent.Origin.MANUAL,
+                )
 
         sugo = create_or_update_recipe(
             user=user,
@@ -131,6 +178,23 @@ class Command(BaseCommand):
         for recipe in (sugo, ribollita):
             if recipe.status != Recipe.Status.APPROVED:
                 approve_recipe(recipe)
+        RecipeFavorite.objects.get_or_create(recipe=ribollita, user=user)
+
+        draft = create_or_update_recipe(
+            user=user,
+            recipe=existing_recipe(household, "Idee für Restetag"),
+            data={
+                "title": "Idee für Restetag",
+                "description": "Ein bewusst unvollständiger Entwurf zum Ausprobieren.",
+                "servings": 2,
+                "ingredients": [{"sourceText": "Gemüse nach Wahl", "optional": True}],
+                "steps": [{"body": "Reste prüfen und eine Kombination auswählen."}],
+                "tags": ["entwurf"],
+            },
+        )
+        if draft.status == Recipe.Status.ARCHIVED:
+            draft.status = Recipe.Status.DRAFT
+            draft.save(update_fields=["status", "updated_at"])
 
         week_start = current_week_start()
         plan = get_or_create_plan(user=user, week_start=week_start)
@@ -161,5 +225,13 @@ class Command(BaseCommand):
                 notes="Auswärts essen",
             )
 
+        cooked_slot = plan.slots.filter(recipe=sugo).order_by("date").first()
+        if cooked_slot and not cooked_slot.cooked_at:
+            cooked_slot.cooked_at = cooked_slot.created_at
+            cooked_slot.save(update_fields=["cooked_at"])
+            CookEvent.objects.get_or_create(
+                meal_slot=cooked_slot,
+                defaults={"household": household, "recipe": sugo, "actor": user},
+            )
         generate_from_plan(user=user, week_start=week_start)
         self.stdout.write(self.style.SUCCESS("German demo data is ready."))

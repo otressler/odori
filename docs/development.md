@@ -54,8 +54,11 @@ python manage.py runserver
 ```
 
 The application is available at <http://127.0.0.1:8000/>. The seed command is
-optional and creates sample recipes, pantry items, a meal plan, and a shopping
-list. Run the worker in a second terminal when using queued features:
+optional and creates a broad, repeatable starting point with pantry categories
+and states, recipe drafts and approvals, favorites, meal history, a meal plan,
+and a shopping list. To remove that data before starting over, run
+`python manage.py purge_data`; user accounts are preserved. Run the worker in a
+second terminal when using queued features:
 
 ```bash
 python manage.py worker
@@ -172,4 +175,3 @@ make test-container
 
 Useful operational checks are `/health/live`, `/health/worker`, and the
 household operations page at `/admin/operations`.
-
