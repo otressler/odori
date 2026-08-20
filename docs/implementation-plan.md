@@ -421,6 +421,20 @@ Tests:
 
 **Exit gate:** URL and pasted text reliably become reviewable drafts through bounded, safe extraction; image/PDF import is enabled only after its acquisition and provider-budget tests pass. No source can publish a recipe without user approval, and duplicate content reuses cached provider output.
 
+### Current implementation gaps
+
+The following identifies the work still absent from the repository for each
+Milestone 3 packet. It is intentionally more specific than the delivery tasks
+so future work does not mistake the existing URL/text vertical slice for a
+complete import implementation.
+
+| Item | Present today | Missing from the current implementation |
+| --- | --- | --- |
+| 3A: durable import jobs | Database-backed jobs have queued/running/succeeded/failed states, leases, attempt rows, expired-lease recovery, retries, and per-household source-hash deduplication. | Cancellation is modeled but not implemented; there is no cancellation action or cancellation-safe worker handling. Retry scheduling is a single fixed delay rather than a classified backoff policy, and the PostgreSQL-specific concurrent-worker behavior still needs production-database verification. |
+| 3B: source acquisition | The API accepts bounded pasted text and validates that submitted URLs are syntactically HTTP(S). | There is no upload endpoint or file acquisition pipeline for images/PDFs. The application does not fetch URLs itself, so it has no DNS/IP validation, redirect validation, response/content-type/decompressed-byte limits, or structured-metadata/readable-content extraction. Consequently, the SSRF and malformed/polyglot-file test coverage required before enabling file imports is also absent. |
+| 3C: extraction and normalization adapters | Azure OpenAI extraction handles URL and text jobs, validates a bounded recipe-shaped response, converts it into a draft, and uses the existing ingredient-mapping workflow. | Document Intelligence/OCR support, typed provider boundaries, stored raw-artifact references with retention, extraction/parser/prompt-version cache keys, and fixture coverage for OCR, prompt injection, throttling, and partial extraction are not implemented. URL import currently delegates retrieval to the provider web-search tool rather than using the safe acquisition path defined for this milestone. |
+| 3D: review and budget controls | Submit and status APIs expose queued progress, safe error codes, and a reviewable draft; failed jobs can be retried operationally. | The browser flow lacks a complete progress/retry/review experience. There are no import-specific daily job, page, or token quotas; no independent URL/document/normalization feature switches; and no import usage counters or operator metrics that support monthly spend estimation. |
+
 ### Packet 3A: Durable job runner and import state machine
 
 **Owner:** jobs agent  
@@ -492,6 +506,13 @@ Pi-first rule: execute orchestration in the local worker by default. Add a Flex 
 **Current state:** Deterministic ranking, explanations, versioned input snapshots, favorites, and recommendation outcomes are implemented. Household usefulness measurement and the go/no-go decision for more generated recipes remain.
 
 **Exit gate:** The application ranks approved catalog recipes deterministically with understandable reasons, records privacy-preserving usefulness outcomes, and has an explicit decision on generated ideas. It remains fully functional when generated ideas are disabled or Azure is unavailable.
+
+### Current implementation gaps
+
+| Item | Present today | Missing from the current implementation |
+| --- | --- | --- |
+| 4A: deterministic recommendation engine | Approved recipes are ranked with the documented versioned score, inventory explanations, favorite/recent/duplicate/negative-feedback adjustments, stable tie-breaking, bounded candidates, household scoping, and ID-only input snapshots. | The repository has no recorded representative-Pi timing measurement or decision based on it. It also lacks the privacy-preserving reporting/aggregation needed to determine whether recommendations improve household planning rather than merely recording individual outcomes. |
+| 4B: optional generated recipe drafts | Explicit requests queue a generated draft, enforce a default-off feature switch and a rolling household request limit, validate bounded model output, and retain invalid output as a safe failure. Generated recipes remain drafts pending normal approval. | The required usefulness measurement and explicit go/no-go decision for continued generated-recipe investment have not been implemented. Generation also lacks the documented stronger usage accounting/budget controls and operator metrics needed to enforce and review token spend independently from import work. |
 
 ### Packet 4A: Deterministic recommendation engine
 
