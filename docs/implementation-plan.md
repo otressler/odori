@@ -45,17 +45,27 @@ repository before starting work:
 
 Build one vertical slice at a time. Each milestone must be deployable to the Pi, preserve data from the previous milestone, and include its own migrations, tests, operator notes, and accessible UI states. AI is deliberately late in the sequence: the useful catalog, pantry, planner, and shopping flows must work without Azure.
 
-| Milestone | Usable outcome | Main requirements | Azure dependency |
+| Milestone | Usable outcome | Main requirements | Azure dependency | Repository status |
 | --- | --- | --- | --- |
-| 0. Engineering foundation | Repeatable local/CI/Pi build with authentication and diagnostics | FR-11 | None |
-| 1. Cookbook and pantry | Household can manually curate recipes and track availability | FR-04, FR-05, FR-14 | None |
-| 2. Plan, shop, and cook | Weekly planning through purchase and cooking works end to end | FR-07 to FR-10, FR-12, FR-15, FR-16 | None |
-| 2.5. Catalog enrichment and operations | Household can categorize its pantry with reviewable suggestions, use generated ingredient artwork, and operate the background work safely | FR-05, FR-11 | Optional Azure OpenAI embeddings and Microsoft Foundry image generation |
-| 3. Assisted import | URL, image, and PDF sources become reviewable drafts | FR-01 to FR-03 | Document Intelligence and Azure OpenAI |
-| 4. Recommendations | Explainable catalog ranking and optional generated drafts | FR-06, FR-17 | None for ranking; optional Azure OpenAI for generation |
-| 5. Collaboration and recovery | Multi-device updates, conflict handling, export, and tested recovery | FR-13, FR-18 | None |
+| 0. Engineering foundation | Repeatable local/CI/Pi build with authentication and diagnostics | FR-11 | None | Substantially implemented |
+| 1. Cookbook and pantry | Household can manually curate recipes and track availability | FR-04, FR-05, FR-14 | None | Substantially implemented |
+| 2. Plan, shop, and cook | Weekly planning through purchase and cooking works end to end | FR-07 to FR-10, FR-12, FR-15, FR-16 | None | Substantially implemented |
+| 2.5. Catalog enrichment and operations | Household can categorize its pantry with reviewable suggestions, use generated ingredient artwork, and operate the background work safely | FR-05, FR-11 | Optional Azure OpenAI embeddings and Microsoft Foundry image generation | Substantially implemented |
+| 3. Assisted import | URL and text sources become reviewable drafts; file import follows after the fallback path is reliable | FR-01 to FR-03 | Document Intelligence and Azure OpenAI | Partially implemented |
+| 4. Recommendations | Explainable catalog ranking is measured before optional generated drafts expand | FR-06, FR-17 | None for ranking; optional Azure OpenAI for generation | Partially implemented |
+| 5. Recovery and collaboration | Export, tested recovery, and only the simplest transport needed for shared use | FR-13, FR-18 | None | Planned |
 
-Milestones 0 through 2 form the minimum useful product. Stop there temporarily if cloud cost, implementation time, or AI quality is unsatisfactory.
+Milestones 0 through 2, plus the operational work already delivered in 2.5, form the current useful product. The next release should validate that core with household usage before adding new domain complexity. Do not make file-based AI import, generated recipes, WebSockets, or conversational features prerequisites for the core.
+
+### Revised delivery sequence
+
+1. **Validate and harden the current product.** Run BL-001, complete BL-020 decision records, verify authentication recovery, and establish paired database/upload backups from BL-016.
+2. **Remove recurring weekly friction.** Implement pantry stale-state review (BL-002), recurring staples (BL-004), store-section ordering (BL-005), and copy-previous-week planning (BL-006). Start with the smallest useful vertical slice for each.
+3. **Make assisted import safe and economical.** Complete paste/JSON-LD fallback and failure recovery (BL-012), learned aliases (BL-013), and application-side AI quotas/circuit breaking (BL-019) before expanding image/PDF imports.
+4. **Close the recommendation feedback loop.** Complete recommendation usefulness measurement (BL-014) and the small recipe/cook feedback slice of BL-009 before deciding whether generated drafts deserve additional investment.
+5. **Prioritize mobile capture based on evidence.** Add the share-target flow (BL-008) if imports are frequent. Evaluate offline shopping (BL-003) against refresh/polling using real connectivity and concurrent-shopping observations.
+6. **Finish recovery and choose collaboration transport.** Complete export, automated backup, and restore rehearsal; then resolve BL-017. Add WebSockets only if measured latency and concurrency justify their operational cost.
+7. **Defer higher-risk enhancements.** Consider substitutions (BL-007), richer Kitchen Mode (BL-011), occasion servings (BL-010), and Azure offload (BL-018) only after usage evidence. Keep personalization, nutrition/health, voice, conversational planning/cooking, and broad agent mutations as long-term experiments.
 
 ## Cross-cutting constraints
 
@@ -407,7 +417,23 @@ Tests:
 
 ## Milestone 3: Assisted import
 
-**Exit gate:** URL, supported image, and supported PDF imports execute asynchronously, survive process restarts, produce reviewable drafts or actionable failures, and cannot publish a recipe without user approval. Duplicate source content reuses cached provider output.
+**Current state:** URL and text imports already have durable jobs, retries, validation, deduplication, and reviewable recipe creation. Supported image/PDF acquisition and the documented fallback ladder remain incomplete.
+
+**Exit gate:** URL and pasted text reliably become reviewable drafts through bounded, safe extraction; image/PDF import is enabled only after its acquisition and provider-budget tests pass. No source can publish a recipe without user approval, and duplicate content reuses cached provider output.
+
+### Current implementation gaps
+
+The following identifies the work still absent from the repository for each
+Milestone 3 packet. It is intentionally more specific than the delivery tasks
+so future work does not mistake the existing URL/text vertical slice for a
+complete import implementation.
+
+| Item | Present today | Missing from the current implementation |
+| --- | --- | --- |
+| 3A: durable import jobs | Database-backed jobs have queued/running/succeeded/failed states, leases, attempt rows, expired-lease recovery, retries, and per-household source-hash deduplication. | Cancellation is modeled but not implemented; there is no cancellation action or cancellation-safe worker handling. Retry scheduling is a single fixed delay rather than a classified backoff policy, and the PostgreSQL-specific concurrent-worker behavior still needs production-database verification. |
+| 3B: source acquisition | The API accepts bounded pasted text and validates that submitted URLs are syntactically HTTP(S). | There is no upload endpoint or file acquisition pipeline for images/PDFs. The application does not fetch URLs itself, so it has no DNS/IP validation, redirect validation, response/content-type/decompressed-byte limits, or structured-metadata/readable-content extraction. Consequently, the SSRF and malformed/polyglot-file test coverage required before enabling file imports is also absent. |
+| 3C: extraction and normalization adapters | Azure OpenAI extraction handles URL and text jobs, validates a bounded recipe-shaped response, converts it into a draft, and uses the existing ingredient-mapping workflow. | Document Intelligence/OCR support, typed provider boundaries, stored raw-artifact references with retention, extraction/parser/prompt-version cache keys, and fixture coverage for OCR, prompt injection, throttling, and partial extraction are not implemented. URL import currently delegates retrieval to the provider web-search tool rather than using the safe acquisition path defined for this milestone. |
+| 3D: review and budget controls | Submit and status APIs expose queued progress, safe error codes, and a reviewable draft; failed jobs can be retried operationally. | The browser flow lacks a complete progress/retry/review experience. There are no import-specific daily job, page, or token quotas; no independent URL/document/normalization feature switches; and no import usage counters or operator metrics that support monthly spend estimation. |
 
 ### Packet 3A: Durable job runner and import state machine
 
@@ -477,7 +503,16 @@ Pi-first rule: execute orchestration in the local worker by default. Add a Flex 
 
 ## Milestone 4: Recommendations
 
-**Exit gate:** The application ranks approved catalog recipes deterministically with understandable reasons. It remains fully functional when generated ideas are disabled or Azure is unavailable.
+**Current state:** Deterministic ranking, explanations, versioned input snapshots, favorites, and recommendation outcomes are implemented. Household usefulness measurement and the go/no-go decision for more generated recipes remain.
+
+**Exit gate:** The application ranks approved catalog recipes deterministically with understandable reasons, records privacy-preserving usefulness outcomes, and has an explicit decision on generated ideas. It remains fully functional when generated ideas are disabled or Azure is unavailable.
+
+### Current implementation gaps
+
+| Item | Present today | Missing from the current implementation |
+| --- | --- | --- |
+| 4A: deterministic recommendation engine | Approved recipes are ranked with the documented versioned score, inventory explanations, favorite/recent/duplicate/negative-feedback adjustments, stable tie-breaking, bounded candidates, household scoping, and ID-only input snapshots. | The repository has no recorded representative-Pi timing measurement or decision based on it. It also lacks the privacy-preserving reporting/aggregation needed to determine whether recommendations improve household planning rather than merely recording individual outcomes. |
+| 4B: optional generated recipe drafts | Explicit requests queue a generated draft, enforce a default-off feature switch and a rolling household request limit, validate bounded model output, and retain invalid output as a safe failure. Generated recipes remain drafts pending normal approval. | The required usefulness measurement and explicit go/no-go decision for continued generated-recipe investment have not been implemented. Generation also lacks the documented stronger usage accounting/budget controls and operator metrics needed to enforce and review token spend independently from import work. |
 
 ### Packet 4A: Deterministic recommendation engine
 
@@ -520,30 +555,47 @@ explicitly approves it.
 
 ## Milestone 5: Collaboration and recovery
 
-**Exit gate:** Two authenticated household devices see committed inventory and shopping changes promptly, stale writes cannot overwrite current state, reconnects recover through REST, and a documented restore/export exercise succeeds.
+**Current state:** Household membership, optimistic concurrency, stale-version responses, and operational documentation exist. There is no export/restore implementation or real-time transport.
 
-### Packet 5A: Real-time gateway and clients
+**Exit gate:** The household can export approved recipes, restore paired database/uploads in a clean environment, and two authenticated devices converge safely using the simplest transport justified by measured usage.
 
-**Owner:** realtime agent  
-**Depends on:** Milestone 2 versioned entities
+### Packet 5A: Recovery baseline and transport decision
+
+**Owner:** operations/recovery agent  
+**Depends on:** Milestone 0 deployment and Milestone 2 versioned entities
 
 Tasks:
 
-- Authenticate same-origin WebSocket upgrades and assign server-controlled household/list subscriptions.
+- Implement authenticated export of approved recipes and stable ingredient references.
+- Automate encrypted, paired PostgreSQL/upload backups with retention and at least one off-Pi copy.
+- Document and execute a clean-host restore, application rollback constraints, secret rotation, and provider-disable procedure.
+- Measure concurrent-list sessions, stale conflicts, connectivity loss, and acceptable update delay.
+- Compare refresh-on-focus, bounded conditional polling, and WebSockets; record an ADR selecting the simplest adequate transport.
+
+The decision must not assume WebSockets. Offline shopping (BL-003) may solve more practical problems than live events and should be evaluated in the same observation period.
+
+### Packet 5B: Real-time gateway and clients, if selected
+
+**Owner:** realtime agent  
+**Depends on:** Packet 5A decision and Milestone 2 versioned entities
+
+Tasks:
+
+- If the decision selects WebSockets, authenticate same-origin upgrades and assign server-controlled household/list subscriptions.
 - Publish minimal events only after transaction commit. Keep HTTP as the only mutation path.
 - Apply monotonic versions client-side; refresh through REST on reconnect, gaps, unknown events, or background-tab resume.
 - Add heartbeat, connection limits, bounded per-client queues, and slow-client disconnection.
 
 Tests:
 
-- Unauthorized subscriptions are impossible, membership removal closes/revalidates access, rollbacks emit nothing, and reconnect converges to server state.
+- Unauthorized subscriptions are impossible, membership removal closes/revalidates access, rollbacks emit nothing, and reconnect converges to server state. If polling is selected instead, test visibility-aware polling, backoff, ETags/version checks, and reconnect convergence.
 
 For one web process, in-memory post-commit fan-out is sufficient. Use a PostgreSQL-backed outbox/notification mechanism only when durability testing shows a meaningful missed-event problem; REST refresh remains authoritative. Do not add Redis for this deployment.
 
-### Packet 5B: Conflict UX and household administration
+### Packet 5C: Conflict UX and household administration
 
 **Owner:** collaboration UX agent  
-**Depends on:** 5A and identity services
+**Depends on:** Packet 5A and identity services
 
 Tasks:
 
@@ -552,16 +604,13 @@ Tasks:
 - Announce meaningful remote changes accessibly using actor display names without relying on color or transient animation.
 - Test concurrent purchase, regeneration, pantry status, and membership-removal scenarios.
 
-### Packet 5C: Export, backup, restore, and production acceptance
+### Packet 5D: Production acceptance
 
 **Owner:** operations/recovery agent  
-**Depends on:** all prior milestones
+**Depends on:** Packets 5A through 5C and all prior milestones
 
 Tasks:
 
-- Implement authenticated export of approved recipes and stable ingredient references.
-- Automate encrypted, paired PostgreSQL/upload backups and retention; keep at least one copy off the Pi.
-- Document and execute a clean-host restore, application rollback constraints, secret rotation, and provider-disable procedure.
 - Run dependency/security scanning, upload/URL abuse tests, accessibility checks, ARM64 soak testing, and representative performance checks.
 - Confirm Azure budgets/alerts, application quotas, and feature switches in the production environment.
 
@@ -570,6 +619,12 @@ Tasks:
 These ideas are intentionally not committed milestones. Promote them into a detailed
 implementation packet only after the core workflow has usage evidence and the relevant
 privacy, safety, cost, and provider-boundary questions are resolved.
+
+The ordering for these ideas follows the same rule as the revised roadmap: first remove
+repeated friction from the core weekly loop, then improve import and recommendation
+reliability, and only then consider higher-risk personalization, conversation, voice,
+or agent capabilities. A technical foundation is not, by itself, evidence that a
+feature should be promoted.
 
 ### Household profiles and personalization
 
