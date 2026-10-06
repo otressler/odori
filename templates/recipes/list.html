@@ -8,10 +8,6 @@
     <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Il ricettario</p>
     <h1 style="margin:0">Rezeptbuch</h1>
   </div>
-  <a class="button primary" href="{% url 'recipe-import' %}">
-    <svg aria-hidden="true" style="width:1.1rem;height:1.1rem"><use href="#i-plus"></use></svg>
-    Rezept hinzufügen
-  </a>
   <a class="button ghost" href="{% url 'recipe-recommendations' %}">Vorschläge</a>
 </div>
 
@@ -37,22 +33,30 @@
     <div class="rule-heading"><h2>Veröffentlicht</h2></div>
     <div class="recipe-grid">
       {% for recipe in published_recipes %}
-        <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
-          <span class="recipe-card__image-wrap">
-            {% if recipe.image_status == "ready" and recipe.thumbnail %}
-              <img class="recipe-card__image" src="{% url 'recipe-thumbnail' recipe.id %}" alt="{{ recipe.title }}">
-            {% else %}
-              <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
-              <span class="recipe-card__image-status">Bild wird zubereitet</span>
-            {% endif %}
-          </span>
-          <span class="recipe-card__content">
-            <span class="recipe-card__title">{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
-            <span class="recipe-card__flavour">{{ recipe.card_flavour }}</span>
-            {% if recipe.tag_assignments.all %}<span class="tag-row">{% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</span>{% endif %}
-            <span class="recipe-card__meta"><span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>{% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}</span>
-          </span>
-        </a>
+        <div class="recipe-tile">
+          <a class="recipe-card" href="{% url 'recipe-detail' recipe.id %}">
+            <span class="recipe-card__image-wrap">
+              {% if recipe.image_status == "ready" and recipe.thumbnail %}
+                <img class="recipe-card__image" src="{% url 'recipe-thumbnail' recipe.id %}" alt="{{ recipe.title }}">
+              {% else %}
+                <img class="recipe-card__placeholder" src="{% static 'images/recipe-placeholder.svg' %}" alt="" aria-hidden="true">
+                <span class="recipe-card__image-status">Bild wird zubereitet</span>
+              {% endif %}
+            </span>
+            <span class="recipe-card__content">
+              <span class="recipe-card__title">{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
+              <span class="recipe-card__flavour">{{ recipe.card_flavour }}</span>
+              {% if recipe.tag_assignments.all %}<span class="tag-row">{% for assignment in recipe.tag_assignments.all %}<span class="tag">{{ assignment.tag.name }}</span>{% endfor %}</span>{% endif %}
+              <span class="recipe-card__meta"><span class="status status--{{ recipe.status }}">{{ recipe.get_status_display }}</span>{% if recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}</span>
+            </span>
+          </a>
+          <form class="recipe-tile__cook" method="post" action="{% url 'recipe-cook-now' recipe.id %}">{% csrf_token %}
+            <button class="primary" type="submit" aria-label="{{ recipe.title|default:'Rezept' }} jetzt kochen">
+              <svg aria-hidden="true"><use href="#i-flame"></use></svg>
+              Jetzt kochen
+            </button>
+          </form>
+        </div>
       {% endfor %}
     </div>
   {% endif %}

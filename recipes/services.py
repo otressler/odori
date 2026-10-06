@@ -170,6 +170,11 @@ def create_or_update_recipe(
                     household=household, name=name.strip().lower()
                 )
                 RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
+        if recipe.status == Recipe.Status.APPROVED and (
+            not (recipe.title or "").strip()
+            or not RecipeStep.objects.filter(recipe=recipe).exists()
+        ):
+            raise ValueError("A published recipe needs a title and at least one instruction.")
         queue_recipe_image_if_needed(recipe)
         if is_new_recipe and recipe.source.type == RecipeSource.Type.MANUAL:
             queue_step_enrichment_if_needed(recipe)
@@ -196,68 +201,6 @@ def approve_recipe(recipe):
     recipe.version += 1
     recipe.save(update_fields=["status", "version", "updated_at"])
     return recipe
-
-
-@transaction.atomic
-def create_recipe_revision(recipe, user):
-    if recipe.status != Recipe.Status.APPROVED:
-        raise ValueError("Only approved recipes can be revised.")
-    revision = Recipe.objects.create(
-        household=recipe.household,
-        source=recipe.source,
-        created_by=user,
-        title=recipe.title,
-        servings=recipe.servings,
-    )
-    lines = RecipeIngredient.objects.bulk_create(
-        [
-            RecipeIngredient(
-                recipe=revision,
-                canonical_ingredient=line.canonical_ingredient,
-                source_text=line.source_text,
-                amount=line.amount,
-                unit=line.unit,
-                optional=line.optional,
-                sort_order=line.sort_order,
-                match_state=line.match_state,
-                match_method=line.match_method,
-                match_score=line.match_score,
-                match_policy_version=line.match_policy_version,
-                match_embedding_model=line.match_embedding_model,
-                match_candidates=line.match_candidates,
-            )
-            for line in recipe.ingredients.all()
-        ]
-    )
-    new_line_for = {line.sort_order: line for line in lines}
-    steps = list(recipe.steps.prefetch_related("ingredients"))
-    new_steps = RecipeStep.objects.bulk_create(
-        [
-            RecipeStep(
-                recipe=revision,
-                body=step.body,
-                sort_order=step.sort_order,
-                timers=step.timers,
-            )
-            for step in steps
-        ]
-    )
-    RecipeStep.ingredients.through.objects.bulk_create(
-        [
-            RecipeStep.ingredients.through(
-                recipestep=new_step, recipeingredient=new_line_for[line.sort_order]
-            )
-            for step, new_step in zip(steps, new_steps)
-            for line in step.ingredients.all()
-        ]
-    )
-    RecipeTagAssignment.objects.bulk_create(
-        [
-            RecipeTagAssignment(recipe=revision, tag=assignment.tag)
-            for assignment in recipe.tag_assignments.all()
-        ]
-    )
-    return revision
 
 
 @transaction.atomic

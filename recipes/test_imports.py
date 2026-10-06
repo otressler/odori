@@ -271,6 +271,57 @@ class RecipeImportJobTests(TestCase):
         AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT="recipe-generation",
     )
     @patch("providers.foundry_recipe_import.urlopen")
+    def test_import_normalizes_free_text_amounts(self, mocked_urlopen):
+        amounts = ["1,5", "1/2", "1½", "2-3", "nach Belieben", 3]
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{
+                            "type": "output_text",
+                            "text": json.dumps({
+                                "title": "Linsensuppe",
+                                "ingredients": [
+                                    {"sourceText": f"Zutat {index}", "amount": amount}
+                                    for index, amount in enumerate(amounts)
+                                ],
+                                "steps": [{"body": "Alles kochen."}],
+                            }),
+                        }],
+                    }
+                ]
+            }
+        ).encode()
+        mocked_urlopen.return_value.__enter__.return_value = response
+        self.client.force_login(self.user)
+        self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"text": "Linsensuppe"}),
+            content_type="application/json",
+        )
+
+        self.assertTrue(run_next_import_job())
+
+        job = RecipeImportJob.objects.get()
+        self.assertEqual(job.state, RecipeImportJob.State.SUCCEEDED)
+        self.assertEqual(job.provider_response, "")
+        self.assertEqual(
+            [
+                None if line.amount is None else str(line.amount)
+                for line in RecipeIngredient.objects.order_by("sort_order")
+            ],
+            ["1.50", "0.50", "1.50", "2.00", None, "3.00"],
+        )
+
+    @override_settings(
+        RECIPE_GENERATION_ENABLED=True,
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_RECIPE_GENERATION_DEPLOYMENT="recipe-generation",
+    )
+    @patch("providers.foundry_recipe_import.urlopen")
     def test_plaintext_provider_request_error_is_not_retryable(self, mocked_urlopen):
         mocked_urlopen.side_effect = HTTPError(
             "https://example.test/openai/v1/responses",
@@ -328,6 +379,7 @@ class RecipeImportJobTests(TestCase):
         job = RecipeImportJob.objects.get()
         self.assertEqual(job.state, RecipeImportJob.State.FAILED)
         self.assertEqual(job.error_code, "invalid_output")
+        self.assertEqual(job.provider_response, "This is not JSON.")
         mocked_log_event.assert_called_once()
         self.assertEqual(mocked_log_event.call_args.args[1], "provider.recipe_response_diagnostics")
         fields = mocked_log_event.call_args.kwargs
@@ -335,6 +387,40 @@ class RecipeImportJobTests(TestCase):
         self.assertEqual(fields["finish_reason"], "stop")
         self.assertEqual(fields["content_length"], len("This is not JSON."))
         self.assertEqual(fields["content_preview"], repr("This is not JSON."))
+
+    @override_settings(
+        AZURE_OPENAI_ENDPOINT="https://example.test",
+        AZURE_OPENAI_API_KEY="test-key",
+        AZURE_OPENAI_RECIPE_IMPORT_DEPLOYMENT="recipe-import",
+    )
+    @patch("recipes.imports.create_or_update_recipe")
+    @patch("providers.foundry_recipe_import.urlopen")
+    def test_failed_recipe_creation_keeps_model_response(self, mocked_urlopen, mocked_create):
+        content = json.dumps(
+            {
+                "title": "Spitzkohl",
+                "ingredients": [{"sourceText": "Schnittlauch", "amount": "0,5"}],
+                "steps": [{"body": "Kochen."}],
+            }
+        )
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
+        ).encode()
+        mocked_urlopen.return_value.__enter__.return_value = response
+        mocked_create.side_effect = ValueError("amount must be numeric")
+        self.client.force_login(self.user)
+        self.client.post(
+            "/api/v1/recipe-imports",
+            json.dumps({"url": "https://example.test/recipe"}),
+            content_type="application/json",
+        )
+
+        self.assertTrue(run_next_import_job())
+
+        job = RecipeImportJob.objects.get()
+        self.assertEqual(job.state, RecipeImportJob.State.FAILED)
+        self.assertEqual(job.provider_response, content)
 
     @override_settings(
         AZURE_OPENAI_ENDPOINT="https://example.test",

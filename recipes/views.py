@@ -20,7 +20,6 @@ from .services import (
     approve_recipe,
     archive_recipe,
     create_or_update_recipe,
-    create_recipe_revision,
     regenerate_recipe_image,
     toggle_favorite,
 )
@@ -259,13 +258,18 @@ def recipe_edit_page(request, recipe_id):
     )
     if not recipe:
         raise Http404
-    if recipe.status != Recipe.Status.DRAFT:
-        messages.error(request, "Veröffentlichte Rezepte werden als neuer Entwurf überarbeitet.")
+    if recipe.status == Recipe.Status.ARCHIVED:
+        messages.error(request, "Archivierte Rezepte können nicht bearbeitet werden.")
         return redirect("recipe-detail", recipe_id=recipe.id)
     if request.method == "POST":
         saved_recipe = save_recipe_form(request, recipe)
         if saved_recipe:
-            messages.success(request, "Entwurf aktualisiert.")
+            messages.success(
+                request,
+                "Rezept aktualisiert."
+                if saved_recipe.status == Recipe.Status.APPROVED
+                else "Entwurf aktualisiert.",
+            )
             return redirect("recipe-detail", recipe_id=saved_recipe.id)
     return render(request, "recipes/form.html", recipe_form_context(request.user, recipe))
 
@@ -383,17 +387,6 @@ def recipe_favorite_page(request, recipe_id):
     is_favorite = toggle_favorite(recipe, request.user)
     messages.success(request, "Als Favorit gespeichert." if is_favorite else "Favorit entfernt.")
     return redirect("recipe-detail", recipe_id=recipe.id)
-
-
-def recipe_revision_page(request, recipe_id):
-    recipe = recipe_for_user(request.user, recipe_id)
-    try:
-        revision = create_recipe_revision(recipe, request.user)
-    except ValueError as exc:
-        messages.error(request, str(exc))
-        return redirect("recipe-detail", recipe_id=recipe.id)
-    messages.success(request, "Ein neuer Entwurf wurde erstellt.")
-    return redirect("recipe-edit", recipe_id=revision.id)
 
 
 def recipe_step_enrichment_page(request, recipe_id):

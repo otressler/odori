@@ -11,7 +11,11 @@ from core.jobs import run_next_job
 from core.models import HouseholdMembership
 from core.observability import current_context
 from core.services import household_for
-from providers.foundry_recipe_import import STEP_ANNOTATION_INSTRUCTION, normalize_step_annotations
+from providers.foundry_recipe_import import (
+    STEP_ANNOTATION_INSTRUCTION,
+    normalize_amount,
+    normalize_step_annotations,
+)
 
 from .models import GeneratedRecipeRequest, RecipeSource
 from .services import create_or_update_recipe
@@ -56,10 +60,12 @@ def _validate_recipe_payload(data):
         if not source_text or len(source_text) > 300:
             raise ValueError("invalid_output")
         normalized = {"sourceText": source_text}
-        for key in ("amount", "unit"):
-            value = ingredient.get(key)
-            if value not in (None, ""):
-                normalized[key] = str(value)[:40]
+        amount = normalize_amount(ingredient.get("amount"))
+        if amount is not None:
+            normalized["amount"] = amount
+        unit = ingredient.get("unit")
+        if unit not in (None, ""):
+            normalized["unit"] = str(unit)[:40]
         normalized_ingredients.append(normalized)
     steps = data.get("steps")
     if not isinstance(steps, list) or not steps or len(steps) > 100:

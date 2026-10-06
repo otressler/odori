@@ -12,7 +12,6 @@ from providers.foundry_recipe_import import normalize_step_annotations
 from .enrichment import queue_step_enrichment, run_next_step_enrichment_job
 from .imports import create_import, run_next_import_job
 from .models import Recipe, RecipeImportJob, RecipeStep, RecipeStepEnrichmentJob
-from .services import create_recipe_revision
 from .steps import clean_timers, describe_duration, format_duration, parse_duration
 
 FOUNDRY_SETTINGS = {
@@ -233,20 +232,6 @@ class StepAnnotationTests(TestCase):
         detail = self.client.get(f"/recipes/{recipe_id}/")
         self.assertContains(detail, "Sugo · 15 Min.")
         self.assertContains(detail, 'class="step-meta__ingredient">400 g Tomaten')
-
-    def test_revision_copies_step_timers_and_ingredients(self):
-        recipe = Recipe.objects.get(id=self.create_recipe().json()["id"])
-        recipe.status = Recipe.Status.APPROVED
-        recipe.save(update_fields=["status"])
-
-        revision = create_recipe_revision(recipe, self.user)
-
-        step = revision.steps.get(sort_order=0)
-        self.assertEqual(step.timers[0], {"label": "Spaghetti", "seconds": 540})
-        self.assertEqual(
-            [line.source_text for line in step.ingredients.all()], ["Spaghetti", "Tomaten"]
-        )
-        self.assertTrue(all(line.recipe_id == revision.id for line in step.ingredients.all()))
 
     def test_kitchen_mode_offers_step_timers_and_scaled_step_ingredients(self):
         recipe = Recipe.objects.get(id=self.create_recipe().json()["id"])

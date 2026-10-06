@@ -28,9 +28,15 @@
       <button class="primary" type="submit">Veröffentlichen</button>
     </form>
   {% else %}
-    <form method="post" action="{% url 'recipe-revision' recipe.id %}">{% csrf_token %}
-      <button class="primary" type="submit">Als Entwurf überarbeiten</button>
-    </form>
+    {% if recipe.status == "approved" %}
+      <form method="post" action="{% url 'recipe-cook-now' recipe.id %}">{% csrf_token %}
+        <button class="primary" type="submit">
+          <svg class="step-meta__icon" aria-hidden="true"><use href="#i-flame"></use></svg>
+          Jetzt kochen
+        </button>
+      </form>
+      <a class="button" href="{% url 'recipe-edit' recipe.id %}">Bearbeiten</a>
+    {% endif %}
   {% endif %}
   <form method="post" action="{% url 'recipe-favorite' recipe.id %}">{% csrf_token %}
     <button type="submit">{% if is_favorite %}★ Favorit entfernen{% else %}☆ Favorisieren{% endif %}</button>

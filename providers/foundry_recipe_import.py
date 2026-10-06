@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from decimal import Decimal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -30,6 +31,25 @@ QUANTITY_PREFIX_RE = re.compile(
     r"(?:\s+|$)",
     re.IGNORECASE,
 )
+UNICODE_FRACTIONS = {
+    "¼": "1/4",
+    "½": "1/2",
+    "¾": "3/4",
+    "⅓": "1/3",
+    "⅔": "2/3",
+    "⅛": "1/8",
+    "⅜": "3/8",
+    "⅝": "5/8",
+    "⅞": "7/8",
+    "⅕": "1/5",
+    "⅙": "1/6",
+}
+AMOUNT_NUMBER = r"\d+(?:[.,]\d+)?(?:\s+\d+\s*/\s*\d+)?|\d+\s*/\s*\d+"
+AMOUNT_RE = re.compile(
+    rf"^(?:ca\.?|etwa|circa|~)?\s*({AMOUNT_NUMBER})(?:\s*(?:-|–|bis)\s*(?:{AMOUNT_NUMBER}))?$",
+    re.IGNORECASE,
+)
+MAX_AMOUNT = Decimal("9999999")
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +63,32 @@ class RecipeExtractionError(Exception):
 
 def _ingredient_description(source_text):
     return QUANTITY_PREFIX_RE.sub("", source_text, count=1).strip()
+
+
+def normalize_amount(value):
+    """Turn a model amount like "1,5", "1 1/2", "½" or "2-3" into a decimal string.
+
+    Ranges use their lower bound. Anything that is not a quantity ("nach Belieben")
+    returns None so the ingredient is kept without an amount.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    for symbol, fraction in UNICODE_FRACTIONS.items():
+        text = text.replace(symbol, f" {fraction}")
+    text = re.sub(r"\s*/\s*", "/", " ".join(text.split()))
+    match = AMOUNT_RE.match(text)
+    if not match:
+        return None
+    total = Decimal(0)
+    for part in match.group(1).replace(",", ".").split():
+        numerator, _, denominator = part.partition("/")
+        if denominator and Decimal(denominator) == 0:
+            return None
+        total += Decimal(numerator) / Decimal(denominator) if denominator else Decimal(numerator)
+    if not 0 < total <= MAX_AMOUNT:
+        return None
+    return f"{total.quantize(Decimal('0.01')).normalize():f}"
 
 
 def is_configured():
@@ -115,10 +161,12 @@ def _validate_recipe_payload(data):
                 "The extracted recipe has an invalid ingredient.", error_code="invalid_output"
             )
         normalized = {"sourceText": source_text}
-        for key in ("amount", "unit"):
-            value = ingredient.get(key)
-            if value not in (None, ""):
-                normalized[key] = str(value)[:40]
+        amount = normalize_amount(ingredient.get("amount"))
+        if amount is not None:
+            normalized["amount"] = amount
+        unit = ingredient.get("unit")
+        if unit not in (None, ""):
+            normalized["unit"] = str(unit)[:40]
         if ingredient.get("optional") is not None:
             normalized["optional"] = bool(ingredient["optional"])
         normalized_ingredients.append(normalized)
@@ -206,6 +254,30 @@ def _log_response_diagnostics(response_body, content):
     log_event(logger, "provider.recipe_response_diagnostics", level=logging.WARNING, **fields)
 
 
+def _output_text(response_body):
+    if response_body.get("choices"):
+        return response_body["choices"][0]["message"]["content"]
+    return next(
+        (
+            part["text"]
+            for item in response_body["output"]
+            if item.get("type") == "message"
+            for part in item.get("content", [])
+            if part.get("type") == "output_text"
+        ),
+        None,
+    )
+
+
+def _response_text(payload):
+    """The model's output text, or the raw response body when it has none."""
+    try:
+        text = _output_text(json.loads(payload))
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+        text = None
+    return text if isinstance(text, str) else payload.decode("utf-8", errors="replace")
+
+
 def _extract_recipe(
     *,
     content,
@@ -215,6 +287,7 @@ def _extract_recipe(
     max_output_tokens,
     web_search=False,
     validate=_validate_recipe_payload,
+    on_response=None,
 ):
     if (
         not settings.AZURE_OPENAI_ENDPOINT.startswith("https://")
@@ -283,6 +356,8 @@ def _extract_recipe(
             error_code="provider_unavailable",
             retryable=True,
         ) from exc
+    if on_response is not None:
+        on_response(_response_text(payload))
     if len(payload) > MAX_RESPONSE_BYTES:
         raise RecipeExtractionError(
             "The extraction response was too large.", error_code="invalid_output"
@@ -292,16 +367,7 @@ def _extract_recipe(
     try:
         response_body = json.loads(payload)
         choices = response_body.get("choices")
-        if response_body.get("choices"):
-            content = response_body["choices"][0]["message"]["content"]
-        else:
-            content = next(
-                part["text"]
-                for item in response_body["output"]
-                if item.get("type") == "message"
-                for part in item.get("content", [])
-                if part.get("type") == "output_text"
-            )
+        content = _output_text(response_body)
         finish_reason = (
             choices[0].get("finish_reason")
             if isinstance(choices, list) and choices and isinstance(choices[0], dict)
@@ -324,7 +390,7 @@ def _extract_recipe(
         ) from exc
 
 
-def extract_recipe_from_url(url):
+def extract_recipe_from_url(url, *, on_response=None):
     return _extract_recipe(
         content=f"Recipe URL: {url}",
         deployment=settings.AZURE_OPENAI_RECIPE_IMPORT_DEPLOYMENT,
@@ -342,10 +408,11 @@ def extract_recipe_from_url(url):
             "invent missing recipe details."
         ),
         web_search=True,
+        on_response=on_response,
     )
 
 
-def extract_recipe_from_text(text):
+def extract_recipe_from_text(text, *, on_response=None):
     if not text or len(text) > MAX_TEXT_LENGTH:
         raise RecipeExtractionError("The recipe text is invalid.", error_code="invalid_source")
     return _extract_recipe(
@@ -372,6 +439,7 @@ def extract_recipe_from_text(text):
             "claim that it was verified against a web source."
         ),
         web_search=True,
+        on_response=on_response,
     )
 
 

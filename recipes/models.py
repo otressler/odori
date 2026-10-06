@@ -88,6 +88,8 @@ class RecipeImportJob(models.Model):
     correlation_id = models.UUIDField(default=uuid.uuid4, editable=False)
     error_code = models.CharField(max_length=80, blank=True)
     error_message = models.CharField(max_length=500, blank=True)
+    # Model output of the latest attempt, kept only when that attempt failed.
+    provider_response = models.TextField(blank=True)
     recipe = models.ForeignKey(
         "Recipe", null=True, blank=True, on_delete=models.SET_NULL, related_name="import_jobs"
     )

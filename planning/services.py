@@ -1,5 +1,5 @@
 from datetime import date as date_type
-from datetime import timedelta
+from datetime import time, timedelta
 
 from django.db import transaction
 from django.http import Http404
@@ -13,6 +13,9 @@ from recipes.models import Recipe
 from .models import COURSE_SEQUENCE, SLOT_SEQUENCE, CookEvent, MealPlan, MealSlot
 
 RECENT_REPEAT_DAYS = 21
+# "Jetzt kochen" files the dish under the meal the local clock is closest to.
+BREAKFAST_UNTIL = time(11, 30)
+LUNCH_UNTIL = time(17, 30)
 
 
 class StaleSlotVersion(Exception):
@@ -232,6 +235,42 @@ def add_slot(
     if servings_for_whole_slot and resolved_servings:
         apply_servings_to_cell(entry)
     return entry
+
+
+def slot_for_time(moment):
+    clock = moment.time()
+    if clock < BREAKFAST_UNTIL:
+        return MealSlot.Slot.BREAKFAST
+    if clock < LUNCH_UNTIL:
+        return MealSlot.Slot.LUNCH
+    return MealSlot.Slot.DINNER
+
+
+@transaction.atomic
+def cook_now(*, user, recipe_id):
+    """Plan the recipe for the current meal today, reusing an uncooked entry from a double tap."""
+
+    now = timezone.localtime()
+    today = now.date()
+    slot = slot_for_time(now)
+    existing = MealSlot.objects.filter(
+        plan__household=household_for(user),
+        date=today,
+        slot=slot,
+        entry_type=MealSlot.EntryType.RECIPE,
+        recipe_id=recipe_id,
+        cooked_at__isnull=True,
+    ).first()
+    if existing:
+        return existing
+    return add_slot(
+        user=user,
+        week_start=week_start_for(today),
+        date=today,
+        slot=slot,
+        entry_type=MealSlot.EntryType.RECIPE,
+        recipe_id=recipe_id,
+    )
 
 
 @transaction.atomic

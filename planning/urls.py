@@ -12,6 +12,11 @@ urlpatterns = [
         login_required(require_GET(views.recipe_search)),
         name="plan-recipe-search",
     ),
+    path(
+        "cook-now/<uuid:recipe_id>/",
+        login_required(require_POST(views.cook_now_page)),
+        name="recipe-cook-now",
+    ),
     path("<str:week_start>/", login_required(views.plan_page), name="plan-week"),
     path(
         "<str:week_start>/slots/",

@@ -124,7 +124,7 @@
           <td><span class="tag">{{ job.get_stage_display }}</span></td>
           <td class="num">{{ job.attempt_count }}<small> / {{ job.max_attempts }}</small></td>
           <td>{% if job.recipe %}<a href="{% url 'recipe-detail' job.recipe.id %}">{{ job.recipe.title|default:"Entwurf" }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
-          <td class="ops-error">{% if job.error_code %}<code>{{ job.error_code }}</code><span title="{{ job.error_message }}">{{ job.error_message|truncatechars:120 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="ops-error">{% if job.error_code %}<code>{{ job.error_code }}</code><span title="{{ job.error_message }}">{{ job.error_message|truncatechars:120 }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if job.provider_response %}<details class="ops-response"><summary>Modellantwort</summary><pre>{{ job.provider_response|pretty_json }}</pre></details>{% endif %}</td>
           <td class="ops-action">{% if job.state == "failed" %}<form method="post" action="{% url 'retry-import-job' job.id %}">{% csrf_token %}<button class="ops-retry" type="submit">Erneut ausführen</button></form>{% endif %}</td>
         </tr>
         {% endfor %}

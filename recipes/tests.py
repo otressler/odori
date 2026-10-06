@@ -13,7 +13,7 @@ from pantry.models import CanonicalIngredient
 
 from .images import recipe_image_prompt
 from .models import Recipe, RecipeImageJob, RecipeIngredient, RecipeSource
-from .services import create_or_update_recipe, create_recipe_revision
+from .services import create_or_update_recipe
 
 
 class RecipeLifecycleTests(TestCase):
@@ -60,34 +60,59 @@ class RecipeLifecycleTests(TestCase):
         response = self.client.post(f"/api/v1/recipes/{response.json()['id']}/approve")
         self.assertEqual(response.status_code, 422)
 
-    def test_approved_recipe_cannot_be_updated_in_place(self):
+    def test_approved_recipe_is_updated_in_place(self):
         response = self.create_recipe()
         recipe_id = response.json()["id"]
         self.client.post(f"/api/v1/recipes/{recipe_id}/approve")
+        version = Recipe.objects.get(id=recipe_id).version
         response = self.client.patch(
             f"/api/v1/recipes/{recipe_id}",
-            json.dumps({"version": 2, "title": "Changed"}),
+            json.dumps({"version": version, "title": "Changed"}),
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["error"]["code"], "approved_recipe_immutable")
-        self.assertEqual(Recipe.objects.get(id=recipe_id).title, "Pasta al Pomodoro")
+        self.assertEqual(response.status_code, 200)
+        recipe = Recipe.objects.get(id=recipe_id)
+        self.assertEqual(recipe.title, "Changed")
+        self.assertEqual(recipe.status, Recipe.Status.APPROVED)
+        self.assertEqual(Recipe.objects.count(), 1)
 
-    def test_approved_recipe_revision_preserves_recipe_content(self):
+    def test_approved_recipe_keeps_its_instructions(self):
         response = self.create_recipe()
-        recipe = Recipe.objects.get(id=response.json()["id"])
-        self.client.post(f"/api/v1/recipes/{recipe.id}/approve")
-        recipe.refresh_from_db()
-
-        revision = create_recipe_revision(recipe, self.user)
-
-        self.assertEqual(revision.status, Recipe.Status.DRAFT)
-        self.assertEqual(revision.title, recipe.title)
-        self.assertEqual(revision.ingredients.count(), recipe.ingredients.count())
-        self.assertEqual(revision.steps.count(), recipe.steps.count())
-        self.assertEqual(
-            list(revision.tag_assignments.values_list("tag__name", flat=True)), ["schnell"]
+        recipe_id = response.json()["id"]
+        self.client.post(f"/api/v1/recipes/{recipe_id}/approve")
+        version = Recipe.objects.get(id=recipe_id).version
+        response = self.client.patch(
+            f"/api/v1/recipes/{recipe_id}",
+            json.dumps({"version": version, "steps": []}),
+            content_type="application/json",
         )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(Recipe.objects.get(id=recipe_id).steps.count(), 1)
+
+    def test_approved_recipe_edit_page_saves_the_same_recipe(self):
+        response = self.create_recipe()
+        recipe_id = response.json()["id"]
+        self.client.post(f"/api/v1/recipes/{recipe_id}/approve")
+
+        detail = self.client.get(f"/recipes/{recipe_id}/")
+        self.assertContains(detail, reverse("recipe-edit", args=[recipe_id]))
+        response = self.client.post(
+            f"/recipes/{recipe_id}/edit/",
+            {
+                "title": "Pasta al Pomodoro e Basilico",
+                "servings": "2",
+                "ingredient-source-0": "Pasta",
+                "ingredient-amount-0": "200",
+                "ingredient-unit-0": "g",
+                "step-0": "Kochen.",
+            },
+        )
+
+        self.assertRedirects(response, reverse("recipe-detail", args=[recipe_id]))
+        recipe = Recipe.objects.get(id=recipe_id)
+        self.assertEqual(recipe.title, "Pasta al Pomodoro e Basilico")
+        self.assertEqual(recipe.status, Recipe.Status.APPROVED)
+        self.assertEqual(Recipe.objects.count(), 1)
 
     def test_recipe_pages_expose_curation_actions(self):
         response = self.create_recipe()
@@ -226,7 +251,6 @@ class RecipeLifecycleTests(TestCase):
             f"/recipes/{recipe.id}/approve/",
             f"/recipes/{recipe.id}/archive/",
             f"/recipes/{recipe.id}/favorite/",
-            f"/recipes/{recipe.id}/revise/",
             f"/recipes/{recipe.id}/image/regenerate/",
             f"/recipes/{recipe.id}/ingredients/{line.id}/add-to-pantry/",
         ]
@@ -340,16 +364,6 @@ class RecipeLifecycleTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Recipe.objects.filter(title="Zu viele Zutaten").exists())
-
-    def test_approved_recipe_can_be_revised_from_detail_workflow(self):
-        response = self.create_recipe()
-        recipe_id = response.json()["id"]
-        self.client.post(f"/api/v1/recipes/{recipe_id}/approve")
-
-        response = self.client.post(f"/recipes/{recipe_id}/revise/")
-
-        self.assertRedirects(response, "/recipes/" + response.url.split("/")[2] + "/edit/")
-        self.assertEqual(Recipe.objects.filter(status=Recipe.Status.DRAFT).count(), 1)
 
     def test_archived_recipes_are_hidden_from_default_search(self):
         response = self.create_recipe()

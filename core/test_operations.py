@@ -5,10 +5,12 @@ from unittest.mock import patch
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from pantry.models import CanonicalIngredient, IngredientIconJob, PantryCategorizationJob
 from recipes.models import (
+    ImportSource,
     Recipe,
     RecipeImageJob,
     RecipeImportAttempt,
@@ -72,6 +74,28 @@ class OperationsPageTests(TestCase):
         self.assertTrue(context["worker_is_fresh"])
         self.assertEqual(context["category_queue_counts"]["failed"], 1)
         self.assertEqual(context["provider_diagnostics"][0].error_code, "timeout")
+
+    def test_operations_page_shows_model_response_of_failed_import(self):
+        source = ImportSource.objects.create(
+            household=self.household,
+            source_type=ImportSource.Type.URL,
+            url="https://example.test/recipe",
+            content_hash="hash",
+        )
+        RecipeImportJob.objects.create(
+            household=self.household,
+            source=source,
+            state=RecipeImportJob.State.FAILED,
+            error_code="ValueError",
+            error_message="amount must be numeric",
+            provider_response='{"amount": "0,5"}',
+        )
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse("operations"))
+
+        self.assertContains(response, "Modellantwort")
+        self.assertContains(response, "{\n  &quot;amount&quot;: &quot;0,5&quot;\n}")
 
     def test_operations_page_allows_household_admin(self):
         admin = User.objects.create_user(username="admin", password="test-password")

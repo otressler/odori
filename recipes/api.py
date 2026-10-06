@@ -143,12 +143,6 @@ def recipe_detail(request, recipe_id):
         except StaleRecipeVersion:
             return error("stale_version", "This recipe changed elsewhere.", 409)
         return JsonResponse({}, status=204)
-    if recipe.status == Recipe.Status.APPROVED:
-        return error(
-            "approved_recipe_immutable",
-            "Create a draft revision before editing an approved recipe.",
-            409,
-        )
     data = read_json(request)
     if data is None:
         return error("malformed_input", "Expected JSON.", 400)

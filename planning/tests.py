@@ -1,5 +1,5 @@
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -691,3 +691,50 @@ class PlanRecipeSearchTests(PlanningTestCase):
         )
 
         self.assertEqual([result["id"] for result in self.search("Feta")], [str(self.feta.id)])
+
+
+class CookNowTests(PlanningTestCase):
+    def cook_now_at(self, hour, minute):
+        moment = timezone.make_aware(datetime(2026, 10, 7, hour, minute))
+        with patch("planning.services.timezone.localtime", return_value=moment):
+            return self.client.post(reverse("recipe-cook-now", args=[self.recipe.id]))
+
+    def test_the_local_clock_picks_the_meal(self):
+        for (hour, minute), slot in [
+            ((11, 29), MealSlot.Slot.BREAKFAST),
+            ((11, 30), MealSlot.Slot.LUNCH),
+            ((17, 29), MealSlot.Slot.LUNCH),
+            ((17, 30), MealSlot.Slot.DINNER),
+        ]:
+            with self.subTest(time=f"{hour}:{minute:02d}"):
+                MealSlot.objects.all().delete()
+                response = self.cook_now_at(hour, minute)
+                entry = MealSlot.objects.get()
+                self.assertEqual(entry.slot, slot)
+                self.assertEqual(entry.date, date(2026, 10, 7))
+                self.assertEqual(entry.plan.week_start_date, date(2026, 10, 5))
+                self.assertEqual(entry.servings, self.recipe.servings)
+                self.assertRedirects(
+                    response,
+                    reverse("kitchen-mode", args=[entry.id]),
+                    fetch_redirect_response=False,
+                )
+
+    def test_a_second_tap_reuses_the_uncooked_entry(self):
+        first = self.cook_now_at(12, 0)
+        second = self.cook_now_at(13, 0)
+        self.assertEqual(MealSlot.objects.count(), 1)
+        self.assertEqual(first["Location"], second["Location"])
+
+    def test_drafts_cannot_be_cooked_now(self):
+        self.recipe.status = Recipe.Status.DRAFT
+        self.recipe.save()
+        response = self.cook_now_at(12, 0)
+        self.assertRedirects(
+            response, reverse("recipe-detail", args=[self.recipe.id]), fetch_redirect_response=False
+        )
+        self.assertFalse(MealSlot.objects.exists())
+
+    def test_published_cards_offer_cooking_now(self):
+        response = self.client.get(reverse("recipe-list"))
+        self.assertContains(response, reverse("recipe-cook-now", args=[self.recipe.id]))

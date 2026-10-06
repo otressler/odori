@@ -81,6 +81,7 @@ def claim_next_import(*, now=None, lease_seconds=None):
         job.attempt_count = next_attempt_number
         job.error_code = ""
         job.error_message = ""
+        job.provider_response = ""
         job.save(
             update_fields=[
                 "state",
@@ -90,6 +91,7 @@ def claim_next_import(*, now=None, lease_seconds=None):
                 "attempt_count",
                 "error_code",
                 "error_message",
+                "provider_response",
             ]
         )
         attempt = RecipeImportAttempt.objects.create(
@@ -112,7 +114,7 @@ def recover_expired_imports(*, now=None):
     )
 
 
-def _finish(job_id, lease_id, *, state, error=None, recipe=None):
+def _finish(job_id, lease_id, *, state, error=None, recipe=None, provider_response=""):
     with transaction.atomic():
         job = RecipeImportJob.objects.select_for_update().get(id=job_id)
         if job.state != RecipeImportJob.State.RUNNING or job.lease_id != lease_id:
@@ -129,6 +131,7 @@ def _finish(job_id, lease_id, *, state, error=None, recipe=None):
         job.recipe = recipe
         job.error_code = error_code
         job.error_message = str(error)[:500] if error else ""
+        job.provider_response = provider_response if error else ""
         job.lease_id = None
         job.lease_expires_at = None
         job.finished_at = now
@@ -138,6 +141,7 @@ def _finish(job_id, lease_id, *, state, error=None, recipe=None):
                 "recipe",
                 "error_code",
                 "error_message",
+                "provider_response",
                 "lease_id",
                 "lease_expires_at",
                 "finished_at",
@@ -188,7 +192,13 @@ def run_next_import_job(process=None):
             _finish(job.id, attempt.lease_id, state=RecipeImportJob.State.SUCCEEDED, recipe=recipe)
         except RetryableImportError as exc:
             if job.attempt_count >= job.max_attempts:
-                _finish(job.id, attempt.lease_id, state=RecipeImportJob.State.FAILED, error=exc)
+                _finish(
+                    job.id,
+                    attempt.lease_id,
+                    state=RecipeImportJob.State.FAILED,
+                    error=exc,
+                    provider_response=job.provider_response,
+                )
             else:
                 with transaction.atomic():
                     current = RecipeImportJob.objects.select_for_update().get(id=job.id)
@@ -201,6 +211,7 @@ def run_next_import_job(process=None):
                         current.lease_expires_at = None
                         current.error_code = exc.error_code
                         current.error_message = str(exc)[:500]
+                        current.provider_response = job.provider_response
                         current.save(
                             update_fields=[
                                 "state",
@@ -209,6 +220,7 @@ def run_next_import_job(process=None):
                                 "lease_expires_at",
                                 "error_code",
                                 "error_message",
+                                "provider_response",
                             ]
                         )
                         attempt.finished_at = timezone.now()
@@ -216,7 +228,13 @@ def run_next_import_job(process=None):
                         attempt.error_code = exc.error_code
                         attempt.save(update_fields=["finished_at", "outcome", "error_code"])
         except Exception as exc:
-            _finish(job.id, attempt.lease_id, state=RecipeImportJob.State.FAILED, error=exc)
+            _finish(
+                job.id,
+                attempt.lease_id,
+                state=RecipeImportJob.State.FAILED,
+                error=exc,
+                provider_response=job.provider_response,
+            )
             logger.exception("Recipe import failed")
     return True
 
@@ -224,11 +242,15 @@ def run_next_import_job(process=None):
 def _extract_and_create_recipe(job):
     job.stage = RecipeImportJob.Stage.EXTRACT
     job.save(update_fields=["stage"])
+
+    def keep_response(text):
+        job.provider_response = text
+
     try:
         if job.source.source_type == ImportSource.Type.URL:
-            data = extract_recipe_from_url(job.source.url)
+            data = extract_recipe_from_url(job.source.url, on_response=keep_response)
         elif job.source.source_type == ImportSource.Type.TEXT:
-            data = extract_recipe_from_text(job.source.content)
+            data = extract_recipe_from_text(job.source.content, on_response=keep_response)
         else:
             raise PermanentImportError("This recipe import source is not supported yet.")
     except RecipeExtractionError as exc:

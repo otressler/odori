@@ -40,11 +40,6 @@ urlpatterns = [
         name="recipe-favorite",
     ),
     path(
-        "<uuid:recipe_id>/revise/",
-        login_required(require_POST(views.recipe_revision_page)),
-        name="recipe-revision",
-    ),
-    path(
         "<uuid:recipe_id>/steps/enrich/",
         login_required(require_POST(views.recipe_step_enrichment_page)),
         name="recipe-step-enrichment",

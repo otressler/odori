@@ -20,6 +20,7 @@ from .services import (
     SlotNotCookable,
     StaleSlotVersion,
     add_slot,
+    cook_now,
     current_week_start,
     delete_slot,
     duplicate_recipe_ids,
@@ -214,6 +215,15 @@ def slot_create_page(request, week_start):
     if request.POST.get("then") == "another":
         return redirect(week_url(start, day=day, open_slot=slot))
     return redirect(week_url(start, day=day))
+
+
+def cook_now_page(request, recipe_id):
+    try:
+        entry = cook_now(user=request.user, recipe_id=recipe_id)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("recipe-detail", recipe_id=recipe_id)
+    return redirect("kitchen-mode", slot_id=entry.id)
 
 
 def slot_update_page(request, slot_id):

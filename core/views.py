@@ -236,6 +236,7 @@ def retry_import_job(request, job_id):
         job.state = RecipeImportJob.State.QUEUED
         job.error_message = ""
         job.error_code = ""
+        job.provider_response = ""
         job.available_at = timezone.now()
         job.started_at = None
         job.finished_at = None
@@ -247,6 +248,7 @@ def retry_import_job(request, job_id):
                 "state",
                 "error_message",
                 "error_code",
+                "provider_response",
                 "available_at",
                 "started_at",
                 "finished_at",

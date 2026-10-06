@@ -1,3 +1,5 @@
+import json
+
 from django import template
 
 register = template.Library()
@@ -35,3 +37,12 @@ def state_label(state):
 @register.filter
 def state_tone(state):
     return STATE_TONES.get(state, "neutral")
+
+
+@register.filter
+def pretty_json(text):
+    """Indent JSON for reading; leave anything else as it is."""
+    try:
+        return json.dumps(json.loads(text), indent=2, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return text
