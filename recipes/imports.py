@@ -119,14 +119,15 @@ def _finish(job_id, lease_id, *, state, error=None, recipe=None):
             return False
         now = timezone.now()
         attempt = job.attempts.get(number=job.attempt_count)
+        error_code = getattr(error, "error_code", type(error).__name__) if error else ""
         attempt.finished_at = now
         attempt.outcome = state
         if error:
-            attempt.error_code = getattr(error, "error_code", type(error).__name__)
+            attempt.error_code = error_code
         attempt.save(update_fields=["finished_at", "outcome", "error_code"])
         job.state = state
         job.recipe = recipe
-        job.error_code = getattr(error, "error_code", "") if error else ""
+        job.error_code = error_code
         job.error_message = str(error)[:500] if error else ""
         job.lease_id = None
         job.lease_expires_at = None
