@@ -17,7 +17,8 @@ Inventory deliberately models availability, not stock levels. This avoids false 
 | `canonical_ingredient` | id, household_id, name, category_id, aliases, icon, icon_status, active | Household-scoped stable identity shared by recipes, inventory, and lists. |
 | `recipe` | id, household_id, title, status, servings, source_id, created_by, archived_at | Status is `draft`, `approved`, or `archived`. |
 | `recipe_ingredient` | id, recipe_id, canonical_ingredient_id, source_text, amount, unit, optional, sort_order, match_state | Amount/unit may be absent; `match_state` supports review. |
-| `recipe_step` | id, recipe_id, body, sort_order, timer_seconds | Ordered cooking instruction. |
+| `recipe_step` | id, recipe_id, body, sort_order, timers, ingredients | Ordered cooking instruction. `timers` is a list of up to ten labelled durations (`{label, seconds}`, at most 24 hours each) that Kitchen Mode offers as one-tap countdowns; `ingredients` links the recipe lines the step uses. |
+| `recipe_step_enrichment_job` | id, recipe_id, state, attempt_count, error_code, correlation_id | Durable AI work that fills empty step timers and step ingredients from the recipe text; state is `queued`, `running`, `succeeded`, `failed`, or `superseded`. |
 | `recipe_tag` | id, household_id, name | Household-defined label with a case-insensitive unique name. |
 | `recipe_tag_assignment` | recipe_id, tag_id | Many-to-many recipe classification within one household. |
 | `recipe_favorite` | recipe_id, user_id, created_at | Per-user favorite marker; unique by recipe and user. |
@@ -43,7 +44,8 @@ recipe_source 1 ── * recipe
 recipe 1 ── * recipe_image_job
 recipe 0..1 ── * generated_recipe_request
 recipe 1 ── * recipe_ingredient ── 1 canonical_ingredient ── 1 ingredient_category
-recipe 1 ── * recipe_step
+recipe 1 ── * recipe_step * ── * recipe_ingredient
+recipe 1 ── * recipe_step_enrichment_job
 recipe * ── * recipe_tag
 canonical_ingredient 1 ── 0..1 inventory_item ── * inventory_event
 canonical_ingredient 1 ── * ingredient_icon_job
@@ -71,6 +73,7 @@ Availability and restock intent are independent. An unavailable ingredient may s
 - A recipe must have a title and at least one instruction before `approved`; ingredients can be incomplete only while `draft`.
 - A canonical ingredient cannot be deleted once referenced; it may be merged or deactivated.
 - Generated drafts and manual drafts must not alter an existing approved recipe unless the user explicitly edits it. URL/file import follows the same rule when implemented.
+- Step enrichment only fills a step's timers or ingredients while they are still empty, and only on steps and ingredient lines that still exist unchanged when the job finishes. It never rewrites recipe text, so it may complete on an approved recipe without a revision. Imported and generated recipes receive step annotations from extraction directly; a new manual recipe is queued for enrichment when the provider is configured, and any non-archived recipe can request it from its detail page.
 - Rebuilding a list updates only calculated, unpurchased items. Manual, purchased, and skipped entries are retained.
 - A purchase creates both a shopping-item state transition and an inventory event in one transaction.
 - Before a manual transition away from `available`, calculate all non-cooked upcoming meal slots that use the ingredient. Require explicit confirmation when the set is non-empty.

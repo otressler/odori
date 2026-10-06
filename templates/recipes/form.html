@@ -87,18 +87,22 @@
     </div>
     <div class="stack" id="step-rows">
       {% for row in step_rows %}
-        <div class="step-row">
-          <div class="field">
-            <label for="step-{{ forloop.counter0 }}">Schritt {{ forloop.counter }}</label>
-            <textarea id="step-{{ forloop.counter0 }}" name="step-{{ forloop.counter0 }}" rows="3"
-                      placeholder="Zwiebeln in Olivenöl glasig dünsten.">{{ row.body|default:'' }}</textarea>
-          </div>
-          <button class="icon-button ghost row-remove" type="button" data-remove-row aria-label="Schritt entfernen" title="Schritt entfernen">
-            <svg aria-hidden="true"><use href="#i-trash"></use></svg>
-          </button>
-        </div>
+        {% include "recipes/_step_row.html" with step=forloop.counter0 number=forloop.counter %}
       {% endfor %}
     </div>
+    <p class="field__hint">
+      Timer erscheinen im Kochmodus als Startknöpfe beim jeweiligen Schritt. Dauer in Minuten
+      (z. B. 10) oder als mm:ss bzw. h:mm:ss.
+      {% if step_enrichment_available and not recipe %}
+        Was du offen lässt, ergänzt Odori nach dem Speichern automatisch.
+      {% endif %}
+    </p>
+    <template id="step-template">
+      {% include "recipes/_step_row.html" with step="__index__" number="__number__" row=None %}
+    </template>
+    <template id="timer-template">
+      {% include "recipes/_step_timer.html" with step="__step__" timer_index="__timer__" timer=None %}
+    </template>
   </section>
 
   <div class="button-row">
@@ -238,8 +242,9 @@
 
   function clearRow(row) {
     row.querySelectorAll("input, textarea").forEach(function (input) {
-      input.value = "";
+      if (input.type === "checkbox") { input.checked = false; } else { input.value = ""; }
     });
+    row.querySelectorAll(".timer-row").forEach(function (timer) { timer.remove(); });
     row.querySelectorAll('[role="listbox"]').forEach(function (results) {
       results.hidden = true;
       results.replaceChildren();
@@ -257,12 +262,76 @@
     }
   }
 
-  ingredients.addEventListener("click", function (event) {
-    var button = event.target.closest("[data-remove-row]");
-    if (button) { removeRow(ingredients, ".ingredient-row", button.closest(".ingredient-row")); }
+  function fromTemplate(id, replacements) {
+    var html = document.getElementById(id).innerHTML;
+    Object.keys(replacements).forEach(function (key) {
+      html = html.split(key).join(replacements[key]);
+    });
+    var wrapper = document.createElement("div");
+    wrapper.innerHTML = html.trim();
+    return wrapper.firstElementChild;
+  }
+
+  /* Step ingredient checkboxes mirror the ingredient rows above, keyed by row number. */
+  function syncStepIngredients() {
+    var options = [];
+    ingredients.querySelectorAll('[name^="ingredient-source-"]').forEach(function (input) {
+      var match = input.name.match(/-(\d+)$/);
+      if (match && input.value.trim()) { options.push({ value: match[1], label: input.value.trim() }); }
+    });
+    steps.querySelectorAll("[data-step-ingredients]").forEach(function (fieldset) {
+      var list = fieldset.querySelector("[data-options]");
+      var checked = {};
+      list.querySelectorAll("input:checked").forEach(function (input) { checked[input.value] = true; });
+      list.replaceChildren();
+      options.forEach(function (option) {
+        var label = document.createElement("label");
+        var input = document.createElement("input");
+        var text = document.createElement("span");
+        label.className = "check-chip";
+        input.type = "checkbox";
+        input.name = fieldset.dataset.name;
+        input.value = option.value;
+        input.checked = Boolean(checked[option.value]);
+        text.textContent = option.label;
+        label.append(input, text);
+        list.appendChild(label);
+      });
+      fieldset.querySelector("[data-empty]").hidden = options.length > 0;
+    });
+  }
+
+  var syncTimer;
+  ingredients.addEventListener("input", function (event) {
+    if (!event.target.name || event.target.name.indexOf("ingredient-source-") !== 0) { return; }
+    window.clearTimeout(syncTimer);
+    syncTimer = window.setTimeout(syncStepIngredients, 200);
   });
 
+  ingredients.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-remove-row]");
+    if (button) {
+      removeRow(ingredients, ".ingredient-row", button.closest(".ingredient-row"));
+      syncStepIngredients();
+    }
+  });
+
+  function addTimer(container) {
+    var rows = container.querySelector("[data-timer-rows]");
+    var next = 0;
+    rows.querySelectorAll('[name^="step-timer-label-"]').forEach(function (input) {
+      next = Math.max(next, Number(input.name.split("-").pop()) + 1);
+    });
+    var row = fromTemplate("timer-template", { "__step__": container.dataset.step, "__timer__": String(next) });
+    rows.appendChild(row);
+    row.querySelector("input").focus();
+  }
+
   steps.addEventListener("click", function (event) {
+    var removeTimer = event.target.closest("[data-remove-timer]");
+    if (removeTimer) { removeTimer.closest(".timer-row").remove(); return; }
+    var add = event.target.closest("[data-add-timer]");
+    if (add) { addTimer(add.closest("[data-timers]")); return; }
     var button = event.target.closest("[data-remove-row]");
     if (button) { removeRow(steps, ".step-row", button.closest(".step-row")); }
   });
@@ -296,13 +365,9 @@
         clone.querySelector("input").focus();
       } else {
         var index = nextIndex(steps, "textarea");
-        var row = document.createElement("div");
-        row.className = "step-row";
-        row.innerHTML = '<div class="field"><label for="step-' + index + '">Schritt ' + (index + 1) + '</label>' +
-          '<textarea id="step-' + index + '" name="step-' + index + '" rows="3"></textarea></div>' +
-          '<button class="icon-button ghost row-remove" type="button" data-remove-row aria-label="Schritt entfernen" title="Schritt entfernen">' +
-          '<svg aria-hidden="true"><use href="#i-trash"></use></svg></button>';
+        var row = fromTemplate("step-template", { "__index__": String(index), "__number__": String(index + 1) });
         steps.appendChild(row);
+        syncStepIngredients();
         row.querySelector("textarea").focus();
       }
     });

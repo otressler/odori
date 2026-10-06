@@ -1,0 +1,35 @@
+<div class="step-row">
+  <div class="field">
+    <label for="step-{{ step }}">Schritt {{ number }}</label>
+    <textarea id="step-{{ step }}" name="step-{{ step }}" rows="3"
+              placeholder="Zwiebeln in Olivenöl glasig dünsten.">{{ row.body|default:'' }}</textarea>
+  </div>
+  <button class="icon-button ghost row-remove" type="button" data-remove-row aria-label="Schritt entfernen" title="Schritt entfernen">
+    <svg aria-hidden="true"><use href="#i-trash"></use></svg>
+  </button>
+  <div class="step-extras">
+    <fieldset class="step-ingredients" data-step-ingredients data-name="step-ingredients-{{ step }}">
+      <legend>Zutaten für diesen Schritt</legend>
+      <div class="check-chips" data-options>
+        {% for ingredient in ingredient_rows %}{% if ingredient.source_text %}
+          <label class="check-chip">
+            <input type="checkbox" name="step-ingredients-{{ step }}" value="{{ forloop.counter0 }}"{% if forloop.counter0 in row.ingredient_positions %} checked{% endif %}>
+            <span>{{ ingredient.source_text }}</span>
+          </label>
+        {% endif %}{% endfor %}
+      </div>
+      <p class="field__hint" data-empty{% if ingredient_rows|length > 1 %} hidden{% endif %}>Erfasse oben Zutaten, um sie hier zuzuordnen.</p>
+    </fieldset>
+    <div class="step-timers" data-timers data-step="{{ step }}">
+      <div class="step-timers__head">
+        <span class="step-timers__title">Timer</span>
+        <button type="button" class="ghost" data-add-timer>+ Timer</button>
+      </div>
+      <div class="stack" data-timer-rows>
+        {% for timer in row.timers %}
+          {% include "recipes/_step_timer.html" with timer_index=forloop.counter0 %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>

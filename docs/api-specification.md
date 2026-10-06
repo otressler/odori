@@ -100,6 +100,23 @@ deployment. `recipe_not_found` means the deployment could not identify an extrac
 `invalid_output` means its response did not satisfy the contract, and `provider_unavailable` means
 the provider request can be retried.
 
+Each recipe step carries `timers` and `ingredientIndexes`:
+
+```json
+{
+  "body": "Spaghetti kochen, Tomaten einkochen.",
+  "timers": [{ "label": "Spaghetti", "seconds": 540 }, { "label": "Sugo", "seconds": 900 }],
+  "ingredientIndexes": [0, 1]
+}
+```
+
+`ingredientIndexes` are zero-based positions in the same recipe's `ingredients` array, so a
+response can be sent back unchanged. Both fields are optional on write. A step has at most ten
+timers; each needs a label of up to 80 characters and a whole number of seconds between 1 and
+86,400. Invalid annotations are rejected with `422` on manual writes; extracted and generated
+recipes drop unusable annotations instead of failing. When a `PATCH` replaces `ingredients`
+without `steps`, step links follow ingredient positions.
+
 ## Concurrency
 
 `PATCH` requests for recipes, inventory, meal slots, and shopping items include an entity version.

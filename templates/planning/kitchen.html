@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load recipe_steps %}
 {% block title %}Kochen: {{ recipe.title }} · Odori{% endblock %}
 {% block body_class %}kitchen{% endblock %}
 
@@ -54,10 +55,35 @@
              tabindex="-1" aria-label="Schritt {{ forloop.counter }} von {{ steps|length }}">
       <span class="kitchen-step__index">Schritt {{ forloop.counter }} von {{ steps|length }}</span>
       {{ step.body|linebreaksbr }}
+      {% if step.ingredient_rows %}
+        <ul class="kitchen-step__ingredients" aria-label="Zutaten für diesen Schritt">
+          {% for row in step.ingredient_rows %}
+            <li>
+              <span class="amount">{% if row.scaled_amount is not None %}{{ row.scaled_amount|floatformat:"-2" }} {% endif %}{{ row.line.unit }}</span>
+              <span>{{ row.line.source_text }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if step.timers %}
+        <div class="kitchen-step__timers">
+          {% for timer in step.timers %}
+            <button type="button" class="step-timer" data-step-timer data-key="{{ step.id }}-{{ forloop.counter0 }}"
+                    data-label="{{ timer.label }}" data-seconds="{{ timer.seconds }}">
+              <svg aria-hidden="true"><use href="#i-timer"></use></svg>
+              <span>{{ timer.label }}</span>
+              <span class="step-timer__duration">{{ timer.seconds|duration }}</span>
+            </button>
+          {% endfor %}
+        </div>
+      {% endif %}
     </article>
   {% empty %}
     <p class="muted">Für dieses Rezept sind keine Schritte hinterlegt.</p>
   {% endfor %}
+
+  <ul class="running-timers" id="running-timers" aria-label="Laufende Timer" hidden></ul>
+  <p class="sr-only" id="running-timers-status" aria-live="assertive"></p>
 
   {% if steps %}
     {# Without JavaScript every step is already visible above; these controls are an enhancement. #}
@@ -198,6 +224,107 @@
     timerBox.classList.remove("timer--ringing");
     status.textContent = "";
     render();
+  });
+
+  /* ---- Step timers: several labelled countdowns can run side by side. ---- */
+  /* Deadlines rather than tick counts keep them right when the tab is throttled. */
+  var runningList = document.getElementById("running-timers");
+  var runningStatus = document.getElementById("running-timers-status");
+  var running = {};
+  var runningTick = null;
+
+  function clock(totalSeconds) {
+    var hours = Math.floor(totalSeconds / 3600);
+    var minutes = Math.floor((totalSeconds % 3600) / 60);
+    var text = String(minutes).padStart(2, "0") + ":" + String(totalSeconds % 60).padStart(2, "0");
+    return hours ? hours + ":" + text : text;
+  }
+
+  function secondsLeft(timer) {
+    return timer.deadline ? Math.max(0, Math.ceil((timer.deadline - Date.now()) / 1000)) : timer.left;
+  }
+
+  function renderRunning() {
+    var keys = Object.keys(running);
+    keys.forEach(function (key) {
+      var timer = running[key];
+      var left = secondsLeft(timer);
+      timer.display.textContent = clock(left);
+      if (timer.deadline && left === 0) {
+        timer.deadline = null;
+        timer.left = 0;
+        timer.item.classList.add("running-timer--ringing");
+        timer.toggle.textContent = "Neu starten";
+        runningStatus.textContent = timer.label + ": Die Zeit ist um.";
+        if (navigator.vibrate) { navigator.vibrate([250, 120, 250, 120, 250]); }
+      }
+    });
+    runningList.hidden = keys.length === 0;
+    var active = keys.some(function (key) { return running[key].deadline; });
+    if (active && !runningTick) { runningTick = setInterval(renderRunning, 500); }
+    if (!active && runningTick) { clearInterval(runningTick); runningTick = null; }
+  }
+
+  function startTimer(timer) {
+    if (timer.left === 0) { timer.left = timer.seconds; }
+    timer.deadline = Date.now() + timer.left * 1000;
+    timer.item.classList.remove("running-timer--ringing");
+    timer.toggle.textContent = "Pause";
+    runningStatus.textContent = timer.label + " läuft.";
+  }
+
+  function createTimer(key, label, seconds) {
+    var item = document.createElement("li");
+    var name = document.createElement("span");
+    var display = document.createElement("span");
+    var toggle = document.createElement("button");
+    var remove = document.createElement("button");
+    item.className = "running-timer";
+    name.className = "running-timer__label";
+    name.textContent = label;
+    display.className = "running-timer__display";
+    display.setAttribute("role", "timer");
+    toggle.type = "button";
+    remove.type = "button";
+    remove.className = "ghost";
+    remove.textContent = "Entfernen";
+    remove.setAttribute("aria-label", label + " entfernen");
+    item.append(name, display, toggle, remove);
+    runningList.appendChild(item);
+
+    var timer = { label: label, seconds: seconds, left: seconds, deadline: null,
+                  item: item, display: display, toggle: toggle };
+    toggle.addEventListener("click", function () {
+      if (timer.deadline) {
+        timer.left = secondsLeft(timer);
+        timer.deadline = null;
+        toggle.textContent = "Weiter";
+        runningStatus.textContent = label + " pausiert.";
+      } else {
+        startTimer(timer);
+      }
+      renderRunning();
+    });
+    remove.addEventListener("click", function () {
+      item.remove();
+      delete running[key];
+      renderRunning();
+    });
+    running[key] = timer;
+    return timer;
+  }
+
+  document.querySelectorAll("[data-step-timer]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var key = button.getAttribute("data-key");
+      var timer = running[key];
+      if (timer && timer.deadline) { return; }
+      timer = timer || createTimer(key, button.getAttribute("data-label"),
+                                   parseInt(button.getAttribute("data-seconds"), 10));
+      timer.left = timer.seconds;
+      startTimer(timer);
+      renderRunning();
+    });
   });
 
   /* ---- Wake Lock, with an honest fallback message when unsupported. ---- */

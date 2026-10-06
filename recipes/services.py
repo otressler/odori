@@ -8,6 +8,7 @@ from pantry.mapping import candidate_payload, map_source_text
 from pantry.models import CanonicalIngredient
 from pantry.semantic import best_match
 
+from .enrichment import queue_step_enrichment_if_needed
 from .images import queue_recipe_image, queue_recipe_image_if_needed
 from .models import (
     Recipe,
@@ -19,6 +20,7 @@ from .models import (
     RecipeTagAssignment,
 )
 from .semantic import update_search_embedding
+from .steps import clean_ingredient_indexes, clean_timers
 
 
 def as_decimal(value):
@@ -77,8 +79,21 @@ def create_or_update_recipe(
                 setattr(recipe, key, value)
         recipe.version += 1
         recipe.save()
+        ingredient_lines = None
         if "ingredients" in data:
+            # Lines are recreated, so steps that are kept keep their links by position.
+            kept_step_links = (
+                {}
+                if "steps" in data
+                else {
+                    step: [line.sort_order for line in step.ingredients.all()]
+                    for step in RecipeStep.objects.filter(recipe=recipe).prefetch_related(
+                        "ingredients"
+                    )
+                }
+            )
             RecipeIngredient.objects.filter(recipe=recipe).delete()
+            ingredient_lines = []
             for index, line in enumerate(data["ingredients"]):
                 ingredient = matched_ingredients.get(index)
                 if line.get("canonicalIngredientId"):
@@ -88,7 +103,7 @@ def create_or_update_recipe(
                     if not ingredient:
                         raise ValueError("Ingredient does not belong to this household.")
                 mapping = mapping_results.get(index)
-                RecipeIngredient.objects.create(
+                recipe_line = RecipeIngredient.objects.create(
                     recipe=recipe,
                     canonical_ingredient=ingredient,
                     source_text=line.get("sourceText", "").strip(),
@@ -120,12 +135,34 @@ def create_or_update_recipe(
                         else []
                     ),
                 )
+                ingredient_lines.append(recipe_line)
+            for step, positions in kept_step_links.items():
+                step.ingredients.set(
+                    [
+                        ingredient_lines[position]
+                        for position in positions
+                        if position < len(ingredient_lines)
+                    ]
+                )
         if "steps" in data:
+            if ingredient_lines is None:
+                ingredient_lines = list(RecipeIngredient.objects.filter(recipe=recipe))
             RecipeStep.objects.filter(recipe=recipe).delete()
             for index, step in enumerate(data["steps"]):
-                body = step.get("body", "").strip() if isinstance(step, dict) else str(step).strip()
+                if not isinstance(step, dict):
+                    step = {"body": str(step)}
+                body = str(step.get("body", "")).strip()
+                timers = clean_timers(step.get("timers"))
+                positions = clean_ingredient_indexes(
+                    step.get("ingredientIndexes"), len(ingredient_lines)
+                )
                 if body:
-                    RecipeStep.objects.create(recipe=recipe, body=body, sort_order=index)
+                    recipe_step = RecipeStep.objects.create(
+                        recipe=recipe, body=body, sort_order=index, timers=timers
+                    )
+                    recipe_step.ingredients.set(
+                        [ingredient_lines[position] for position in positions]
+                    )
         if "tags" in data:
             RecipeTagAssignment.objects.filter(recipe=recipe).delete()
             for name in data["tags"]:
@@ -134,6 +171,8 @@ def create_or_update_recipe(
                 )
                 RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
         queue_recipe_image_if_needed(recipe)
+        if is_new_recipe and recipe.source.type == RecipeSource.Type.MANUAL:
+            queue_step_enrichment_if_needed(recipe)
     if is_new_recipe or {"title", "description", "ingredients", "tags"} & data.keys():
         update_search_embedding(recipe)
     return recipe
@@ -170,7 +209,7 @@ def create_recipe_revision(recipe, user):
         title=recipe.title,
         servings=recipe.servings,
     )
-    RecipeIngredient.objects.bulk_create(
+    lines = RecipeIngredient.objects.bulk_create(
         [
             RecipeIngredient(
                 recipe=revision,
@@ -190,15 +229,26 @@ def create_recipe_revision(recipe, user):
             for line in recipe.ingredients.all()
         ]
     )
-    RecipeStep.objects.bulk_create(
+    new_line_for = {line.sort_order: line for line in lines}
+    steps = list(recipe.steps.prefetch_related("ingredients"))
+    new_steps = RecipeStep.objects.bulk_create(
         [
             RecipeStep(
                 recipe=revision,
                 body=step.body,
                 sort_order=step.sort_order,
-                timer_seconds=step.timer_seconds,
+                timers=step.timers,
             )
-            for step in recipe.steps.all()
+            for step in steps
+        ]
+    )
+    RecipeStep.ingredients.through.objects.bulk_create(
+        [
+            RecipeStep.ingredients.through(
+                recipestep=new_step, recipeingredient=new_line_for[line.sort_order]
+            )
+            for step, new_step in zip(steps, new_steps)
+            for line in step.ingredients.all()
         ]
     )
     RecipeTagAssignment.objects.bulk_create(

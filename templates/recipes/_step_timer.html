@@ -1,0 +1,16 @@
+<div class="timer-row">
+  <div class="field">
+    <label for="step-timer-label-{{ step }}-{{ timer_index }}">Bezeichnung</label>
+    <input id="step-timer-label-{{ step }}-{{ timer_index }}" name="step-timer-label-{{ step }}-{{ timer_index }}"
+           maxlength="80" value="{{ timer.label|default:'' }}" placeholder="Nudeln kochen">
+  </div>
+  <div class="field">
+    <label for="step-timer-duration-{{ step }}-{{ timer_index }}">Dauer</label>
+    <input id="step-timer-duration-{{ step }}-{{ timer_index }}" name="step-timer-duration-{{ step }}-{{ timer_index }}"
+           value="{{ timer.duration|default:'' }}" placeholder="10:00" autocomplete="off"
+           pattern="\d+([.,]\d+)?|(\d+:)?\d+:[0-5]\d" title="Minuten (z. B. 10) oder mm:ss bzw. h:mm:ss">
+  </div>
+  <button class="icon-button ghost row-remove" type="button" data-remove-timer aria-label="Timer entfernen" title="Timer entfernen">
+    <svg aria-hidden="true"><use href="#i-trash"></use></svg>
+  </button>
+</div>

@@ -45,6 +45,11 @@ urlpatterns = [
         name="recipe-revision",
     ),
     path(
+        "<uuid:recipe_id>/steps/enrich/",
+        login_required(require_POST(views.recipe_step_enrichment_page)),
+        name="recipe-step-enrichment",
+    ),
+    path(
         "<uuid:recipe_id>/image/regenerate/",
         login_required(require_POST(views.recipe_image_regenerate_page)),
         name="recipe-image-regenerate",

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load recipe_steps %}
 {% block title %}{{ recipe.title|default:"Entwurf" }} · Odori{% endblock %}
 
 {% block content %}
@@ -81,10 +82,42 @@
   </section>
 
   <section class="panel">
-    <h2>Zubereitung</h2>
+    <div class="panel__head">
+      <h2>Zubereitung</h2>
+      {% if can_enrich_steps and recipe.steps.all %}
+        <form method="post" action="{% url 'recipe-step-enrichment' recipe.id %}">{% csrf_token %}
+          <button type="submit" class="ghost"{% if step_enrichment_pending %} disabled{% endif %}>
+            <svg class="step-meta__icon" aria-hidden="true"><use href="#i-wand"></use></svg>
+            Timer &amp; Zutaten ergänzen
+          </button>
+        </form>
+      {% endif %}
+    </div>
+    {% if step_enrichment_pending %}
+      <p class="field__hint">Timer und Zutaten je Schritt werden im Hintergrund ergänzt.</p>
+    {% endif %}
     <ol class="step-list">
       {% for step in recipe.steps.all %}
-        <li>{{ step.body|linebreaksbr }}</li>
+        <li>
+          {{ step.body|linebreaksbr }}
+          {% if step.ingredient_lines %}
+            <ul class="step-meta" aria-label="Zutaten für diesen Schritt">
+              {% for line in step.ingredient_lines %}
+                <li class="step-meta__ingredient">{% if line.scaled_amount is not None %}{{ line.scaled_amount|floatformat:"-2" }} {% endif %}{% if line.unit %}{{ line.unit }} {% endif %}{{ line.source_text }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          {% if step.timers %}
+            <ul class="step-meta" aria-label="Timer für diesen Schritt">
+              {% for timer in step.timers %}
+                <li class="step-meta__timer">
+                  <svg class="step-meta__icon" aria-hidden="true"><use href="#i-timer"></use></svg>
+                  {{ timer.label }} · {{ timer.seconds|duration }}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </li>
       {% empty %}
         <li class="muted">Noch keine Schritte erfasst.</li>
       {% endfor %}

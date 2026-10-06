@@ -178,6 +178,12 @@ def kitchen_page(request, slot_id):
                 "inventory": item,
             }
         )
+    rows_by_line = {row["line"].id: row for row in lines}
+    steps = list(recipe.steps.prefetch_related("ingredients"))
+    for step in steps:
+        step.ingredient_rows = [
+            rows_by_line[line.id] for line in step.ingredients.all() if line.id in rows_by_line
+        ]
     return render(
         request,
         "planning/kitchen.html",
@@ -185,7 +191,7 @@ def kitchen_page(request, slot_id):
             "slot": entry,
             "recipe": recipe,
             "lines": lines,
-            "steps": recipe.steps.all(),
+            "steps": steps,
             "status_choices": InventoryItem.Status.choices,
         },
     )

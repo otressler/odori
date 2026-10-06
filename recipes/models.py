@@ -239,13 +239,46 @@ class RecipeStep(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="steps")
     body = models.TextField()
     sort_order = models.PositiveIntegerField()
-    timer_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # Labelled countdowns offered in Kitchen Mode: [{"label": str, "seconds": int}, ...].
+    timers = models.JSONField(default=list, blank=True)
+    ingredients = models.ManyToManyField(RecipeIngredient, blank=True, related_name="steps")
 
     class Meta:
         ordering = ["sort_order"]
 
     def __str__(self):
         return self.body[:80]
+
+
+class RecipeStepEnrichmentJob(models.Model):
+    """Fills empty step timers and step ingredients from the recipe text with AI."""
+
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        SUPERSEDED = "superseded", "Superseded"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipe = models.ForeignKey(
+        Recipe, on_delete=models.CASCADE, related_name="step_enrichment_jobs"
+    )
+    state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
+    attempt_count = models.PositiveIntegerField(default=0)
+    error_code = models.CharField(max_length=80, blank=True)
+    error_message = models.CharField(max_length=500, blank=True)
+    correlation_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @classmethod
+    def for_household(cls, household):
+        return cls.objects.filter(recipe__household=household)
 
 
 class RecipeTag(models.Model):

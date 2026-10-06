@@ -11,6 +11,7 @@ from pantry.mapping import assign_recipe_ingredient, map_source_text
 from pantry.models import CanonicalIngredient, InventoryItem
 from pantry.services import change_inventory_status
 
+from .enrichment import ACTIVE_STATES, is_configured, queue_step_enrichment
 from .models import Recipe, RecipeIngredient
 from .recommendations import recommend_for_user
 from .semantic import rank_recipes
@@ -23,6 +24,7 @@ from .services import (
     regenerate_recipe_image,
     toggle_favorite,
 )
+from .steps import format_duration, parse_duration
 
 MAX_RECIPE_INGREDIENTS = 100
 MAX_RECIPE_STEPS = 100
@@ -99,6 +101,8 @@ def recipe_form_context(user, recipe=None):
     step_rows = []
     tags = ""
     if recipe:
+        lines = list(recipe.ingredients.all())
+        position_of = {line.id: position for position, line in enumerate(lines)}
         ingredient_rows = [
             {
                 "source_text": line.source_text,
@@ -110,9 +114,23 @@ def recipe_form_context(user, recipe=None):
                 "unit": line.unit,
                 "canonical_ingredient_id": line.canonical_ingredient_id,
             }
-            for line in recipe.ingredients.all()
+            for line in lines
         ]
-        step_rows = [{"body": step.body} for step in recipe.steps.all()]
+        step_rows = [
+            {
+                "body": step.body,
+                "timers": [
+                    {"label": timer["label"], "duration": format_duration(timer["seconds"])}
+                    for timer in step.timers
+                ],
+                "ingredient_positions": [
+                    position_of[line.id]
+                    for line in step.ingredients.all()
+                    if line.id in position_of
+                ],
+            }
+            for step in recipe.steps.all()
+        ]
         tags = ", ".join(recipe.tag_assignments.values_list("tag__name", flat=True))
     ingredient_rows.append({})
     step_rows.append({})
@@ -125,11 +143,34 @@ def recipe_form_context(user, recipe=None):
             household=household, active=True
         ),
         "tags": tags,
+        "step_enrichment_available": is_configured(),
     }
+
+
+def recipe_form_timers(request, step_index):
+    timer_indexes = sorted(
+        int(match.group(1))
+        for field_name in request.POST
+        if (match := re.fullmatch(rf"step-timer-label-{step_index}-(\d+)", field_name))
+    )
+    timers = []
+    for index in timer_indexes:
+        label = request.POST.get(f"step-timer-label-{step_index}-{index}", "").strip()
+        duration = request.POST.get(f"step-timer-duration-{step_index}-{index}", "").strip()
+        if not label and not duration:
+            continue
+        if not label:
+            raise ValueError("Each timer needs a label.")
+        if not duration:
+            raise ValueError(f"The timer “{label}” needs a duration.")
+        timers.append({"label": label, "seconds": parse_duration(duration)})
+    return timers
 
 
 def recipe_form_data(request):
     ingredients = []
+    # Form rows can be removed client-side, so map row numbers to saved positions.
+    position_of_row = {}
     ingredient_indexes = sorted(
         int(match.group(1))
         for field_name in request.POST
@@ -151,6 +192,7 @@ def recipe_form_data(request):
         canonical_id = request.POST.get(f"ingredient-canonical-{index}", "")
         if canonical_id:
             ingredient["canonicalIngredientId"] = canonical_id
+        position_of_row[index] = len(ingredients)
         ingredients.append(ingredient)
     step_indexes = sorted(
         int(match.group(1))
@@ -159,11 +201,23 @@ def recipe_form_data(request):
     )
     if len(step_indexes) > MAX_RECIPE_STEPS:
         raise ValueError(f"A recipe can contain at most {MAX_RECIPE_STEPS} steps.")
-    steps = [
-        {"body": request.POST.get(f"step-{index}", "").strip()}
-        for index in step_indexes
-        if request.POST.get(f"step-{index}", "").strip()
-    ]
+    steps = []
+    for index in step_indexes:
+        body = request.POST.get(f"step-{index}", "").strip()
+        if not body:
+            continue
+        rows = request.POST.getlist(f"step-ingredients-{index}")
+        steps.append(
+            {
+                "body": body,
+                "timers": recipe_form_timers(request, index),
+                "ingredientIndexes": [
+                    position_of_row[int(row)]
+                    for row in rows
+                    if row.isdigit() and int(row) in position_of_row
+                ],
+            }
+        )
     return {
         "title": request.POST.get("title", "").strip(),
         "description": request.POST.get("description", "").strip(),
@@ -199,7 +253,7 @@ def recipe_edit_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
         Recipe.objects.select_related("source")
-        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        .prefetch_related("ingredients", "steps__ingredients", "tag_assignments__tag")
         .filter(id=recipe_id, household=household)
         .first()
     )
@@ -220,7 +274,7 @@ def recipe_detail_page(request, recipe_id):
     household = household_for(request.user)
     recipe = (
         Recipe.objects.select_related("source")
-        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        .prefetch_related("ingredients", "steps__ingredients", "tag_assignments__tag")
         .filter(id=recipe_id, household=household)
         .first()
     )
@@ -235,12 +289,18 @@ def recipe_detail_page(request, recipe_id):
     factor = Decimal(1)
     if recipe.servings and requested_servings:
         factor = Decimal(requested_servings) / recipe.servings
+    scaled_lines = {}
     for ingredient in recipe.ingredients.all():
         ingredient.scaled_amount = (
             (ingredient.amount * factor).quantize(Decimal("0.01"))
             if ingredient.amount is not None
             else None
         )
+        scaled_lines[ingredient.id] = ingredient
+    for step in recipe.steps.all():
+        step.ingredient_lines = [
+            scaled_lines[line.id] for line in step.ingredients.all() if line.id in scaled_lines
+        ]
     return render(
         request,
         "recipes/detail.html",
@@ -248,6 +308,10 @@ def recipe_detail_page(request, recipe_id):
             "recipe": recipe,
             "requested_servings": requested_servings,
             "is_favorite": recipe.favorites.filter(user=request.user).exists(),
+            "can_enrich_steps": is_configured() and recipe.status != Recipe.Status.ARCHIVED,
+            "step_enrichment_pending": recipe.step_enrichment_jobs.filter(
+                state__in=ACTIVE_STATES
+            ).exists(),
         },
     )
 
@@ -332,6 +396,17 @@ def recipe_revision_page(request, recipe_id):
     return redirect("recipe-edit", recipe_id=revision.id)
 
 
+def recipe_step_enrichment_page(request, recipe_id):
+    recipe = recipe_for_user(request.user, recipe_id)
+    try:
+        queue_step_enrichment(recipe)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "Timer und Zutaten je Schritt werden im Hintergrund ergänzt.")
+    return redirect("recipe-detail", recipe_id=recipe.id)
+
+
 def recipe_image_regenerate_page(request, recipe_id):
     recipe = recipe_for_user(request.user, recipe_id)
     regenerate_recipe_image(recipe)
@@ -356,7 +431,7 @@ def recipe_thumbnail(request, recipe_id):
 def recipe_for_user(user, recipe_id):
     recipe = (
         Recipe.objects.select_related("source")
-        .prefetch_related("ingredients", "steps", "tag_assignments__tag")
+        .prefetch_related("ingredients", "steps__ingredients", "tag_assignments__tag")
         .filter(id=recipe_id, household=household_for(user))
         .first()
     )

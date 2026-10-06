@@ -9,6 +9,10 @@ from core.models import WorkerHeartbeat
 from core.observability import log_event
 from pantry.images import recover_interrupted_ingredient_icon_jobs, run_next_ingredient_icon_job
 from pantry.jobs import recover_interrupted_category_jobs, run_next_category_job
+from recipes.enrichment import (
+    recover_interrupted_step_enrichment_jobs,
+    run_next_step_enrichment_job,
+)
 from recipes.generation import (
     recover_interrupted_recipe_generation_jobs,
     run_next_recipe_generation_job,
@@ -29,6 +33,7 @@ class Command(BaseCommand):
             ("recipe_image", run_next_recipe_image_job),
             ("ingredient_icon", run_next_ingredient_icon_job),
             ("recipe_import", run_next_import_job),
+            ("recipe_step_enrichment", run_next_step_enrichment_job),
         )
         for job_type, runner in runners:
             started = time.monotonic()
@@ -100,6 +105,12 @@ class Command(BaseCommand):
         if recovered:
             self.stdout.write(f"Requeued {recovered} interrupted recipe generation job(s).")
             log_event(logger, "worker.jobs_requeued", job_type="recipe_generation", count=recovered)
+        recovered = recover_interrupted_step_enrichment_jobs()
+        if recovered:
+            self.stdout.write(f"Requeued {recovered} interrupted recipe step enrichment job(s).")
+            log_event(
+                logger, "worker.jobs_requeued", job_type="recipe_step_enrichment", count=recovered
+            )
 
         while True:
             try:

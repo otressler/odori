@@ -54,6 +54,8 @@ def recipe_json(recipe, user, servings=None):
     factor = Decimal(1)
     if servings and recipe.servings:
         factor = Decimal(str(servings)) / recipe.servings
+    lines = list(recipe.ingredients.all())
+    position_of = {line.id: position for position, line in enumerate(lines)}
     return {
         "id": str(recipe.id),
         "title": recipe.title,
@@ -61,9 +63,18 @@ def recipe_json(recipe, user, servings=None):
         "status": recipe.status,
         "servings": recipe.servings,
         "version": recipe.version,
-        "ingredients": [ingredient_json(line, factor) for line in recipe.ingredients.all()],
+        "ingredients": [ingredient_json(line, factor) for line in lines],
         "steps": [
-            {"id": str(step.id), "body": step.body, "timerSeconds": step.timer_seconds}
+            {
+                "id": str(step.id),
+                "body": step.body,
+                "timers": step.timers,
+                "ingredientIndexes": [
+                    position_of[line.id]
+                    for line in step.ingredients.all()
+                    if line.id in position_of
+                ],
+            }
             for step in recipe.steps.all()
         ],
         "tags": [
@@ -78,7 +89,7 @@ def recipe_json(recipe, user, servings=None):
 def visible_recipe(user, recipe_id):
     recipe = (
         Recipe.objects.select_related("source")
-        .prefetch_related("ingredients", "steps", "tag_assignments__tag", "favorites")
+        .prefetch_related("ingredients", "steps__ingredients", "tag_assignments__tag", "favorites")
         .filter(id=recipe_id, household=household_for(user))
         .first()
     )
@@ -96,7 +107,9 @@ def recipe_collection(request):
         include_archived = request.GET.get("includeArchived") == "true"
         recipes = (
             Recipe.objects.select_related("source")
-            .prefetch_related("ingredients", "steps", "tag_assignments__tag", "favorites")
+            .prefetch_related(
+                "ingredients", "steps__ingredients", "tag_assignments__tag", "favorites"
+            )
             .filter(household=household)
         )
         if not include_archived:
@@ -145,7 +158,8 @@ def recipe_detail(request, recipe_id):
         recipe = create_or_update_recipe(user=request.user, data=data, recipe=recipe)
     except ValueError as exc:
         return error("validation_failed", str(exc))
-    return JsonResponse(recipe_json(recipe, request.user))
+    # Reload so the response does not reuse the lines and steps prefetched before the update.
+    return JsonResponse(recipe_json(visible_recipe(request.user, recipe.id), request.user))
 
 
 @login_required
