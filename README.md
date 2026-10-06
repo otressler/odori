@@ -28,7 +28,7 @@ for correlation IDs, health endpoints, and Docker log commands.
 
 ## Container releases
 
-GitHub Actions publishes multi-architecture (`linux/amd64` and `linux/arm64`) images to
+GitHub Actions builds on a native ARM runner and publishes `linux/arm64` images to
 `ghcr.io/otressler/odori` on every push to `main` and release tag matching `v*`. For a Pi deployment,
 create and push a release tag, then set `ODORI_VERSION` in the Portainer stack to that tag without the
 leading `v` only if you tag that way; otherwise use the tag exactly as published:

@@ -19,8 +19,9 @@ CMD ["python", "-m", "pytest", "-q"]
 
 FROM dependencies AS production
 
-COPY . .
-RUN mkdir -p /app/data/uploads /app/staticfiles && chown -R odori:odori /app
+COPY --chown=odori:odori . .
+RUN mkdir -p /app/data/uploads /app/staticfiles \
+	&& chown odori:odori /app /app/data /app/data/uploads /app/staticfiles
 USER odori
 RUN DEBUG=false SESSION_SECRET=collectstatic-build-only-not-used-at-runtime python manage.py collectstatic --noinput
 EXPOSE 8000
