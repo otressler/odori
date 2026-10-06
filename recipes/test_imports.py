@@ -70,6 +70,22 @@ class RecipeImportJobTests(TestCase):
         self.assertEqual(job.error_code, "provider_temporary")
         self.assertEqual(job.attempts.count(), 1)
 
+    def test_untyped_processing_error_is_recorded(self):
+        job, _ = create_import(household=self.household, source_type="image", content=b"image")
+
+        self.assertTrue(
+            run_next_import_job(
+                lambda current: (_ for _ in ()).throw(ValueError("amount must be numeric"))
+            )
+        )
+
+        job.refresh_from_db()
+        attempt = job.attempts.get()
+        self.assertEqual(job.state, RecipeImportJob.State.FAILED)
+        self.assertEqual(job.error_code, "ValueError")
+        self.assertEqual(job.error_message, "amount must be numeric")
+        self.assertEqual(attempt.error_code, "ValueError")
+
     def test_same_content_reuses_completed_job_and_draft(self):
         first, _ = create_import(
             household=self.household,

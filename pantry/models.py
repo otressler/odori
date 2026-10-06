@@ -136,7 +136,7 @@ class CanonicalIngredient(models.Model):
     )
     icon_prompt = models.TextField(blank=True)
     active = models.BooleanField(default=True)
-    merged_into = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT)
+    merged_into = models.ForeignKey("self", null=True, blank=True, on_delete=models.RESTRICT)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -194,7 +194,7 @@ class InventoryItem(models.Model):
         Household, on_delete=models.CASCADE, related_name="inventory_items"
     )
     ingredient = models.ForeignKey(
-        CanonicalIngredient, on_delete=models.PROTECT, related_name="inventory_items"
+        CanonicalIngredient, on_delete=models.RESTRICT, related_name="inventory_items"
     )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.UNKNOWN)
     version = models.PositiveIntegerField(default=1)

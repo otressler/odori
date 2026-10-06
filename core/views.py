@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from pantry.models import (
     CanonicalIngredient,
     IngredientCategory,
+    InventoryEvent,
     InventoryItem,
     PantryCategorizationJob,
 )
@@ -438,7 +439,11 @@ def delete_household(request):
     household = household_for(request.user)
     if not is_global_admin(request.user):
         owner_household_for(request.user)
-    household.delete()
+    with transaction.atomic():
+        # Inventory events only reach the household through their protected item FK,
+        # so they are not part of the household cascade and must be removed first.
+        InventoryEvent.objects.filter(item__household=household).delete()
+        household.delete()
     request.session.pop("active_household_id", None)
     messages.success(request, "Haushalt gelöscht.")
     return redirect("household-onboarding")

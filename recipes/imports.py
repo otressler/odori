@@ -122,7 +122,7 @@ def _finish(job_id, lease_id, *, state, error=None, recipe=None):
         attempt.finished_at = now
         attempt.outcome = state
         if error:
-            attempt.error_code = error.error_code
+            attempt.error_code = getattr(error, "error_code", type(error).__name__)
         attempt.save(update_fields=["finished_at", "outcome", "error_code"])
         job.state = state
         job.recipe = recipe

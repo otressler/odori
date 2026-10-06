@@ -22,7 +22,7 @@ class RecipeSource(models.Model):
         "ImportSource",
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="recipe_source",
     )
     imported_at = models.DateTimeField(auto_now_add=True)
@@ -77,7 +77,7 @@ class RecipeImportJob(models.Model):
     household = models.ForeignKey(
         Household, on_delete=models.CASCADE, related_name="recipe_import_jobs"
     )
-    source = models.ForeignKey(ImportSource, on_delete=models.PROTECT, related_name="jobs")
+    source = models.ForeignKey(ImportSource, on_delete=models.RESTRICT, related_name="jobs")
     state = models.CharField(max_length=12, choices=State.choices, default=State.QUEUED)
     stage = models.CharField(max_length=12, choices=Stage.choices, default=Stage.ACQUIRE)
     attempt_count = models.PositiveIntegerField(default=0)
@@ -151,7 +151,7 @@ class Recipe(models.Model):
         default="pending",
     )
     image_prompt = models.TextField(blank=True)
-    source = models.ForeignKey(RecipeSource, on_delete=models.PROTECT, related_name="recipes")
+    source = models.ForeignKey(RecipeSource, on_delete=models.RESTRICT, related_name="recipes")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     archived_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
@@ -210,7 +210,7 @@ class RecipeIngredient(models.Model):
         CanonicalIngredient,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="recipe_lines",
     )
     source_text = models.CharField(max_length=300)

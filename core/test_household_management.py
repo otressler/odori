@@ -52,3 +52,69 @@ class HouseholdManagementTests(TestCase):
         response = self.client.post("/households/delete/")
         self.assertRedirects(response, "/households/new/")
         self.assertFalse(Household.objects.filter(id=self.household.id).exists())
+
+    def test_owner_can_delete_household_with_data(self):
+        from datetime import date
+
+        from pantry.models import CanonicalIngredient, InventoryEvent, InventoryItem
+        from planning.models import CookEvent, MealPlan, MealSlot
+        from recipes.models import (
+            ImportSource,
+            Recipe,
+            RecipeImportJob,
+            RecipeIngredient,
+            RecipeSource,
+        )
+        from shopping.models import ShoppingItem, ShoppingList
+
+        tomato = CanonicalIngredient.objects.create(household=self.household, name="Tomate")
+        CanonicalIngredient.objects.create(
+            household=self.household, name="Tomaten", merged_into=tomato, active=False
+        )
+        import_source = ImportSource.objects.create(
+            household=self.household,
+            source_type=ImportSource.Type.URL,
+            url="https://example.test/recipe",
+            content_hash="delete-test",
+        )
+        RecipeImportJob.objects.create(household=self.household, source=import_source)
+        source = RecipeSource.objects.create(
+            household=self.household,
+            type=RecipeSource.Type.IMPORTED,
+            import_source=import_source,
+        )
+        recipe = Recipe.objects.create(
+            household=self.household, created_by=self.owner, source=source, title="Sugo"
+        )
+        RecipeIngredient.objects.create(
+            recipe=recipe, canonical_ingredient=tomato, source_text="Tomaten", sort_order=0
+        )
+        plan = MealPlan.objects.create(household=self.household, week_start_date=date(2026, 1, 5))
+        slot = MealSlot.objects.create(
+            plan=plan, date=date(2026, 1, 5), slot=MealSlot.Slot.DINNER, recipe=recipe
+        )
+        CookEvent.objects.create(
+            household=self.household, recipe=recipe, meal_slot=slot, actor=self.owner
+        )
+        item = InventoryItem.objects.create(household=self.household, ingredient=tomato)
+        InventoryEvent.objects.create(
+            item=item,
+            previous_status=InventoryItem.Status.UNKNOWN,
+            new_status=InventoryItem.Status.AVAILABLE,
+            actor=self.owner,
+        )
+        shopping_list = ShoppingList.objects.create(household=self.household, name="Einkauf")
+        ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            canonical_ingredient=tomato,
+            label="Tomaten",
+            grouping_key="tomate",
+        )
+
+        response = self.client.post("/households/delete/")
+
+        self.assertRedirects(response, "/households/new/")
+        self.assertFalse(Household.objects.filter(id=self.household.id).exists())
+        self.assertFalse(Recipe.objects.exists())
+        self.assertFalse(CanonicalIngredient.objects.exists())
+        self.assertFalse(ImportSource.objects.exists())

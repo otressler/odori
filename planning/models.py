@@ -48,7 +48,7 @@ class MealSlot(models.Model):
         max_length=16, choices=EntryType.choices, default=EntryType.RECIPE
     )
     recipe = models.ForeignKey(
-        Recipe, null=True, blank=True, on_delete=models.PROTECT, related_name="meal_slots"
+        Recipe, null=True, blank=True, on_delete=models.RESTRICT, related_name="meal_slots"
     )
     servings = models.PositiveIntegerField(null=True, blank=True)
     notes = models.CharField(max_length=300, blank=True)
@@ -79,7 +79,7 @@ class MealSlot(models.Model):
 class CookEvent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="cook_events")
-    recipe = models.ForeignKey(Recipe, on_delete=models.PROTECT, related_name="cook_events")
+    recipe = models.ForeignKey(Recipe, on_delete=models.RESTRICT, related_name="cook_events")
     meal_slot = models.OneToOneField(
         MealSlot, null=True, blank=True, on_delete=models.SET_NULL, related_name="cook_event"
     )

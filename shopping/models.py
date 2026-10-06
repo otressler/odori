@@ -50,7 +50,7 @@ class ShoppingItem(models.Model):
         CanonicalIngredient,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="shopping_items",
     )
     label = models.CharField(max_length=200)
