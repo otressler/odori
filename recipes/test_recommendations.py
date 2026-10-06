@@ -1,12 +1,15 @@
 import json
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
+from django.utils.formats import date_format
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryItem
+from planning.services import add_slot, current_week_start, get_or_create_plan
 
 from .generation import run_next_recipe_generation_job
 from .models import (
@@ -17,7 +20,7 @@ from .models import (
     RecipeStep,
     RecommendationOutcome,
 )
-from .recommendations import recommend_for_user
+from .recommendations import recommend_for_user, week_suggestions
 
 
 class RecommendationTests(TestCase):
@@ -73,7 +76,7 @@ class RecommendationTests(TestCase):
         self.assertEqual(suggestion["recipeId"], str(pasta.id))
         self.assertEqual(suggestion["matchedIngredients"], ["Tomate"])
         self.assertIn("Vorrat geprüft", " ".join(first.json()["suggestions"][1]["reasons"]))
-        self.assertEqual(first.json()["scoringVersion"], "2026-08-1")
+        self.assertEqual(first.json()["scoringVersion"], "2026-10-1")
         self.assertEqual(
             first.json()["suggestions"][1]["recipeId"],
             str(soup.id),
@@ -98,9 +101,55 @@ class RecommendationTests(TestCase):
         with CaptureQueriesContext(connection) as queries:
             result = recommend_for_user(user=self.user)
 
-        self.assertLessEqual(len(queries), 12)
+        # Constant, independent of the 16 candidates; one of them looks up a reusable run.
+        self.assertLessEqual(len(queries), 13)
         self.assertEqual(result.suggestions[0].recipe.id, first_recipe.id)
         self.assertNotIn("Private", [item.recipe.title for item in result.suggestions])
+
+    def test_week_context_skips_planned_dishes_and_credits_shared_ingredients(self):
+        planned = self.recipe("Pesto", [self.basil])
+        sharing = self.recipe("Caprese", [self.tomato, self.basil])
+        unrelated = self.recipe("Tomatensalat", [self.tomato])
+        week_start = current_week_start()
+        thursday = week_start + timedelta(days=3)
+        add_slot(
+            user=self.user,
+            week_start=week_start,
+            date=thursday,
+            slot="dinner",
+            entry_type="recipe",
+            recipe_id=planned.id,
+        )
+        plan = get_or_create_plan(user=self.user, week_start=week_start)
+
+        result = recommend_for_user(user=self.user, plan=plan)
+
+        by_recipe = {item.recipe.id: item for item in result.suggestions}
+        self.assertTrue(by_recipe[planned.id].planned_this_week)
+        self.assertEqual(by_recipe[sharing.id].shared_ingredients, ["Basilikum"])
+        self.assertEqual(
+            by_recipe[sharing.id].shared_reason,
+            f"Auch am {date_format(thursday, 'D')} gebraucht: Basilikum",
+        )
+        self.assertEqual(by_recipe[sharing.id].score_components["sharedIngredients"], 0.05)
+        self.assertEqual(by_recipe[unrelated.id].shared_ingredients, [])
+        self.assertEqual(
+            [item.recipe.id for item in week_suggestions(result, limit=5)],
+            [unrelated.id, sharing.id],
+        )
+
+    def test_identical_inputs_reuse_the_run(self):
+        self.recipe("Pasta", [self.tomato])
+
+        first = recommend_for_user(user=self.user)
+        second = recommend_for_user(user=self.user)
+        InventoryItem.objects.filter(ingredient=self.basil).update(
+            status=InventoryItem.Status.AVAILABLE
+        )
+        third = recommend_for_user(user=self.user)
+
+        self.assertEqual(first.run.id, second.run.id)
+        self.assertNotEqual(first.run.id, third.run.id)
 
     def test_outcome_is_scoped_to_the_recommendation_household(self):
         recipe = self.recipe("Pasta", [self.tomato])

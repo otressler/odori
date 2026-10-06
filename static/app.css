@@ -3691,6 +3691,38 @@ a.meal-entry__title:hover {
   white-space: nowrap;
 }
 
+/* Suggestions lead the list while browsing; they share the option layout. */
+.picker-option--suggested {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.picker-option__reason {
+  color: var(--olive-deep);
+  font-weight: 600;
+}
+
+.stock-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--olive-soft);
+  color: var(--olive-deep);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Phones show "3/4"; screen readers still hear "vorrätig". */
+@media (max-width: 30rem) {
+  .stock-badge__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
 .plan-dialog__fields {
   display: grid;
   gap: 0.75rem 1rem;

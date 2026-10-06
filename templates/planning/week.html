@@ -164,6 +164,10 @@
     {% csrf_token %}
     <input type="hidden" name="date" value="{{ dialog_cell.date|date:'Y-m-d' }}" data-dialog-date>
     <input type="hidden" name="slot" value="{{ dialog_cell.key }}" data-dialog-slot>
+    {% if suggestions %}
+      <input type="hidden" name="recommendation_run" value="{{ recommendation_run.id }}">
+      <input type="hidden" name="suggested" value="{% for suggestion in suggestions %}{{ suggestion.recipe.id }} {% endfor %}">
+    {% endif %}
 
     <header class="plan-dialog__head">
       <div>
@@ -197,16 +201,36 @@
         <fieldset class="picker__results">
           <legend class="sr-only">Rezept</legend>
           <div class="picker__list" data-picker-list>
+            {# Shown only while browsing; searching or filtering falls back to the full list below. #}
+            {% if suggestions %}
+              <p class="picker__divider" data-picker-browse>Vorschläge für diese Woche</p>
+              {% for suggestion in suggestions %}
+                {% with recipe=suggestion.recipe %}
+                  <label class="picker-option picker-option--suggested" data-picker-browse data-picker-suggestion data-id="{{ recipe.id }}">
+                    <input type="radio" name="recipe_id" value="{{ recipe.id }}" data-servings="{{ recipe.servings|default_if_none:'' }}">
+                    {% include "planning/_picker_thumb.html" %}
+                    <span class="picker-option__text">
+                      <span class="picker-option__title">{% if recipe.is_favorite %}<span class="picker-option__star" aria-label="Favorit">★</span> {% endif %}{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
+                      {% if suggestion.reason %}
+                        <span class="picker-option__meta picker-option__reason">{{ suggestion.reason }}</span>
+                      {% else %}
+                        <span class="picker-option__meta">{% if recipe.servings %}{{ recipe.servings }} Portionen{% endif %}{% for tag in recipe.tag_names|slice:":3" %}{% if recipe.servings or not forloop.first %} · {% endif %}{{ tag }}{% endfor %}</span>
+                      {% endif %}
+                    </span>
+                    {% if suggestion.total %}
+                      <span class="stock-badge" title="{{ suggestion.in_stock }} von {{ suggestion.total }} Zutaten vorrätig">{{ suggestion.in_stock }}/{{ suggestion.total }}<span class="stock-badge__label"> vorrätig</span></span>
+                    {% endif %}
+                  </label>
+                {% endwith %}
+              {% endfor %}
+              <p class="picker__divider" data-picker-browse>Alle Rezepte</p>
+            {% endif %}
             {% for recipe in recipes %}
               <label class="picker-option" data-picker-option data-id="{{ recipe.id }}"
                      data-search="{{ recipe.search_text }}" data-tags="{{ recipe.tag_keys }}"
                      data-favorite="{{ recipe.is_favorite|yesno:'1,' }}">
                 <input type="radio" name="recipe_id" value="{{ recipe.id }}" data-servings="{{ recipe.servings|default_if_none:'' }}">
-                {% if recipe.has_thumbnail %}
-                  <img class="picker-option__thumb" src="{% url 'recipe-thumbnail' recipe.id %}" alt="" loading="lazy" decoding="async">
-                {% else %}
-                  <span class="picker-option__thumb picker-option__thumb--placeholder" aria-hidden="true"><img src="{% static 'images/recipe-placeholder.svg' %}" alt=""></span>
-                {% endif %}
+                {% include "planning/_picker_thumb.html" %}
                 <span class="picker-option__text">
                   <span class="picker-option__title">{% if recipe.is_favorite %}<span class="picker-option__star" aria-label="Favorit">★</span> {% endif %}{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
                   <span class="picker-option__meta">{% if recipe.servings %}{{ recipe.servings }} Portionen{% endif %}{% for tag in recipe.tag_names|slice:":3" %}{% if recipe.servings or not forloop.first %} · {% endif %}{{ tag }}{% endfor %}</span>
@@ -290,6 +314,7 @@
   var similarHeading = dialog.querySelector("[data-picker-similar]");
   var pickerStatus = dialog.querySelector("[data-picker-status]");
   var options = Array.prototype.slice.call(list.querySelectorAll("[data-picker-option]"));
+  var browseNodes = Array.prototype.slice.call(list.querySelectorAll("[data-picker-browse]"));
   var tagButtons = Array.prototype.slice.call(dialog.querySelectorAll("[data-picker-tag]"));
   var byId = {};
   options.forEach(function (option, index) {
@@ -329,6 +354,11 @@
     var needle = normalize(query.value);
     var words = needle ? needle.split(" ") : [];
     var tags = activeTags();
+    var browsing = !needle && !tags.length;
+    browseNodes.forEach(function (node) { node.hidden = !browsing; });
+    // A suggestion picked before searching stays picked: hand it to the same recipe in the full list.
+    var suggested = list.querySelector("[data-picker-suggestion] input:checked");
+    if (suggested && !browsing && byId[suggested.value]) byId[suggested.value].querySelector("input").checked = true;
     var selected = selectedOption();
     var hits = options.filter(function (option) {
       return hasTags(option, tags) && words.every(function (word) {
@@ -381,7 +411,7 @@
     // Enter picks the first visible recipe instead of submitting a half-filled form.
     if (event.key !== "Enter") return;
     event.preventDefault();
-    var first = list.querySelector("[data-picker-option]:not([hidden])");
+    var first = list.querySelector("[data-picker-suggestion]:not([hidden]), [data-picker-option]:not([hidden])");
     if (first) {
       var radio = first.querySelector("input");
       radio.checked = true;

@@ -12,7 +12,8 @@ from django.urls import reverse
 from core.services import household_for
 from pantry.models import InventoryItem
 from pantry.semantic import normalized_text
-from recipes.models import Recipe, RecipeFavorite
+from recipes.models import Recipe, RecipeFavorite, RecommendationOutcome
+from recipes.recommendations import recommend_for_user, record_outcome, week_suggestions
 from recipes.semantic import STRONG_TEXT_SCORE, score_recipes
 
 from .models import SLOT_SEQUENCE, CookEvent, MealSlot
@@ -37,6 +38,7 @@ from .services import (
 
 PICKER_TAG_LIMIT = 12
 PICKER_SEARCH_LIMIT = 20
+PICKER_SUGGESTION_LIMIT = 4
 
 
 def week_url(week_start, *, day=None, open_slot=None):
@@ -90,6 +92,47 @@ def picker_recipes(request, household):
     return recipes, tags
 
 
+def picker_suggestions(request, plan, recipes):
+    """Top recommendations for the planned week, as picker cards with one reason each."""
+
+    if len(recipes) <= PICKER_SUGGESTION_LIMIT:
+        # The whole book fits on screen; repeating it as suggestions only adds noise.
+        return [], None
+    result = recommend_for_user(user=request.user, plan=plan)
+    by_id = {recipe.id: recipe for recipe in recipes}
+    suggestions = []
+    for suggestion in week_suggestions(result, limit=PICKER_SUGGESTION_LIMIT):
+        recipe = by_id.get(suggestion.recipe.id)
+        if recipe is None:
+            continue
+        suggestions.append(
+            {
+                "recipe": recipe,
+                "reason": suggestion.shared_reason,
+                "in_stock": len(suggestion.matched_ingredients),
+                "total": len(suggestion.matched_ingredients) + len(suggestion.missing_ingredients),
+            }
+        )
+    return suggestions, result.run
+
+
+def record_planned_suggestion(request, recipe_id):
+    """Tell the recommender a dish offered in the dialog's suggestions was planned."""
+
+    run_id = request.POST.get("recommendation_run")
+    if not (run_id and recipe_id and recipe_id in request.POST.get("suggested", "").split()):
+        return
+    try:
+        record_outcome(
+            user=request.user,
+            recipe_id=recipe_id,
+            outcome=RecommendationOutcome.Type.PLANNED,
+            run_id=run_id,
+        )
+    except ValueError:
+        pass
+
+
 def requested_cell(request, start):
     """The day and meal a no-JS "+ planen" link asks the dialog to open for."""
 
@@ -124,6 +167,7 @@ def plan_page(request, week_start=None):
             if day["date"] == dialog_day and cell["key"] == dialog_slot:
                 dialog_cell = {"date": day["date"], **cell}
     recipes, tags = picker_recipes(request, household)
+    suggestions, recommendation_run = picker_suggestions(request, plan, recipes)
     return render(
         request,
         "planning/week.html",
@@ -135,6 +179,8 @@ def plan_page(request, week_start=None):
             "courses": MealSlot.Course.choices,
             "recipes": recipes,
             "recipe_tags": tags,
+            "suggestions": suggestions,
+            "recommendation_run": recommendation_run,
             "dialog_cell": dialog_cell,
             "previous_week": start - timedelta(days=7),
             "next_week": start + timedelta(days=7),
@@ -195,7 +241,7 @@ def slot_create_page(request, week_start):
         messages.error(request, str(exc))
         return redirect(week_url(start))
     try:
-        add_slot(
+        entry = add_slot(
             user=request.user,
             week_start=start,
             date=day,
@@ -211,6 +257,8 @@ def slot_create_page(request, week_start):
         messages.error(request, str(exc))
         # Reopen the dialog for the same meal so the choice can be corrected in place.
         return redirect(week_url(start, day=day, open_slot=slot))
+    if entry.recipe_id:
+        record_planned_suggestion(request, str(entry.recipe_id))
     messages.success(request, "Mahlzeit eingeplant.")
     if request.POST.get("then") == "another":
         return redirect(week_url(start, day=day, open_slot=slot))
