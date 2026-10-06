@@ -1065,6 +1065,10 @@ textarea:focus {
   max-width: none;
 }
 
+.message[hidden] {
+  display: none;
+}
+
 .message--error {
   border-left-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 12%, var(--surface));
@@ -3340,6 +3344,25 @@ body.kitchen main {
 .google-mark {
   color: #4285f4;
   font-weight: 800;
+}
+
+.auth-google {
+  width: 100%;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+  font-size: 0.9rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
 }
 
 .landing-intro,

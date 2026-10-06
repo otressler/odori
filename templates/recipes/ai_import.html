@@ -40,32 +40,62 @@
   var input = document.getElementById("recipe-import-text");
   var submit = document.getElementById("recipe-text-import-submit");
   var status = document.getElementById("recipe-text-import-status");
+  // Keep polling until the job reaches a final state; imports can outlast any fixed limit.
+  var slowAfter = 120;
+  var statusUrl = null;
+  var timer = null;
+  var attempts = 0;
+  var failures = 0;
   function show(text, kind) {
     status.hidden = false;
     status.className = "message" + (kind ? " message--" + kind : "");
     status.textContent = text;
   }
-  function poll(url, remaining) {
-    fetch(url, {headers: {"Accept": "application/json"}}).then(function (response) {
+  function schedule(delay) {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(poll, delay);
+  }
+  function stop() {
+    window.clearTimeout(timer);
+    statusUrl = null;
+    submit.disabled = false;
+  }
+  function poll() {
+    if (!statusUrl) { return; }
+    window.clearTimeout(timer);
+    attempts += 1;
+    fetch(statusUrl, {headers: {"Accept": "application/json"}}).then(function (response) {
+      if (response.status === 404) { return {state: "missing"}; }
       return response.ok ? response.json() : Promise.reject();
     }).then(function (data) {
+      if (!statusUrl) { return; }
+      failures = 0;
       if (data.state === "succeeded" && data.recipe) {
+        statusUrl = null;
         window.location.href = "/recipes/" + data.recipe.id + "/";
-      } else if (data.state === "failed" || data.state === "cancelled") {
+      } else if (data.state === "failed" || data.state === "cancelled" || data.state === "missing") {
         show("Der Vorschlag konnte nicht erstellt werden. Bitte versuche es mit anderen Notizen erneut.", "error");
-        submit.disabled = false;
-      } else if (remaining <= 0) {
-        show("Die Erstellung dauert länger als erwartet. Du kannst später im Rezeptbuch nachsehen.", "warning");
-        submit.disabled = false;
+        stop();
+      } else if (attempts > slowAfter) {
+        show("Die Erstellung dauert länger als erwartet. Du wirst weitergeleitet, sobald der Entwurf fertig ist.", "warning");
+        schedule(5000);
       } else {
         show("Dein Vorschlag wird zubereitet …");
-        window.setTimeout(function () { poll(url, remaining - 1); }, 1500);
+        schedule(1500);
       }
     }).catch(function () {
-      show("Der Status konnte gerade nicht abgerufen werden. Bitte später erneut versuchen.", "error");
-      submit.disabled = false;
+      if (!statusUrl) { return; }
+      failures += 1;
+      if (failures >= 3) {
+        show("Der Status ist gerade nicht erreichbar. Neuer Versuch läuft …", "warning");
+      }
+      schedule(Math.min(1500 * Math.pow(2, failures), 30000));
     });
   }
+  // Background tabs throttle timers; check right away when the page is visible again.
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && statusUrl) { poll(); }
+  });
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     submit.disabled = true;
@@ -76,7 +106,12 @@
       body: JSON.stringify({text: input.value.trim()})
     }).then(function (response) {
       return response.json().then(function (data) { return response.ok ? data : Promise.reject(data); });
-    }).then(function (data) { poll(data.statusUrl, 120); }).catch(function (data) {
+    }).then(function (data) {
+      statusUrl = data.statusUrl;
+      attempts = 0;
+      failures = 0;
+      poll();
+    }).catch(function (data) {
       show(data && data.error && data.error.message || "Der Vorschlag konnte nicht gestartet werden. Bitte versuche es erneut.", "error");
       submit.disabled = false;
     });

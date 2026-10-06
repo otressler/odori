@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load socialaccount %}
 {% block title %}Anmelden · Odori{% endblock %}
 {% block body_class %}auth{% endblock %}
 
@@ -19,6 +20,12 @@
     {% if form.errors %}
       <p class="message message--error">Benutzername oder Passwort stimmen nicht.</p>
     {% endif %}
+
+    <a class="button google-button auth-google" href="{% provider_login_url 'google' %}">
+      <span class="google-mark" aria-hidden="true">G</span>
+      Mit Google anmelden
+    </a>
+    <p class="auth-divider muted">oder mit Passwort</p>
 
     <form method="post" class="stack">
       {% csrf_token %}

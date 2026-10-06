@@ -200,6 +200,12 @@ class PageRenderTests(TestCase):
         response = self.client.get("/accounts/login/")
         self.assertContains(response, "Willkommen zurück")
 
+    def test_sign_in_page_offers_google_and_keeps_next(self):
+        self.client.logout()
+        response = self.client.get("/accounts/login/?next=/planning/")
+        self.assertContains(response, "Mit Google anmelden")
+        self.assertContains(response, "/accounts/google/login/?next=%2Fplanning%2F")
+
     def test_anonymous_home_is_the_landing_page(self):
         self.client.logout()
 
