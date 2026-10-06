@@ -312,9 +312,95 @@ a {
   font-size: 1.1rem;
 }
 
+.header-menu {
+  position: relative;
+}
+
+.header-menu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.header-menu summary:hover,
+.header-menu[open] summary {
+  background: var(--surface-sunk);
+  color: var(--text);
+}
+
+.header-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.header-menu summary svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.header-menu__flyout {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.header-menu__flyout form {
+  margin: 0;
+}
+
+.header-menu__flyout a,
+.header-menu__flyout button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-decoration: none;
+}
+
+.header-menu__flyout a:hover,
+.header-menu__flyout button:hover {
+  background: var(--terracotta-soft);
+}
+
+.header-menu__flyout svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* Below the desktop breakpoint the overflow menu carries settings, operations and logout. */
+@media (max-width: 55.99rem) {
+  .header-logout,
+  .household-settings-link {
+    display: none;
+  }
+}
+
 @media (min-width: 56rem) {
   .site-nav {
     display: flex;
+  }
+
+  .header-menu {
+    display: none;
   }
 }
 
@@ -3023,11 +3109,6 @@ body.kitchen main {
 
   .household-switcher select {
     max-width: 8rem;
-  }
-
-  .header-actions > form:last-child,
-  .household-settings-link {
-    display: none;
   }
 
   .ingredient-row {
