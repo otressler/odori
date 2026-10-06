@@ -85,6 +85,27 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm odori-we
 Open <http://localhost:8000/>. Stop the stack with `docker compose ... down`;
 named volumes preserve PostgreSQL data and uploads.
 
+### Live reload
+
+`make dev` starts the same stack with `docker-compose.live.yml` layered on top:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.live.yml \
+  up --build odori-web odori-worker
+```
+
+The working tree is mounted into the containers, so edits apply without a
+rebuild:
+
+- Python changes restart `runserver` and the worker (`worker --reload`).
+- Template and static file changes refresh open browser tabs through
+  `django-browser-reload`, which is enabled only when both `DEBUG` and
+  `LIVE_RELOAD` are `true`.
+
+It uses the same `odori_dev_*` volumes and ports as the regular development
+stack, so run one at a time; `make dev-down` stops it. Rebuild (`make dev`
+again) only after changing requirements or the Dockerfile.
+
 ## Google sign-in
 
 1. In Google Cloud Console, configure the OAuth consent screen and create a

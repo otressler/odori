@@ -3,7 +3,7 @@ import time
 
 from django.core.management.base import BaseCommand
 from django.db import connection
-from django.utils import timezone
+from django.utils import autoreload, timezone
 
 from core.models import WorkerHeartbeat
 from core.observability import log_event
@@ -82,7 +82,20 @@ class Command(BaseCommand):
             ]
         )
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--reload",
+            action="store_true",
+            help="Restart when Python files change (development only).",
+        )
+
     def handle(self, *args, **options):
+        if options["reload"]:
+            autoreload.run_with_reloader(self.run_worker)
+        else:
+            self.run_worker()
+
+    def run_worker(self):
         self.stdout.write("Worker is ready.")
         log_event(logger, "worker.started")
         self.heartbeat(state=WorkerHeartbeat.State.IDLE)

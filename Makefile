@@ -1,4 +1,4 @@
-.PHONY: format lint test test-container test-unit-container test-integration-container migrate seed build
+.PHONY: format lint test test-container test-unit-container test-integration-container migrate seed build dev dev-down
 
 format:
 	python -m ruff format .
@@ -18,3 +18,7 @@ seed:
 	python manage.py seed_demo
 build:
 	docker build --platform linux/arm64 -t odori:local .
+dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.live.yml up --build odori-web odori-worker
+dev-down:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.live.yml down
