@@ -7,6 +7,8 @@ from core.models import Household
 from recipes.models import Recipe
 
 SLOT_SEQUENCE = ["breakfast", "lunch", "dinner", "snack"]
+# Unset courses sort with the main course so single-dish slots keep their order.
+COURSE_SEQUENCE = ["starter", "", "main", "side", "dessert"]
 
 
 class MealPlan(models.Model):
@@ -40,10 +42,17 @@ class MealSlot(models.Model):
         LEFTOVERS = "leftovers", "Reste"
         NOTE = "note", "Notiz"
 
+    class Course(models.TextChoices):
+        STARTER = "starter", "Vorspeise"
+        MAIN = "main", "Hauptgang"
+        SIDE = "side", "Beilage"
+        DESSERT = "dessert", "Dessert"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE, related_name="slots")
     date = models.DateField()
     slot = models.CharField(max_length=16, choices=Slot.choices)
+    course = models.CharField(max_length=16, choices=Course.choices, blank=True)
     entry_type = models.CharField(
         max_length=16, choices=EntryType.choices, default=EntryType.RECIPE
     )

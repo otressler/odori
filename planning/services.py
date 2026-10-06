@@ -10,7 +10,7 @@ from pantry.models import InventoryItem
 from pantry.services import record_cooking_change
 from recipes.models import Recipe
 
-from .models import SLOT_SEQUENCE, CookEvent, MealPlan, MealSlot
+from .models import COURSE_SEQUENCE, SLOT_SEQUENCE, CookEvent, MealPlan, MealSlot
 
 RECENT_REPEAT_DAYS = 21
 
@@ -57,29 +57,42 @@ def plan_slots(plan):
     )
 
 
+def course_order(entry):
+    return COURSE_SEQUENCE.index(entry.course) if entry.course in COURSE_SEQUENCE else 1
+
+
+def cell_servings(entries):
+    """Servings the slot already cooks for, so another dish defaults to the same table."""
+
+    for entry in entries:
+        if entry.entry_type == MealSlot.EntryType.RECIPE and entry.servings:
+            return entry.servings
+    return None
+
+
 def week_grid(plan):
     """Ordered day/slot matrix so the UI never depends on alphabetical slot ordering."""
 
     by_cell = {}
     for slot in plan_slots(plan):
         by_cell.setdefault((slot.date, slot.slot), []).append(slot)
+    today = timezone.localdate()
     days = []
     for offset in range(7):
         day = plan.week_start_date + timedelta(days=offset)
-        days.append(
-            {
-                "date": day,
-                "is_today": day == timezone.localdate(),
-                "slots": [
-                    {
-                        "key": key,
-                        "label": MealSlot.Slot(key).label,
-                        "entries": by_cell.get((day, key), []),
-                    }
-                    for key in SLOT_SEQUENCE
-                ],
-            }
-        )
+        cells = []
+        for key in SLOT_SEQUENCE:
+            # sorted() is stable, so dishes of the same course keep their planning order.
+            entries = sorted(by_cell.get((day, key), []), key=course_order)
+            cells.append(
+                {
+                    "key": key,
+                    "label": MealSlot.Slot(key).label,
+                    "entries": entries,
+                    "servings": cell_servings(entries),
+                }
+            )
+        days.append({"date": day, "is_today": day == today, "is_past": day < today, "slots": cells})
     return days
 
 
@@ -156,8 +169,43 @@ def validate_entry(*, household, entry_type, recipe_id, servings, notes):
     return recipe, servings
 
 
+def validate_course(course):
+    course = course or ""
+    if course and course not in MealSlot.Course.values:
+        raise ValueError("Unbekannter Gang.")
+    return course
+
+
+def apply_servings_to_cell(entry):
+    """Give every other uncooked dish of the same meal the entry's serving count."""
+
+    siblings = MealSlot.objects.select_for_update().filter(
+        plan=entry.plan,
+        date=entry.date,
+        slot=entry.slot,
+        entry_type=MealSlot.EntryType.RECIPE,
+        cooked_at__isnull=True,
+    )
+    for sibling in siblings.exclude(id=entry.id).exclude(servings=entry.servings):
+        sibling.servings = entry.servings
+        sibling.version += 1
+        sibling.save(update_fields=["servings", "version"])
+
+
 @transaction.atomic
-def add_slot(*, user, week_start, date, slot, entry_type, recipe_id=None, servings=None, notes=""):
+def add_slot(
+    *,
+    user,
+    week_start,
+    date,
+    slot,
+    entry_type,
+    recipe_id=None,
+    servings=None,
+    notes="",
+    course="",
+    servings_for_whole_slot=False,
+):
     household = household_for(user)
     plan = get_or_create_plan(user=user, week_start=week_start)
     if slot not in MealSlot.Slot.values:
@@ -171,19 +219,34 @@ def add_slot(*, user, week_start, date, slot, entry_type, recipe_id=None, servin
         servings=servings,
         notes=notes,
     )
-    return MealSlot.objects.create(
+    entry = MealSlot.objects.create(
         plan=plan,
         date=date,
         slot=slot,
+        course=validate_course(course),
         entry_type=entry_type,
         recipe=recipe,
         servings=resolved_servings,
         notes=(notes or "").strip()[:300],
     )
+    if servings_for_whole_slot and resolved_servings:
+        apply_servings_to_cell(entry)
+    return entry
 
 
 @transaction.atomic
-def update_slot(*, user, slot_id, version, servings=None, notes=None, date=None, slot=None):
+def update_slot(
+    *,
+    user,
+    slot_id,
+    version,
+    servings=None,
+    notes=None,
+    date=None,
+    slot=None,
+    course=None,
+    servings_for_whole_slot=False,
+):
     entry = slot_for_user(user, slot_id, lock=True)
     if entry.version != version:
         raise StaleSlotVersion(entry)
@@ -208,8 +271,12 @@ def update_slot(*, user, slot_id, version, servings=None, notes=None, date=None,
         entry.servings = servings
     if notes is not None:
         entry.notes = notes.strip()[:300]
+    if course is not None:
+        entry.course = validate_course(course)
     entry.version += 1
     entry.save()
+    if servings_for_whole_slot and entry.servings:
+        apply_servings_to_cell(entry)
     return entry
 
 

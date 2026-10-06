@@ -1,12 +1,17 @@
 from django.contrib.auth.decorators import login_required
 from django.urls import path
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from . import views
 
 urlpatterns = [
     path("", login_required(views.plan_page), name="plan-current"),
     path("history/", login_required(views.cook_history_page), name="cook-history"),
+    path(
+        "recipe-search/",
+        login_required(require_GET(views.recipe_search)),
+        name="plan-recipe-search",
+    ),
     path("<str:week_start>/", login_required(views.plan_page), name="plan-week"),
     path(
         "<str:week_start>/slots/",

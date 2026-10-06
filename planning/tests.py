@@ -1,12 +1,22 @@
 import json
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryEvent, InventoryItem
-from recipes.models import Recipe, RecipeIngredient, RecipeSource, RecipeStep
+from recipes.models import (
+    Recipe,
+    RecipeFavorite,
+    RecipeIngredient,
+    RecipeSource,
+    RecipeStep,
+    RecipeTag,
+    RecipeTagAssignment,
+)
 
 from .models import CookEvent, MealPlan, MealSlot
 from .services import (
@@ -18,6 +28,7 @@ from .services import (
     mark_cooked,
     shift_slot,
     undo_cooked,
+    week_grid,
     week_start_for,
 )
 
@@ -222,9 +233,7 @@ class CookingTests(PlanningTestCase):
                 user=self.user,
                 slot_id=slot.id,
                 slot_version=slot.version,
-                inventory_changes=[
-                    {"ingredient_id": self.basil.id, "status": "unavailable"}
-                ],
+                inventory_changes=[{"ingredient_id": self.basil.id, "status": "unavailable"}],
             )
         slot.refresh_from_db()
         self.assertIsNone(slot.cooked_at)
@@ -428,3 +437,257 @@ class HistoryTests(PlanningTestCase):
         self.make_slot(day_offset=4)
         response = self.client.get("/plan/")
         self.assertContains(response, "Kürzlich gekocht")
+
+
+class MultiDishSlotTests(PlanningTestCase):
+    def setUp(self):
+        super().setUp()
+        self.dessert = Recipe.objects.create(
+            household=self.household,
+            created_by=self.user,
+            source=self.source,
+            title="Tiramisu",
+            servings=6,
+            status=Recipe.Status.APPROVED,
+        )
+
+    def add(self, recipe, **kwargs):
+        return add_slot(
+            user=self.user,
+            week_start=self.week_start,
+            date=self.week_start,
+            slot="dinner",
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe_id=recipe.id,
+            **kwargs,
+        )
+
+    def test_a_meal_lists_its_courses_in_menu_order(self):
+        dessert = self.add(self.dessert, course="dessert")
+        main = self.add(self.recipe)
+        starter = self.add(self.recipe, course="starter")
+
+        cell = week_grid(self.plan)[0]["slots"][2]
+
+        self.assertEqual([entry.id for entry in cell["entries"]], [starter.id, main.id, dessert.id])
+        self.assertEqual(cell["servings"], 2)
+
+    def test_unknown_course_is_rejected(self):
+        with self.assertRaisesMessage(ValueError, "Unbekannter Gang."):
+            self.add(self.recipe, course="amuse")
+
+    def test_new_dish_can_set_servings_for_the_whole_meal(self):
+        main = self.add(self.recipe, servings=2)
+        cooked = self.add(self.recipe, servings=2)
+        mark_cooked(user=self.user, slot_id=cooked.id, slot_version=cooked.version)
+
+        self.add(self.dessert, servings=8, servings_for_whole_slot=True)
+
+        main.refresh_from_db()
+        cooked.refresh_from_db()
+        self.assertEqual(main.servings, 8)
+        self.assertEqual(main.version, 2, "siblings change version so stale forms conflict")
+        self.assertEqual(cooked.servings, 2, "a cooked dish keeps what was actually cooked")
+
+    def test_servings_stay_per_dish_unless_asked(self):
+        main = self.add(self.recipe, servings=2)
+        self.add(self.dessert, servings=8)
+
+        main.refresh_from_db()
+        self.assertEqual(main.servings, 2)
+
+    def test_updating_one_dish_can_resize_the_whole_meal(self):
+        main = self.add(self.recipe, servings=2)
+        dessert = self.add(self.dessert, servings=6)
+
+        response = self.client.post(
+            f"/plan/slots/{main.id}/update/",
+            {
+                "version": main.version,
+                "servings": "5",
+                "course": "main",
+                "servings_for_whole_slot": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        main.refresh_from_db()
+        dessert.refresh_from_db()
+        self.assertEqual((main.servings, main.course), (5, "main"))
+        self.assertEqual(dessert.servings, 5)
+
+    def test_api_accepts_and_reports_the_course(self):
+        response = self.client.post(
+            f"/api/v1/meal-plans/{self.week_start.isoformat()}/slots",
+            data=json.dumps(
+                {
+                    "date": self.week_start.isoformat(),
+                    "slot": "dinner",
+                    "recipeId": str(self.dessert.id),
+                    "course": "dessert",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["course"], "dessert")
+
+    def test_filled_meal_still_offers_another_dish(self):
+        self.add(self.recipe)
+
+        response = self.client.get(f"/plan/{self.week_start.isoformat()}/")
+
+        self.assertContains(response, "+ Gericht")
+        self.assertContains(response, "+ Mittag")
+
+
+class PlanDialogTests(PlanningTestCase):
+    def post_dish(self, **extra):
+        return self.client.post(
+            f"/plan/{self.week_start.isoformat()}/slots/",
+            {
+                "entry_type": "recipe",
+                "recipe_id": str(self.recipe.id),
+                "date": self.week_start.isoformat(),
+                "slot": "dinner",
+                **extra,
+            },
+        )
+
+    def test_planning_returns_to_the_day(self):
+        response = self.post_dish()
+
+        day = self.week_start.isoformat()
+        self.assertRedirects(response, f"/plan/{day}/#day-{day}", fetch_redirect_response=False)
+
+    def test_plan_another_reopens_the_dialog_for_the_same_meal(self):
+        response = self.post_dish(then="another")
+
+        day = self.week_start.isoformat()
+        self.assertRedirects(
+            response,
+            f"/plan/{day}/?date={day}&slot=dinner#day-{day}",
+            fetch_redirect_response=False,
+        )
+        page = self.client.get(response.url)
+        self.assertContains(page, " open data-autoshow")
+        self.assertContains(page, 'value="2" data-servings-input', msg_prefix="servings carry over")
+
+    def test_a_rejected_dish_reopens_the_dialog(self):
+        response = self.post_dish(recipe_id="")
+
+        self.assertIn("?date=", response.url)
+
+    def test_dialog_ignores_cells_outside_the_week(self):
+        outside = (self.week_start + timedelta(days=9)).isoformat()
+
+        response = self.client.get(
+            f"/plan/{self.week_start.isoformat()}/?date={outside}&slot=dinner"
+        )
+
+        self.assertNotContains(response, " open data-autoshow")
+
+    def test_picker_lists_favourites_first_and_shows_thumbnails(self):
+        other = Recipe.objects.create(
+            household=self.household,
+            created_by=self.user,
+            source=self.source,
+            title="Arancini",
+            status=Recipe.Status.APPROVED,
+            image_status="ready",
+            thumbnail="recipe-thumbnails/arancini.jpg",
+        )
+        RecipeFavorite.objects.create(recipe=self.recipe, user=self.user)
+        add_slot(
+            user=self.user,
+            week_start=self.week_start,
+            date=self.week_start,
+            slot="dinner",
+            entry_type=MealSlot.EntryType.RECIPE,
+            recipe_id=other.id,
+        )
+
+        response = self.client.get(f"/plan/{self.week_start.isoformat()}/")
+        content = response.content.decode()
+
+        self.assertLess(
+            content.index(f'data-id="{self.recipe.id}"'), content.index(f'data-id="{other.id}"')
+        )
+        # Once on the planned card, once in the picker.
+        self.assertContains(response, reverse("recipe-thumbnail", args=[other.id]), count=2)
+
+    def test_tag_chips_merge_spellings_under_the_commoner_one(self):
+        spellings = ["Schnell", "Schnell", "schnell"]
+        for index, name in enumerate(spellings):
+            recipe = Recipe.objects.create(
+                household=self.household,
+                created_by=self.user,
+                source=self.source,
+                title=f"Gericht {index}",
+                status=Recipe.Status.APPROVED,
+            )
+            tag, _ = RecipeTag.objects.get_or_create(household=self.household, name=name)
+            RecipeTagAssignment.objects.create(recipe=recipe, tag=tag)
+
+        response = self.client.get(f"/plan/{self.week_start.isoformat()}/")
+
+        self.assertEqual(response.context["recipe_tags"], [{"name": "Schnell", "key": "schnell"}])
+        self.assertContains(response, 'data-tags="schnell"', count=3)
+
+
+class PlanRecipeSearchTests(PlanningTestCase):
+    def setUp(self):
+        super().setUp()
+        self.feta = Recipe.objects.create(
+            household=self.household,
+            created_by=self.user,
+            source=self.source,
+            title="Kritharaki mit Feta",
+            status=Recipe.Status.APPROVED,
+            search_embedding=[0.0, 1.0],
+        )
+        self.recipe.search_embedding = [1.0, 0.0]
+        self.recipe.save()
+        tag = RecipeTag.objects.create(household=self.household, name="Sommer")
+        RecipeTagAssignment.objects.create(recipe=self.recipe, tag=tag)
+
+    def search(self, query):
+        return self.client.get("/plan/recipe-search/", {"q": query}).json()["results"]
+
+    @patch("recipes.semantic.query_embedding", return_value=[0.8, 0.6])
+    def test_a_literal_title_hit_beats_an_embedding_neighbour(self, _embedding):
+        results = self.search("Feta")
+
+        self.assertEqual(results[0]["id"], str(self.feta.id))
+        self.assertEqual(results[0]["method"], "text")
+        self.assertEqual(
+            results[1], {"id": str(self.recipe.id), "score": 0.8, "method": "semantic"}
+        )
+
+    @patch("recipes.semantic.query_embedding", return_value=None)
+    def test_tags_and_ingredients_are_searched_without_embeddings(self, _embedding):
+        self.assertEqual([result["id"] for result in self.search("sommer")], [str(self.recipe.id)])
+        self.assertEqual([result["id"] for result in self.search("Tomaten")], [str(self.recipe.id)])
+
+    @patch("recipes.semantic.query_embedding", return_value=None)
+    def test_drafts_and_other_households_stay_out(self, _embedding):
+        Recipe.objects.create(
+            household=self.household,
+            created_by=self.user,
+            source=self.source,
+            title="Feta-Entwurf",
+            status=Recipe.Status.DRAFT,
+        )
+        stranger = User.objects.create_user(username="ospite", password="pass")
+        elsewhere = Household.objects.create(name="Altrove")
+        HouseholdMembership.objects.create(household=elsewhere, user=stranger, role="owner")
+        Recipe.objects.create(
+            household=elsewhere,
+            created_by=stranger,
+            source=RecipeSource.objects.create(household=elsewhere),
+            title="Feta fremd",
+            status=Recipe.Status.APPROVED,
+        )
+
+        self.assertEqual([result["id"] for result in self.search("Feta")], [str(self.feta.id)])
