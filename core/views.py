@@ -72,6 +72,14 @@ def job_state_counts(model, *, household):
     return counts
 
 
+def queue_summary(label, counts):
+    return {"label": label, "total": sum(counts.values()), "counts": counts}
+
+
+def percent_of(part, whole):
+    return round(part * 100 / whole) if whole else 0
+
+
 @login_required
 def operations_page(request):
     household = owner_household_for(request.user)
@@ -80,8 +88,25 @@ def operations_page(request):
     worker_is_fresh = bool(
         heartbeat and timezone.now() - heartbeat.last_heartbeat_at <= worker_max_age
     )
+    heartbeat_age_seconds = (
+        int((timezone.now() - heartbeat.last_heartbeat_at).total_seconds()) if heartbeat else None
+    )
     categories = list(IngredientCategory.objects.filter(household=household))
     ingredients = list(CanonicalIngredient.objects.filter(household=household, active=True))
+    category_embedding_count = sum(bool(category.embedding) for category in categories)
+    ingredient_embedding_count = sum(bool(ingredient.embedding) for ingredient in ingredients)
+    assigned_ingredient_count = sum(
+        ingredient.category_id is not None for ingredient in ingredients
+    )
+    category_queue_counts = job_state_counts(PantryCategorizationJob, household=household)
+    image_queue_counts = job_state_counts(RecipeImageJob, household=household)
+    import_queue_counts = job_state_counts(RecipeImportJob, household=household)
+    queues = [
+        queue_summary("Warengruppen", category_queue_counts),
+        queue_summary("Rezeptimporte", import_queue_counts),
+        queue_summary("Rezeptbilder", image_queue_counts),
+    ]
+    provider_diagnostics = list(ProviderDiagnostic.objects.filter(household=household)[:20])
     return render(
         request,
         "core/operations.html",
@@ -89,24 +114,38 @@ def operations_page(request):
             "household": household,
             "heartbeat": heartbeat,
             "worker_is_fresh": worker_is_fresh,
+            "heartbeat_age_seconds": heartbeat_age_seconds,
             "worker_max_age_seconds": settings.WORKER_HEARTBEAT_MAX_AGE_SECONDS,
             "category_jobs": PantryCategorizationJob.objects.filter(household=household)[:20],
             "image_jobs": RecipeImageJob.objects.filter(recipe__household=household)
             .select_related("recipe")[:20],
             "import_jobs": RecipeImportJob.objects.filter(household=household)
             .select_related("source", "recipe")[:20],
-            "provider_diagnostics": ProviderDiagnostic.objects.filter(household=household)[:20],
-            "category_queue_counts": job_state_counts(PantryCategorizationJob, household=household),
-            "image_queue_counts": job_state_counts(RecipeImageJob, household=household),
-            "import_queue_counts": job_state_counts(RecipeImportJob, household=household),
-            "category_embedding_count": sum(bool(category.embedding) for category in categories),
-            "category_count": len(categories),
-            "ingredient_embedding_count": sum(
-                bool(ingredient.embedding) for ingredient in ingredients
+            "provider_diagnostics": provider_diagnostics,
+            "provider_failure_count": sum(
+                diagnostic.state == ProviderDiagnostic.State.FAILED
+                for diagnostic in provider_diagnostics
             ),
+            "category_queue_counts": category_queue_counts,
+            "image_queue_counts": image_queue_counts,
+            "import_queue_counts": import_queue_counts,
+            "queues": queues,
+            "open_job_count": sum(
+                queue["counts"].get("queued", 0) + queue["counts"].get("running", 0)
+                for queue in queues
+            ),
+            "failed_job_count": sum(queue["counts"].get("failed", 0) for queue in queues),
+            "category_embedding_count": category_embedding_count,
+            "category_count": len(categories),
+            "category_embedding_percent": percent_of(category_embedding_count, len(categories)),
+            "ingredient_embedding_count": ingredient_embedding_count,
             "ingredient_count": len(ingredients),
-            "assigned_ingredient_count": sum(
-                ingredient.category_id is not None for ingredient in ingredients
+            "ingredient_embedding_percent": percent_of(
+                ingredient_embedding_count, len(ingredients)
+            ),
+            "assigned_ingredient_count": assigned_ingredient_count,
+            "assigned_ingredient_percent": percent_of(
+                assigned_ingredient_count, len(ingredients)
             ),
         },
     )

@@ -1492,6 +1492,412 @@ textarea:focus {
   }
 }
 
+/* ---------- Operations ---------- */
+
+.ops-heading {
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.admin-category-stats .is-alert {
+  border-left-color: var(--danger);
+}
+
+.admin-category-stats .is-alert dd {
+  color: var(--danger);
+}
+
+.admin-category-stats dd small {
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+/* Tones shared by status pills, queue bars and legends. */
+.status--ok {
+  background: var(--olive-soft);
+  color: var(--olive-deep);
+  border-color: color-mix(in srgb, var(--olive) 35%, transparent);
+}
+
+.status--active {
+  background: var(--saffron-soft);
+  color: var(--saffron-ink);
+  border-color: color-mix(in srgb, var(--saffron) 45%, transparent);
+}
+
+.status--active::before {
+  animation: ops-pulse 1.4s ease-in-out infinite;
+}
+
+.status--waiting {
+  background: var(--surface-sunk);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.status--neutral {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--line-strong);
+  border-style: dashed;
+}
+
+.status--warning {
+  background: var(--terracotta-soft);
+  color: var(--terracotta-deep);
+  border-color: color-mix(in srgb, var(--terracotta) 40%, transparent);
+}
+
+.status--error {
+  background: color-mix(in srgb, var(--danger) 13%, var(--surface));
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+@keyframes ops-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.ops-tone--ok { --tone: var(--olive); }
+.ops-tone--active { --tone: var(--saffron); }
+.ops-tone--waiting { --tone: var(--stone-deep); }
+.ops-tone--neutral { --tone: var(--line-strong); }
+.ops-tone--warning { --tone: var(--terracotta); }
+.ops-tone--error { --tone: var(--danger); }
+
+/* Service tiles */
+.ops-services {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.ops-service {
+  --tone: var(--olive);
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-left: 0.35rem solid var(--tone);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.ops-service--active { --tone: var(--saffron); }
+.ops-service--warning { --tone: var(--terracotta); }
+.ops-service--error {
+  --tone: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+}
+
+.ops-service__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tone) 16%, var(--surface));
+  color: var(--tone);
+}
+
+.ops-service__icon svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.ops-service__body {
+  min-width: 0;
+}
+
+.ops-service__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.ops-service__title h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.ops-service p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.ops-service .ops-error-note {
+  margin-top: 0.5rem;
+  color: var(--danger);
+}
+
+/* Coverage meters and queues */
+.ops-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.ops-columns .panel + .panel {
+  margin-top: 0;
+}
+
+.ops-meters,
+.ops-queues {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.ops-meter__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.92rem;
+}
+
+.ops-meter__head strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-meter__track,
+.ops-queue__bar {
+  display: flex;
+  height: 0.6rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.ops-meter__track span {
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--saffron), var(--terracotta));
+  transition: width 0.4s var(--ease);
+}
+
+.ops-meter--olive .ops-meter__track span {
+  background: linear-gradient(90deg, #8fa356, var(--olive));
+}
+
+.ops-queue__bar {
+  gap: 2px;
+}
+
+.ops-queue__segment {
+  flex-basis: 0;
+  min-width: 0.4rem;
+  background: var(--tone);
+}
+
+.ops-queue__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.ops-queue__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ops-queue__legend li::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.ops-queue__legend strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-queue__legend .is-empty {
+  opacity: 0.5;
+}
+
+.ops-footnote {
+  margin: 1rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* Job and provider tables */
+.ops-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ops-panel .panel__head {
+  margin: 0;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-sunk) 55%, var(--surface));
+}
+
+.ops-panel .panel__head .muted {
+  font-size: 0.85rem;
+}
+
+.ops-table-wrap {
+  overflow-x: auto;
+}
+
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.ops-table th {
+  padding: 0.6rem 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.ops-table td {
+  padding: 0.7rem 0.8rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+}
+
+.ops-table th:first-child,
+.ops-table td:first-child {
+  padding-left: 1.25rem;
+}
+
+.ops-table th:last-child,
+.ops-table td:last-child {
+  padding-right: 1.25rem;
+}
+
+.ops-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ops-table tbody tr {
+  transition: background-color 0.15s var(--ease);
+}
+
+.ops-table tbody tr:hover {
+  background: color-mix(in srgb, var(--surface-sunk) 60%, transparent);
+}
+
+.ops-table tbody tr.is-failed {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.ops-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-table small {
+  color: var(--text-muted);
+}
+
+.ops-table code,
+.ops-service code {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: var(--surface-sunk);
+  font-size: 0.82em;
+}
+
+.ops-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-time small {
+  display: block;
+  font-size: 0.78rem;
+}
+
+.ops-source a {
+  white-space: nowrap;
+}
+
+.ops-error {
+  min-width: 12rem;
+  max-width: 26rem;
+}
+
+.ops-error code {
+  margin-right: 0.4rem;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
+.ops-error span[title] {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.ops-action {
+  text-align: right;
+}
+
+.ops-action form {
+  margin: 0;
+}
+
+.ops-retry {
+  min-height: 2.2rem;
+  padding: 0.3rem 0.85rem;
+  border-color: color-mix(in srgb, var(--terracotta) 50%, transparent);
+  color: var(--terracotta-deep);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.ops-retry:hover {
+  background: var(--terracotta-soft);
+}
+
+.ops-empty {
+  margin: 0;
+  max-width: none;
+  padding: 1.5rem 1.25rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+@media (max-width: 52rem) {
+  .ops-services,
+  .ops-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- 10. Recipe catalogue ---------- */
 
 .import-page {

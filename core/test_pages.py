@@ -179,6 +179,22 @@ class PageRenderTests(TestCase):
         )
         self.assertContains(self.client.get("/"), "Kochen")
 
+    def test_mobile_header_menu_offers_household_settings(self):
+        response = self.client.get("/")
+
+        self.assertContains(response, 'class="header-menu"')
+        self.assertContains(response, "Haushalt verwalten</a>")
+
+    def test_mobile_header_menu_hides_household_settings_from_members(self):
+        member = User.objects.create_user(username="cugino", password="pass")
+        HouseholdMembership.objects.create(household=self.household, user=member, role="member")
+        self.client.force_login(member)
+
+        response = self.client.get("/")
+
+        self.assertContains(response, 'class="header-menu"')
+        self.assertNotContains(response, "Haushalt verwalten")
+
     def test_sign_in_page_renders_for_anonymous_visitors(self):
         self.client.logout()
         response = self.client.get("/accounts/login/")

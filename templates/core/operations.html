@@ -1,111 +1,222 @@
 {% extends "base.html" %}
+{% load operations %}
 {% block title %}Betrieb · Odori{% endblock %}
 
 {% block content %}
-<h1>Betriebsübersicht</h1>
-<p>Diagnosen für {{ household.name }}. Diese Informationen sind nur für Haushaltsinhaber sichtbar.</p>
+<header class="admin-category-heading ops-heading">
+  <div>
+    <p class="hero__eyebrow">Betrieb</p>
+    <h1>Betriebsübersicht</h1>
+    <p>Diagnosen für {{ household.name }}. Nur für Haushaltsinhaber sichtbar.</p>
+  </div>
+  <dl class="admin-category-stats">
+    <div><dt>Offene Jobs</dt><dd>{{ open_job_count }}</dd></div>
+    <div{% if failed_job_count %} class="is-alert"{% endif %}><dt>Fehlgeschlagen</dt><dd>{{ failed_job_count }}</dd></div>
+    <div{% if provider_failure_count %} class="is-alert"{% endif %}><dt>Provider-Fehler</dt><dd>{{ provider_failure_count }}<small> / {{ provider_diagnostics|length }}</small></dd></div>
+  </dl>
+</header>
 
-<section class="panel">
-  <h2>Dienste</h2>
-  <table>
-    <thead><tr><th>Komponente</th><th>Status</th><th>Zuletzt gesehen</th><th>Details</th></tr></thead>
-    <tbody>
-      <tr>
-        <td>Datenbank</td><td>Bereit</td><td>Diese Anfrage</td><td>Readiness: <code>/health/ready</code></td>
-      </tr>
-      <tr>
-        <td>Worker</td>
-        <td>{% if worker_is_fresh %}{{ heartbeat.get_state_display }}{% else %}Nicht verfügbar{% endif %}</td>
-        <td>{% if heartbeat %}{{ heartbeat.last_heartbeat_at|date:"d.m.Y H:i:s" }}{% else %}Noch nie{% endif %}</td>
-        <td>
-          {% if heartbeat and heartbeat.last_error_message %}{{ heartbeat.last_error_message }}{% else %}
-            Frischegrenze: {{ worker_max_age_seconds }} Sekunden
-          {% endif %}
-        </td>
-      </tr>
-    </tbody>
-  </table>
+<div class="ops-services">
+  <article class="ops-service ops-service--ok">
+    <span class="ops-service__icon"><svg aria-hidden="true"><use href="#i-jar"></use></svg></span>
+    <div class="ops-service__body">
+      <div class="ops-service__title">
+        <h2>Datenbank</h2>
+        <span class="status status--ok">Bereit</span>
+      </div>
+      <p>Mit dieser Anfrage geprüft · Readiness unter <code>/health/ready</code></p>
+    </div>
+  </article>
+
+  <article class="ops-service ops-service--{% if worker_is_fresh %}{{ heartbeat.state|state_tone }}{% else %}error{% endif %}">
+    <span class="ops-service__icon"><svg aria-hidden="true"><use href="#i-flame"></use></svg></span>
+    <div class="ops-service__body">
+      <div class="ops-service__title">
+        <h2>Worker</h2>
+        {% if worker_is_fresh %}
+          <span class="status status--{{ heartbeat.state|state_tone }}">{{ heartbeat.state|state_label }}</span>
+        {% else %}
+          <span class="status status--error">Nicht verfügbar</span>
+        {% endif %}
+      </div>
+      <p>
+        {% if heartbeat %}
+          Letzter Herzschlag <time datetime="{{ heartbeat.last_heartbeat_at|date:'c' }}" title="{{ heartbeat.last_heartbeat_at|date:'d.m.Y H:i:s' }}">{% if heartbeat_age_seconds < 60 %}vor {{ heartbeat_age_seconds }} s{% else %}{{ heartbeat.last_heartbeat_at|timesince }} her{% endif %}</time>
+        {% else %}
+          Noch nie gesehen
+        {% endif %}
+        · Frischegrenze {{ worker_max_age_seconds }} s
+      </p>
+      {% if heartbeat and heartbeat.last_error_message %}
+        <p class="ops-error-note">{{ heartbeat.last_error_message }}</p>
+      {% endif %}
+    </div>
+  </article>
+</div>
+
+<div class="ops-columns">
+  <section class="panel">
+    <div class="panel__head">
+      <div>
+        <p class="admin-category-kicker">Suche</p>
+        <h2>Embedding-Abdeckung</h2>
+      </div>
+    </div>
+    <div class="ops-meters">
+      <div class="ops-meter">
+        <div class="ops-meter__head"><span>Warengruppen mit Vektor</span><strong>{{ category_embedding_count }} / {{ category_count }}</strong></div>
+        <div class="ops-meter__track" role="progressbar" aria-label="Warengruppen mit Vektor" aria-valuenow="{{ category_embedding_percent }}" aria-valuemin="0" aria-valuemax="100"><span style="width: {{ category_embedding_percent }}%"></span></div>
+      </div>
+      <div class="ops-meter">
+        <div class="ops-meter__head"><span>Aktive Zutaten mit Vektor</span><strong>{{ ingredient_embedding_count }} / {{ ingredient_count }}</strong></div>
+        <div class="ops-meter__track" role="progressbar" aria-label="Aktive Zutaten mit Vektor" aria-valuenow="{{ ingredient_embedding_percent }}" aria-valuemin="0" aria-valuemax="100"><span style="width: {{ ingredient_embedding_percent }}%"></span></div>
+      </div>
+      <div class="ops-meter ops-meter--olive">
+        <div class="ops-meter__head"><span>Zutaten einer Warengruppe zugeordnet</span><strong>{{ assigned_ingredient_count }} / {{ ingredient_count }}</strong></div>
+        <div class="ops-meter__track" role="progressbar" aria-label="Zutaten einer Warengruppe zugeordnet" aria-valuenow="{{ assigned_ingredient_percent }}" aria-valuemin="0" aria-valuemax="100"><span style="width: {{ assigned_ingredient_percent }}%"></span></div>
+      </div>
+    </div>
+    <p class="ops-footnote">Modell und Dimensionen stehen in den Provider-Aufrufen.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head">
+      <div>
+        <p class="admin-category-kicker">Hintergrund</p>
+        <h2>Warteschlangen</h2>
+      </div>
+    </div>
+    <div class="ops-queues">
+      {% for queue in queues %}
+        <div class="ops-queue">
+          <div class="ops-meter__head"><span>{{ queue.label }}</span><strong>{{ queue.total }} gesamt</strong></div>
+          <div class="ops-queue__bar" aria-hidden="true">
+            {% for state, count in queue.counts.items %}{% if count %}<span class="ops-queue__segment ops-tone--{{ state|state_tone }}" style="flex-grow: {{ count }}"></span>{% endif %}{% endfor %}
+          </div>
+          <ul class="ops-queue__legend">
+            {% for state, count in queue.counts.items %}
+              <li class="ops-tone--{{ state|state_tone }}{% if not count %} is-empty{% endif %}"><span>{{ state|state_label }}</span> <strong>{{ count }}</strong></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<h2 class="rule-heading">Letzte Jobs</h2>
+
+<section class="panel ops-panel">
+  <div class="panel__head">
+    <h3>Rezeptimporte</h3>
+    <span class="muted">Letzte {{ import_jobs|length }}</span>
+  </div>
+  {% if import_jobs %}
+  <div class="ops-table-wrap">
+    <table class="ops-table">
+      <thead><tr><th>Erstellt</th><th>Quelle</th><th>Status</th><th>Phase</th><th class="num">Versuche</th><th>Rezept</th><th>Fehler</th><th><span class="sr-only">Aktion</span></th></tr></thead>
+      <tbody>
+        {% for job in import_jobs %}
+        <tr{% if job.state == "failed" %} class="is-failed"{% endif %}>
+          <td class="ops-time"><time datetime="{{ job.created_at|date:'c' }}">{{ job.created_at|date:"d.m.Y" }}<small>{{ job.created_at|date:"H:i:s" }}</small></time></td>
+          <td class="ops-source">{% if job.source.url %}<a href="{{ job.source.url }}" target="_blank" rel="noreferrer" title="{{ job.source.url }}">{{ job.source.url|truncatechars:34 }}</a>{% else %}<span class="tag">{{ job.source.get_source_type_display }}</span>{% endif %}</td>
+          <td><span class="status status--{{ job.state|state_tone }}">{{ job.state|state_label }}</span></td>
+          <td><span class="tag">{{ job.get_stage_display }}</span></td>
+          <td class="num">{{ job.attempt_count }}<small> / {{ job.max_attempts }}</small></td>
+          <td>{% if job.recipe %}<a href="{% url 'recipe-detail' job.recipe.id %}">{{ job.recipe.title|default:"Entwurf" }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="ops-error">{% if job.error_code %}<code>{{ job.error_code }}</code><span title="{{ job.error_message }}">{{ job.error_message|truncatechars:120 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="ops-action">{% if job.state == "failed" %}<form method="post" action="{% url 'retry-import-job' job.id %}">{% csrf_token %}<button class="ops-retry" type="submit">Erneut ausführen</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="ops-empty">Noch keine Rezeptimporte.</p>
+  {% endif %}
 </section>
 
-<section class="panel">
-  <h2>Embedding-Abdeckung</h2>
-  <table>
-    <thead><tr><th>Objekt</th><th>Mit Vektor</th><th>Gesamt</th><th>Weitere Information</th></tr></thead>
-    <tbody>
-      <tr><td>Warengruppen</td><td>{{ category_embedding_count }}</td><td>{{ category_count }}</td><td>Modell und Dimensionen stehen in den Provider-Aufrufen.</td></tr>
-      <tr><td>Aktive Zutaten</td><td>{{ ingredient_embedding_count }}</td><td>{{ ingredient_count }}</td><td>{{ assigned_ingredient_count }} einer Warengruppe zugeordnet.</td></tr>
-    </tbody>
-  </table>
+<section class="panel ops-panel">
+  <div class="panel__head">
+    <h3>Warengruppen</h3>
+    <span class="muted">Letzte {{ category_jobs|length }}</span>
+  </div>
+  {% if category_jobs %}
+  <div class="ops-table-wrap">
+    <table class="ops-table">
+      <thead><tr><th>Erstellt</th><th>Status</th><th class="num">Versuche</th><th class="num">Zugeordnet</th><th>Fehler</th><th><span class="sr-only">Aktion</span></th></tr></thead>
+      <tbody>
+        {% for job in category_jobs %}
+        <tr{% if job.state == "failed" %} class="is-failed"{% endif %}>
+          <td class="ops-time"><time datetime="{{ job.created_at|date:'c' }}">{{ job.created_at|date:"d.m.Y" }}<small>{{ job.created_at|date:"H:i:s" }}</small></time></td>
+          <td><span class="status status--{{ job.state|state_tone }}">{{ job.state|state_label }}</span></td>
+          <td class="num">{{ job.attempt_count }}</td>
+          <td class="num">{{ job.assigned_count }}</td>
+          <td class="ops-error">{% if job.error_code %}<code>{{ job.error_code }}</code><span title="{{ job.error_message }}">{{ job.error_message|truncatechars:120 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="ops-action">{% if job.state == "failed" %}<form method="post" action="{% url 'retry-category-job' job.id %}">{% csrf_token %}<button class="ops-retry" type="submit">Erneut ausführen</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="ops-empty">Noch keine Warengruppen-Jobs.</p>
+  {% endif %}
 </section>
 
-<section class="panel">
-  <h2>Warteschlangen</h2>
-  <p>Warengruppen: {% for state, count in category_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-  <p>Rezeptbilder: {% for state, count in image_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-  <p>Rezeptimporte: {% for state, count in import_queue_counts.items %}{{ state }} {{ count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-
-  <h3>Letzte Warengruppen-Jobs</h3>
-  <table>
-    <thead><tr><th>Erstellt</th><th>Status</th><th>Versuche</th><th>Zugeordnet</th><th>Fehler</th><th>Aktion</th></tr></thead>
-    <tbody>
-      {% for job in category_jobs %}
-      <tr>
-        <td>{{ job.created_at|date:"d.m.Y H:i:s" }}</td><td>{{ job.get_state_display }}</td>
-        <td>{{ job.attempt_count }}</td><td>{{ job.assigned_count }}</td>
-        <td>{% if job.error_code %}<code>{{ job.error_code }}</code>: {{ job.error_message }}{% else %}—{% endif %}</td>
-        <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-category-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
-      </tr>
-      {% empty %}<tr><td colspan="6">Noch keine Warengruppen-Jobs.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-
-  <h3>Letzte Rezeptimporte</h3>
-  <table>
-    <thead><tr><th>Erstellt</th><th>Quelle</th><th>Status</th><th>Phase</th><th>Versuche</th><th>Rezept</th><th>Fehler</th><th>Aktion</th></tr></thead>
-    <tbody>
-      {% for job in import_jobs %}
-      <tr>
-        <td>{{ job.created_at|date:"d.m.Y H:i:s" }}</td>
-        <td><a href="{{ job.source.url }}" target="_blank" rel="noreferrer">{{ job.source.url|truncatechars:50 }}</a></td>
-        <td>{{ job.get_state_display }}</td>
-        <td>{{ job.get_stage_display }}</td>
-        <td>{{ job.attempt_count }} / {{ job.max_attempts }}</td>
-        <td>{% if job.recipe %}<a href="{% url 'recipe-detail' job.recipe.id %}">{{ job.recipe.title|default:"Entwurf" }}</a>{% else %}—{% endif %}</td>
-        <td>{% if job.error_code %}<code>{{ job.error_code }}</code>: {{ job.error_message }}{% else %}—{% endif %}</td>
-        <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-import-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
-      </tr>
-      {% empty %}<tr><td colspan="8">Noch keine Rezeptimporte.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-
-  <h3>Letzte Bild-Jobs</h3>
-  <table>
-    <thead><tr><th>Rezept</th><th>Status</th><th>Versuche</th><th>Fehler</th><th>Aktion</th></tr></thead>
-    <tbody>
-      {% for job in image_jobs %}
-      <tr>
-        <td>{{ job.recipe.title }}</td><td>{{ job.get_state_display }}</td><td>{{ job.attempt_count }}</td>
-        <td>{% if job.error_code %}<code>{{ job.error_code }}</code>: {{ job.error_message }}{% else %}—{% endif %}</td>
-        <td>{% if job.state == "failed" %}<form method="post" action="{% url 'retry-image-job' job.id %}">{% csrf_token %}<button type="submit">Erneut ausführen</button></form>{% else %}—{% endif %}</td>
-      </tr>
-      {% empty %}<tr><td colspan="5">Noch keine Bild-Jobs.</td></tr>{% endfor %}
-    </tbody>
-  </table>
+<section class="panel ops-panel">
+  <div class="panel__head">
+    <h3>Rezeptbilder</h3>
+    <span class="muted">Letzte {{ image_jobs|length }}</span>
+  </div>
+  {% if image_jobs %}
+  <div class="ops-table-wrap">
+    <table class="ops-table">
+      <thead><tr><th>Erstellt</th><th>Rezept</th><th>Status</th><th class="num">Versuche</th><th>Fehler</th><th><span class="sr-only">Aktion</span></th></tr></thead>
+      <tbody>
+        {% for job in image_jobs %}
+        <tr{% if job.state == "failed" %} class="is-failed"{% endif %}>
+          <td class="ops-time"><time datetime="{{ job.created_at|date:'c' }}">{{ job.created_at|date:"d.m.Y" }}<small>{{ job.created_at|date:"H:i:s" }}</small></time></td>
+          <td><a href="{% url 'recipe-detail' job.recipe.id %}">{{ job.recipe.title|default:"Entwurf" }}</a></td>
+          <td><span class="status status--{{ job.state|state_tone }}">{{ job.state|state_label }}</span></td>
+          <td class="num">{{ job.attempt_count }}</td>
+          <td class="ops-error">{% if job.error_code %}<code>{{ job.error_code }}</code><span title="{{ job.error_message }}">{{ job.error_message|truncatechars:120 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="ops-action">{% if job.state == "failed" %}<form method="post" action="{% url 'retry-image-job' job.id %}">{% csrf_token %}<button class="ops-retry" type="submit">Erneut ausführen</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="ops-empty">Noch keine Bild-Jobs.</p>
+  {% endif %}
 </section>
 
-<section class="panel">
-  <h2>Letzte Provider-Aufrufe</h2>
-  <table>
-    <thead><tr><th>Zeit</th><th>Vorgang</th><th>Status</th><th>Code</th><th>HTTP</th><th>Deployment</th><th>Dimension</th><th>Dauer</th></tr></thead>
-    <tbody>
-      {% for diagnostic in provider_diagnostics %}
-      <tr>
-        <td>{{ diagnostic.created_at|date:"d.m.Y H:i:s" }}</td><td>{{ diagnostic.operation }}</td><td>{{ diagnostic.get_state_display }}</td>
-        <td>{{ diagnostic.error_code|default:"—" }}</td><td>{{ diagnostic.http_status|default:"—" }}</td>
-        <td>{{ diagnostic.deployment|default:"—" }}</td><td>{{ diagnostic.vector_dimensions|default:"—" }}</td><td>{{ diagnostic.duration_ms }} ms</td>
-      </tr>
-      {% empty %}<tr><td colspan="8">Noch keine Provider-Aufrufe für diesen Haushalt.</td></tr>{% endfor %}
-    </tbody>
-  </table>
+<h2 class="rule-heading">Letzte Provider-Aufrufe</h2>
+
+<section class="panel ops-panel">
+  {% if provider_diagnostics %}
+  <div class="ops-table-wrap">
+    <table class="ops-table">
+      <thead><tr><th>Zeit</th><th>Vorgang</th><th>Status</th><th>Code</th><th class="num">HTTP</th><th>Deployment</th><th class="num">Dimension</th><th class="num">Dauer</th></tr></thead>
+      <tbody>
+        {% for diagnostic in provider_diagnostics %}
+        <tr{% if diagnostic.state == "failed" %} class="is-failed"{% endif %}>
+          <td class="ops-time"><time datetime="{{ diagnostic.created_at|date:'c' }}">{{ diagnostic.created_at|date:"d.m.Y" }}<small>{{ diagnostic.created_at|date:"H:i:s" }}</small></time></td>
+          <td><code>{{ diagnostic.operation }}</code></td>
+          <td><span class="status status--{{ diagnostic.state|state_tone }}">{{ diagnostic.state|state_label }}</span></td>
+          <td>{% if diagnostic.error_code %}<code>{{ diagnostic.error_code }}</code>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="num">{{ diagnostic.http_status|default:"—" }}</td>
+          <td>{{ diagnostic.deployment|default:"—" }}</td>
+          <td class="num">{{ diagnostic.vector_dimensions|default:"—" }}</td>
+          <td class="num">{{ diagnostic.duration_ms }}<small> ms</small></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="ops-empty">Noch keine Provider-Aufrufe für diesen Haushalt.</p>
+  {% endif %}
 </section>
 {% endblock %}
