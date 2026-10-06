@@ -13,7 +13,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "ingredient_ids",
             nargs="*",
-            type=uuid.UUID,
+            # Kept as str: Orbit stores command options as JSON and cannot encode UUIDs.
+            type=lambda value: str(uuid.UUID(value)),
             help="IDs of ingredients whose icons should be removed.",
         )
         parser.add_argument(
@@ -33,12 +34,12 @@ class Command(BaseCommand):
         ingredients = CanonicalIngredient.objects.all()
         if not options["remove_all"]:
             ingredients = ingredients.filter(id__in=ingredient_ids)
-            found_ids = set(ingredients.values_list("id", flat=True))
+            found_ids = {str(found_id) for found_id in ingredients.values_list("id", flat=True)}
             missing_ids = [
                 ingredient_id for ingredient_id in ingredient_ids if ingredient_id not in found_ids
             ]
             if missing_ids:
-                missing = ", ".join(str(ingredient_id) for ingredient_id in missing_ids)
+                missing = ", ".join(missing_ids)
                 raise CommandError(f"Ingredient(s) not found: {missing}")
 
         removed = 0

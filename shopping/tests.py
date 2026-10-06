@@ -4,6 +4,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from core.models import Household, HouseholdMembership, User
 from pantry.models import CanonicalIngredient, InventoryEvent, InventoryItem
@@ -291,8 +292,10 @@ class RestockIntentTests(ShoppingTestCase):
         self.assertEqual(pantry_item.status, InventoryItem.Status.UNAVAILABLE)
 
     def test_removing_restock_intent_warns_about_future_meals(self):
+        # Upcoming slots start today, so planning on week_start only works on Mondays.
         slot = self.plan_recipe(
-            self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)])
+            self.recipe_with("Brot", [("Mehl", 500, "g", self.flour)]),
+            day_offset=(timezone.localdate() - self.week_start).days,
         )
         item = toggle_pantry_restock(
             user=self.user,
