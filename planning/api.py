@@ -28,6 +28,7 @@ def slot_json(slot, *, duplicate_ids=(), recent_ids=()):
         "id": str(slot.id),
         "date": slot.date.isoformat(),
         "slot": slot.slot,
+        "course": slot.course,
         "entryType": slot.entry_type,
         "recipeId": str(slot.recipe_id) if slot.recipe_id else None,
         "servings": slot.servings,
@@ -87,6 +88,8 @@ def meal_plan_slots(request, week_start):
             recipe_id=data.get("recipeId"),
             servings=data.get("servings"),
             notes=data.get("notes", ""),
+            course=data.get("course", ""),
+            servings_for_whole_slot=data.get("servingsForWholeSlot") is True,
         )
     except ValueError as exc:
         return error("validation_failed", str(exc))
@@ -118,6 +121,8 @@ def meal_slot_detail(request, slot_id):
             notes=data.get("notes"),
             date=read_iso_date(data["date"]) if data.get("date") else None,
             slot=data.get("slot"),
+            course=data.get("course"),
+            servings_for_whole_slot=data.get("servingsForWholeSlot") is True,
         )
     except StaleSlotVersion as conflict:
         return error(

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Wochenplan · Odori{% endblock %}
 
 {% block content %}
@@ -7,85 +8,62 @@
     <p class="hero__eyebrow" style="background:var(--surface-sunk);border-color:var(--line-strong);color:var(--text-muted)">Il menù della settimana</p>
     <h1 style="margin:0">{{ plan.week_start_date|date:"j. F" }} – {{ week_end|date:"j. F Y" }}</h1>
   </div>
-  <nav class="button-row" aria-label="Woche wechseln">
-    <a class="button" href="{% url 'plan-week' previous_week|date:'Y-m-d' %}" rel="prev">← Vorige</a>
-    <a class="button" href="{% url 'plan-week' this_week|date:'Y-m-d' %}">Diese Woche</a>
-    <a class="button" href="{% url 'plan-week' next_week|date:'Y-m-d' %}" rel="next">Nächste →</a>
-  </nav>
+  <div class="week-head__tools">
+    <nav class="button-row" aria-label="Woche wechseln">
+      <a class="button" href="{% url 'plan-week' previous_week|date:'Y-m-d' %}" rel="prev">← Vorige</a>
+      <a class="button" href="{% url 'plan-week' this_week|date:'Y-m-d' %}">Diese Woche</a>
+      <a class="button" href="{% url 'plan-week' next_week|date:'Y-m-d' %}" rel="next">Nächste →</a>
+    </nav>
+    <div class="button-row">
+      <form method="post" action="{% url 'shopping-generate' %}">
+        {% csrf_token %}
+        <input type="hidden" name="week_start" value="{{ plan.week_start_date|date:'Y-m-d' }}">
+        <button class="secondary" type="submit">Einkaufsliste erzeugen</button>
+      </form>
+      <a class="button ghost" href="{% url 'cook-history' %}">Kochhistorie</a>
+    </div>
+  </div>
 </div>
 
-<section class="panel">
-  <div class="panel__head">
-    <h2>Mahlzeit einplanen</h2>
-    <a class="button ghost" href="{% url 'cook-history' %}">Kochhistorie</a>
+<p class="week-status" role="status" aria-live="polite" data-week-status hidden></p>
+
+<div class="week-grid" data-week-grid>
+  {# Row labels for the aligned desktop grid; every cell repeats its own label for phones and screen readers. #}
+  <div class="week-grid__labels" aria-hidden="true">
+    <span></span>
+    {% for label in slot_labels %}<span class="week-grid__label">{{ label }}</span>{% endfor %}
   </div>
-  <form class="form-grid" method="post" action="{% url 'slot-create' plan.week_start_date|date:'Y-m-d' %}">
-    {% csrf_token %}
-    <div class="field">
-      <label for="entry-type">Art</label>
-      <select id="entry-type" name="entry_type">
-        {% for value, label in entry_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="entry-recipe">Rezept</label>
-      <select id="entry-recipe" name="recipe_id">
-        <option value="">— bitte wählen —</option>
-        {% for recipe in recipes %}<option value="{{ recipe.id }}">{{ recipe.title }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="entry-date">Tag</label>
-      <input id="entry-date" name="date" type="date" required
-             value="{{ default_date }}"
-             min="{{ plan.week_start_date|date:'Y-m-d' }}" max="{{ week_end|date:'Y-m-d' }}">
-    </div>
-    <div class="field">
-      <label for="entry-slot">Mahlzeit</label>
-      <select id="entry-slot" name="slot">
-        {% for value, label in slot_choices %}<option value="{{ value }}"{% if value == default_slot %} selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="entry-servings">Portionen</label>
-      <input id="entry-servings" name="servings" type="number" min="1" inputmode="numeric" placeholder="wie im Rezept">
-    </div>
-    <div class="field">
-      <label for="entry-notes">Text für Reste oder Notiz</label>
-      <input id="entry-notes" name="notes" maxlength="300" placeholder="z. B. Reste vom Sonntag">
-    </div>
-    <div class="button-row">
-      <button class="primary" type="submit">Einplanen</button>
-      <span class="muted">Nur veröffentlichte Rezepte lassen sich einplanen.</span>
-    </div>
-  </form>
-</section>
 
-<form class="button-row" method="post" action="{% url 'shopping-generate' %}" style="margin:1.25rem 0">
-  {% csrf_token %}
-  <input type="hidden" name="week_start" value="{{ plan.week_start_date|date:'Y-m-d' }}">
-  <button class="secondary" type="submit">Einkaufsliste aus dieser Woche erzeugen</button>
-</form>
-
-<div class="week-grid">
   {% for day in days %}
-    <section class="day{% if day.is_today %} day--today{% endif %}" aria-label="{{ day.date|date:'l, j. F' }}">
+    <section class="day{% if day.is_today %} day--today{% endif %}{% if day.is_past %} day--past{% endif %}"
+             id="day-{{ day.date|date:'Y-m-d' }}" aria-label="{{ day.date|date:'l, j. F' }}">
       <header class="day__head">
         <span class="day__weekday">{{ day.date|date:"D" }}</span>
         <span class="day__date">{{ day.date|date:"j.n." }}{% if day.is_today %} · heute{% endif %}</span>
       </header>
 
       {% for cell in day.slots %}
-        <div class="meal-slot">
+        <div class="meal-slot{% if cell.entries %} meal-slot--filled{% endif %}"
+             data-date="{{ day.date|date:'Y-m-d' }}" data-slot="{{ cell.key }}"
+             data-title="{{ day.date|date:'l, j. F' }} · {{ cell.label }}"
+             data-servings="{{ cell.servings|default_if_none:'' }}"
+             data-dishes="{{ cell.entries|length }}">
           <span class="meal-slot__label">{{ cell.label }}</span>
+
           {% for entry in cell.entries %}
-            <article class="meal-entry{% if entry.is_cooked %} meal-entry--cooked{% endif %}{% if entry.entry_type != 'recipe' %} meal-entry--note{% endif %}">
+            <article class="meal-entry{% if entry.is_cooked %} meal-entry--cooked{% endif %}{% if entry.entry_type != 'recipe' %} meal-entry--note{% endif %}"
+                     {% if not entry.is_cooked %}data-entry-id="{{ entry.id }}" data-version="{{ entry.version }}"{% endif %}>
               {% if entry.entry_type == "recipe" and entry.recipe %}
-                <a class="meal-entry__title" href="{% url 'recipe-detail' entry.recipe.id %}">{{ entry.display_label }}</a>
-                <span class="meal-entry__meta">{{ entry.servings }} Portionen{% if entry.is_cooked %} · gekocht{% endif %}</span>
+                {% if entry.recipe.image_status == "ready" and entry.recipe.thumbnail %}
+                  <img class="meal-entry__thumb" src="{% url 'recipe-thumbnail' entry.recipe.id %}" alt="" loading="lazy" decoding="async">
+                {% else %}
+                  <span class="meal-entry__thumb meal-entry__thumb--placeholder" aria-hidden="true"><img src="{% static 'images/recipe-placeholder.svg' %}" alt=""></span>
+                {% endif %}
+                <a class="meal-entry__title" href="{% url 'recipe-detail' entry.recipe.id %}" title="{{ entry.display_label }}">{{ entry.display_label }}</a>
+                <span class="meal-entry__meta">{% if entry.course %}{{ entry.get_course_display }} · {% endif %}{{ entry.servings }} Portionen{% if entry.is_cooked %} · gekocht{% endif %}</span>
               {% else %}
-                <span class="meal-entry__title">{{ entry.display_label }}</span>
-                <span class="meal-entry__meta">{{ entry.get_entry_type_display }}</span>
+                <span class="meal-entry__title" title="{{ entry.display_label }}">{{ entry.display_label }}</span>
+                <span class="meal-entry__meta">{% if entry.course %}{{ entry.get_course_display }} · {% endif %}{{ entry.get_entry_type_display }}</span>
               {% endif %}
 
               {% if entry.is_duplicate or entry.is_recent_repeat %}
@@ -95,64 +73,468 @@
                 </p>
               {% endif %}
 
-              <div class="meal-entry__tools">
-                {% if not entry.is_cooked %}
-                  {# Explicit move controls: usable with keyboard, screen reader and touch. #}
-                  <div class="meal-entry__move" role="group" aria-label="{{ entry.display_label }} verschieben">
-                    <form method="post" action="{% url 'slot-move' entry.id %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="version" value="{{ entry.version }}">
-                      <input type="hidden" name="day_delta" value="-1">
-                      <button type="submit" title="Einen Tag früher"><span aria-hidden="true">←</span><span class="sr-only">{{ entry.display_label }} einen Tag früher</span></button>
-                    </form>
-                    <form method="post" action="{% url 'slot-move' entry.id %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="version" value="{{ entry.version }}">
-                      <input type="hidden" name="day_delta" value="1">
-                      <button type="submit" title="Einen Tag später"><span aria-hidden="true">→</span><span class="sr-only">{{ entry.display_label }} einen Tag später</span></button>
-                    </form>
-                    <form method="post" action="{% url 'slot-move' entry.id %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="version" value="{{ entry.version }}">
-                      <input type="hidden" name="slot_delta" value="-1">
-                      <button type="submit" title="Frühere Mahlzeit"><span aria-hidden="true">↑</span><span class="sr-only">{{ entry.display_label }} zur früheren Mahlzeit</span></button>
-                    </form>
-                    <form method="post" action="{% url 'slot-move' entry.id %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="version" value="{{ entry.version }}">
-                      <input type="hidden" name="slot_delta" value="1">
-                      <button type="submit" title="Spätere Mahlzeit"><span aria-hidden="true">↓</span><span class="sr-only">{{ entry.display_label }} zur späteren Mahlzeit</span></button>
-                    </form>
-                  </div>
+              <div class="meal-entry__actions">
+                {% if entry.entry_type == "recipe" and not entry.is_cooked %}
+                  <a class="button primary" href="{% url 'kitchen-mode' entry.id %}">Kochen</a>
                 {% endif %}
 
-                <div class="meal-entry__actions">
-                  {% if entry.entry_type == "recipe" %}
+                <details class="entry-menu" data-entry-menu>
+                  <summary class="button" title="Weitere Aktionen">
+                    <span aria-hidden="true">⋯</span><span class="sr-only">Weitere Aktionen für {{ entry.display_label }}</span>
+                  </summary>
+                  <div class="entry-menu__flyout">
                     {% if entry.is_cooked %}
                       <form method="post" action="{% url 'slot-uncook' entry.id %}">
                         {% csrf_token %}
-                        <button type="submit">Zurücknehmen</button>
+                        <button type="submit">Nicht mehr als gekocht markieren</button>
                       </form>
                     {% else %}
-                      <a class="button primary" href="{% url 'kitchen-mode' entry.id %}">Kochen</a>
-                    {% endif %}
-                  {% endif %}
+                      {# Explicit move controls: usable with keyboard, screen reader and touch; drag-and-drop is an extra. #}
+                      <div class="entry-menu__group" role="group" aria-label="{{ entry.display_label }} verschieben">
+                        <span class="entry-menu__heading">Verschieben</span>
+                        <form method="post" action="{% url 'slot-move' entry.id %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="version" value="{{ entry.version }}">
+                          <input type="hidden" name="day_delta" value="-1">
+                          <button type="submit"><span aria-hidden="true">←</span> Einen Tag früher</button>
+                        </form>
+                        <form method="post" action="{% url 'slot-move' entry.id %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="version" value="{{ entry.version }}">
+                          <input type="hidden" name="day_delta" value="1">
+                          <button type="submit"><span aria-hidden="true">→</span> Einen Tag später</button>
+                        </form>
+                        <form method="post" action="{% url 'slot-move' entry.id %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="version" value="{{ entry.version }}">
+                          <input type="hidden" name="slot_delta" value="-1">
+                          <button type="submit"><span aria-hidden="true">↑</span> Frühere Mahlzeit</button>
+                        </form>
+                        <form method="post" action="{% url 'slot-move' entry.id %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="version" value="{{ entry.version }}">
+                          <input type="hidden" name="slot_delta" value="1">
+                          <button type="submit"><span aria-hidden="true">↓</span> Spätere Mahlzeit</button>
+                        </form>
+                      </div>
 
-                  <form method="post" action="{% url 'slot-delete' entry.id %}">
-                    {% csrf_token %}
-                    <button class="danger" type="submit"><span aria-hidden="true">✕</span><span class="sr-only">{{ entry.display_label }} entfernen</span></button>
-                  </form>
-                </div>
+                      <form class="entry-menu__edit" method="post" action="{% url 'slot-update' entry.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="version" value="{{ entry.version }}">
+                        <span class="entry-menu__heading">Anpassen</span>
+                        {% if entry.entry_type == "recipe" %}
+                          <label for="servings-{{ entry.id }}">Portionen</label>
+                          <input id="servings-{{ entry.id }}" name="servings" type="number" min="1" inputmode="numeric" value="{{ entry.servings }}">
+                          {% if cell.entries|length > 1 %}
+                            <label class="check-line"><input type="checkbox" name="servings_for_whole_slot"> Für alle Gerichte dieser Mahlzeit</label>
+                          {% endif %}
+                        {% endif %}
+                        <label for="course-{{ entry.id }}">Gang</label>
+                        <select id="course-{{ entry.id }}" name="course">
+                          <option value="">—</option>
+                          {% for value, label in courses %}<option value="{{ value }}"{% if value == entry.course %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                        <button type="submit">Speichern</button>
+                      </form>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'slot-delete' entry.id %}">
+                      {% csrf_token %}
+                      <button class="entry-menu__danger" type="submit"><span aria-hidden="true">✕</span> Entfernen</button>
+                    </form>
+                  </div>
+                </details>
               </div>
             </article>
-          {% empty %}
-            <a class="slot-empty" href="?date={{ day.date|date:'Y-m-d' }}&amp;slot={{ cell.key }}#entry-type">
-              + {{ cell.label }} planen
-            </a>
           {% endfor %}
+
+          <a class="slot-add" data-plan-slot
+             href="{% url 'plan-week' plan.week_start_date|date:'Y-m-d' %}?date={{ day.date|date:'Y-m-d' }}&amp;slot={{ cell.key }}#day-{{ day.date|date:'Y-m-d' }}">
+            {% if cell.entries %}+ Gericht{% else %}+ {{ cell.label }}{% endif %}<span class="sr-only"> am {{ day.date|date:"l" }} planen</span>
+          </a>
         </div>
       {% endfor %}
     </section>
   {% endfor %}
 </div>
+
+{# Opened by the "+" links. Without JavaScript the link reloads the page with the dialog already open. #}
+<dialog class="plan-dialog" id="plan-dialog" aria-labelledby="plan-dialog-title"{% if dialog_cell %} open data-autoshow{% endif %}>
+  <form class="plan-dialog__form" method="post" action="{% url 'slot-create' plan.week_start_date|date:'Y-m-d' %}" data-plan-form>
+    {% csrf_token %}
+    <input type="hidden" name="date" value="{{ dialog_cell.date|date:'Y-m-d' }}" data-dialog-date>
+    <input type="hidden" name="slot" value="{{ dialog_cell.key }}" data-dialog-slot>
+
+    <header class="plan-dialog__head">
+      <div>
+        <p class="plan-dialog__eyebrow">Mahlzeit einplanen</p>
+        <h2 id="plan-dialog-title" data-dialog-title>{% if dialog_cell %}{{ dialog_cell.date|date:"l, j. F" }} · {{ dialog_cell.label }}{% endif %}</h2>
+      </div>
+      <a class="button ghost icon-button" href="{% url 'plan-week' plan.week_start_date|date:'Y-m-d' %}{% if dialog_cell %}#day-{{ dialog_cell.date|date:'Y-m-d' }}{% endif %}" data-dialog-close>
+        <span aria-hidden="true">✕</span><span class="sr-only">Schließen</span>
+      </a>
+    </header>
+
+    <div class="plan-dialog__body">
+      <fieldset class="segmented plan-dialog__type">
+        <legend class="sr-only">Art</legend>
+        {% for value, label in entry_types %}
+          <label><input type="radio" name="entry_type" value="{{ value }}"{% if forloop.first %} checked{% endif %} data-entry-type><span>{{ label }}</span></label>
+        {% endfor %}
+      </fieldset>
+
+      <div class="picker" data-picker data-search-url="{% url 'plan-recipe-search' %}">
+        <div class="picker__search" data-picker-enhanced hidden>
+          <label class="sr-only" for="picker-query">Rezept suchen</label>
+          <input id="picker-query" type="search" placeholder="Rezept, Zutat oder Schlagwort" autocomplete="off" data-picker-query>
+          {% if recipe_tags %}
+            <div class="chip-row" role="group" aria-label="Nach Schlagwort filtern">
+              {% for tag in recipe_tags %}<button class="chip" type="button" aria-pressed="false" data-picker-tag="{{ tag.key }}">{{ tag.name }}</button>{% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+        <fieldset class="picker__results">
+          <legend class="sr-only">Rezept</legend>
+          <div class="picker__list" data-picker-list>
+            {% for recipe in recipes %}
+              <label class="picker-option" data-picker-option data-id="{{ recipe.id }}"
+                     data-search="{{ recipe.search_text }}" data-tags="{{ recipe.tag_keys }}"
+                     data-favorite="{{ recipe.is_favorite|yesno:'1,' }}">
+                <input type="radio" name="recipe_id" value="{{ recipe.id }}" data-servings="{{ recipe.servings|default_if_none:'' }}">
+                {% if recipe.has_thumbnail %}
+                  <img class="picker-option__thumb" src="{% url 'recipe-thumbnail' recipe.id %}" alt="" loading="lazy" decoding="async">
+                {% else %}
+                  <span class="picker-option__thumb picker-option__thumb--placeholder" aria-hidden="true"><img src="{% static 'images/recipe-placeholder.svg' %}" alt=""></span>
+                {% endif %}
+                <span class="picker-option__text">
+                  <span class="picker-option__title">{% if recipe.is_favorite %}<span class="picker-option__star" aria-label="Favorit">★</span> {% endif %}{{ recipe.title|default:"Unbenanntes Rezept" }}</span>
+                  <span class="picker-option__meta">{% if recipe.servings %}{{ recipe.servings }} Portionen{% endif %}{% for tag in recipe.tag_names|slice:":3" %}{% if recipe.servings or not forloop.first %} · {% endif %}{{ tag }}{% endfor %}</span>
+                </span>
+                {% if recipe.is_recent %}<span class="flag flag--repeat">Kürzlich gekocht</span>{% endif %}
+              </label>
+            {% empty %}
+              <p class="muted">Noch keine veröffentlichten Rezepte. <a href="{% url 'recipe-list' %}">Zu den Rezepten</a></p>
+            {% endfor %}
+            <p class="picker__divider" data-picker-similar hidden>Ähnliche Rezepte</p>
+          </div>
+          <p class="picker__status muted" aria-live="polite" data-picker-status></p>
+        </fieldset>
+      </div>
+
+      <div class="plan-dialog__fields">
+        <div class="field plan-dialog__servings">
+          <label for="plan-servings">Portionen</label>
+          <div class="stepper">
+            <button type="button" data-step="-1"><span aria-hidden="true">−</span><span class="sr-only">Eine Portion weniger</span></button>
+            <input id="plan-servings" name="servings" type="number" min="1" inputmode="numeric" placeholder="Rezept" title="Leer lassen für die Portionen des Rezepts" value="{{ dialog_cell.servings|default_if_none:'' }}" data-servings-input>
+            <button type="button" data-step="1"><span aria-hidden="true">+</span><span class="sr-only">Eine Portion mehr</span></button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="plan-course">Gang <span class="plan-dialog__optional">optional</span></label>
+          <select id="plan-course" name="course" data-course>
+            <option value="">—</option>
+            {% for value, label in courses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field plan-dialog__notes">
+          <label for="plan-notes">Notiz <span class="plan-dialog__optional plan-dialog__notes-optional">optional bei Rezepten</span></label>
+          <input id="plan-notes" name="notes" maxlength="300" placeholder="z. B. Reste vom Sonntag" data-notes>
+        </div>
+      </div>
+
+      <label class="check-line plan-dialog__whole-slot" data-whole-slot{% if not dialog_cell.entries %} hidden{% endif %}>
+        <input type="checkbox" name="servings_for_whole_slot" checked>
+        Portionen für alle Gerichte dieser Mahlzeit übernehmen
+      </label>
+    </div>
+
+    <footer class="plan-dialog__actions">
+      <button class="primary" type="submit">Einplanen</button>
+      <button type="submit" name="then" value="another">Einplanen &amp; weiteres Gericht</button>
+    </footer>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function csrfToken() {
+    var match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+  function normalize(value) {
+    // Mirrors pantry.semantic.normalized_text so browser and server agree on matches.
+    return (value || "").toLowerCase().replace(/ß/g, "ss").replace(/[^\p{L}\p{N}_]+/gu, " ").trim();
+  }
+
+  var statusLine = document.querySelector("[data-week-status]");
+  function announce(text) {
+    statusLine.textContent = text;
+    statusLine.hidden = !text;
+  }
+
+  /* ---------- Planning dialog ---------- */
+  var dialog = document.getElementById("plan-dialog");
+  var form = dialog.querySelector("[data-plan-form]");
+  var titleNode = dialog.querySelector("[data-dialog-title]");
+  var dateInput = dialog.querySelector("[data-dialog-date]");
+  var slotInput = dialog.querySelector("[data-dialog-slot]");
+  var servingsInput = dialog.querySelector("[data-servings-input]");
+  var wholeSlot = dialog.querySelector("[data-whole-slot]");
+  var query = dialog.querySelector("[data-picker-query]");
+  var picker = dialog.querySelector("[data-picker]");
+  var list = dialog.querySelector("[data-picker-list]");
+  var similarHeading = dialog.querySelector("[data-picker-similar]");
+  var pickerStatus = dialog.querySelector("[data-picker-status]");
+  var options = Array.prototype.slice.call(list.querySelectorAll("[data-picker-option]"));
+  var tagButtons = Array.prototype.slice.call(dialog.querySelectorAll("[data-picker-tag]"));
+  var byId = {};
+  options.forEach(function (option, index) {
+    option.dataset.index = index;
+    option.dataset.title = normalize(option.querySelector(".picker-option__title").textContent);
+    byId[option.dataset.id] = option;
+  });
+  dialog.querySelector("[data-picker-enhanced]").hidden = false;
+
+  function selectedOption() {
+    var checked = list.querySelector("input[name=recipe_id]:checked");
+    return checked ? checked.closest("[data-picker-option]") : null;
+  }
+
+  function activeTags() {
+    return tagButtons.filter(function (button) { return button.getAttribute("aria-pressed") === "true"; })
+      .map(function (button) { return button.dataset.pickerTag; });
+  }
+
+  function hasTags(option, tags) {
+    var own = option.dataset.tags ? option.dataset.tags.split("|") : [];
+    return tags.every(function (tag) { return own.indexOf(tag) >= 0; });
+  }
+
+  function titleRank(option, needle) {
+    var title = " " + option.dataset.title;
+    if (title.indexOf(" " + needle) >= 0) return 0;
+    if (title.indexOf(needle) >= 0) return 1;
+    return 2;
+  }
+
+  var searchTimer = null;
+  var searchRequest = null;
+
+  // Instant literal filtering in the browser, then the server adds semantic neighbours below.
+  function renderPicker() {
+    var needle = normalize(query.value);
+    var words = needle ? needle.split(" ") : [];
+    var tags = activeTags();
+    var selected = selectedOption();
+    var hits = options.filter(function (option) {
+      return hasTags(option, tags) && words.every(function (word) {
+        return option.dataset.search.indexOf(word) >= 0;
+      });
+    });
+    if (needle) {
+      hits.sort(function (a, b) {
+        return titleRank(a, needle) - titleRank(b, needle)
+          || (b.dataset.favorite ? 1 : 0) - (a.dataset.favorite ? 1 : 0)
+          || a.dataset.index - b.dataset.index;
+      });
+    }
+    // A chosen recipe never disappears while the user keeps refining the search.
+    if (selected && hits.indexOf(selected) < 0) hits.unshift(selected);
+    options.forEach(function (option) { option.hidden = true; });
+    hits.forEach(function (option) { option.hidden = false; list.insertBefore(option, similarHeading); });
+    similarHeading.hidden = true;
+    pickerStatus.textContent = hits.length ? "" : (needle.length >= 3 ? "Suche ähnliche Rezepte …" : "Keine Treffer.");
+
+    window.clearTimeout(searchTimer);
+    if (searchRequest) searchRequest.abort();
+    if (needle.length < 3) return;
+    searchTimer = window.setTimeout(function () { searchSimilar(needle, hits, tags); }, 300);
+  }
+
+  function searchSimilar(needle, hits, tags) {
+    searchRequest = new AbortController();
+    fetch(picker.dataset.searchUrl + "?q=" + encodeURIComponent(query.value.trim()), {
+      signal: searchRequest.signal,
+      headers: {"Accept": "application/json"}
+    }).then(function (response) {
+      if (!response.ok) throw new Error("search failed");
+      return response.json();
+    }).then(function (data) {
+      if (normalize(query.value) !== needle) return;
+      var extra = data.results.map(function (result) { return byId[result.id]; }).filter(function (option) {
+        return option && hits.indexOf(option) < 0 && hasTags(option, tags);
+      });
+      extra.forEach(function (option) { option.hidden = false; list.appendChild(option); });
+      similarHeading.hidden = !extra.length;
+      pickerStatus.textContent = hits.length || extra.length ? "" : "Keine Treffer.";
+    }).catch(function (exc) {
+      if (exc.name !== "AbortError" && !hits.length) pickerStatus.textContent = "Keine Treffer.";
+    });
+  }
+
+  query.addEventListener("input", renderPicker);
+  query.addEventListener("keydown", function (event) {
+    // Enter picks the first visible recipe instead of submitting a half-filled form.
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    var first = list.querySelector("[data-picker-option]:not([hidden])");
+    if (first) {
+      var radio = first.querySelector("input");
+      radio.checked = true;
+      radio.dispatchEvent(new Event("change", {bubbles: true}));
+      radio.focus();
+    }
+  });
+  tagButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      button.setAttribute("aria-pressed", String(button.getAttribute("aria-pressed") !== "true"));
+      button.classList.toggle("chip--active", button.getAttribute("aria-pressed") === "true");
+      renderPicker();
+    });
+  });
+
+  list.addEventListener("change", function (event) {
+    if (event.target.name !== "recipe_id") return;
+    var recipeServings = event.target.dataset.servings;
+    servingsInput.placeholder = recipeServings || "Rezept";
+  });
+
+  dialog.querySelectorAll("[data-step]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var checked = list.querySelector("input[name=recipe_id]:checked");
+      var current = parseInt(servingsInput.value, 10)
+        || parseInt(checked && checked.dataset.servings, 10) || 2;
+      servingsInput.value = Math.max(1, current + Number(button.dataset.step));
+    });
+  });
+
+  function openDialog(cell) {
+    form.reset();
+    dateInput.value = cell.dataset.date;
+    slotInput.value = cell.dataset.slot;
+    titleNode.textContent = cell.dataset.title;
+    servingsInput.value = cell.dataset.servings;
+    servingsInput.placeholder = "Rezept";
+    wholeSlot.hidden = cell.dataset.dishes === "0";
+    tagButtons.forEach(function (button) {
+      button.setAttribute("aria-pressed", "false");
+      button.classList.remove("chip--active");
+    });
+    query.value = "";
+    renderPicker();
+    list.scrollTop = 0;
+    dialog.showModal();
+    query.focus();
+  }
+
+  function closeDialog() {
+    dialog.close();
+    // Drop ?date=&slot= so a reload does not pop the dialog open again.
+    if (window.location.search) history.replaceState(null, "", window.location.pathname + window.location.hash);
+  }
+
+  document.querySelectorAll("[data-plan-slot]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      openDialog(link.closest(".meal-slot"));
+    });
+  });
+  dialog.querySelectorAll("[data-dialog-close]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      closeDialog();
+    });
+  });
+  dialog.addEventListener("cancel", function (event) {
+    event.preventDefault();
+    closeDialog();
+  });
+  dialog.addEventListener("click", function (event) {
+    if (event.target === dialog) closeDialog();
+  });
+
+  if (dialog.hasAttribute("data-autoshow")) {
+    // Server opened it non-modally for the no-JS path; upgrade to a real modal.
+    var cell = document.querySelector('.meal-slot[data-date="' + dateInput.value + '"][data-slot="' + slotInput.value + '"]');
+    dialog.close();
+    if (cell) openDialog(cell);
+  }
+
+  /* ---------- Entry menus ---------- */
+  var menus = Array.prototype.slice.call(document.querySelectorAll("[data-entry-menu]"));
+  menus.forEach(function (menu) {
+    menu.addEventListener("toggle", function () {
+      if (!menu.open) return;
+      menus.forEach(function (other) { if (other !== menu) other.open = false; });
+    });
+  });
+  document.addEventListener("click", function (event) {
+    menus.forEach(function (menu) { if (menu.open && !menu.contains(event.target)) menu.open = false; });
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") return;
+    menus.forEach(function (menu) {
+      if (!menu.open) return;
+      menu.open = false;
+      menu.querySelector("summary").focus();
+    });
+  });
+
+  /* ---------- Drag and drop (mouse only; the menu covers keyboard and touch) ---------- */
+  if (!window.matchMedia("(pointer: fine)").matches) return;
+  var dragged = null;
+  document.querySelectorAll(".meal-entry[data-entry-id]").forEach(function (entry) {
+    entry.draggable = true;
+    entry.addEventListener("dragstart", function (event) {
+      dragged = entry;
+      entry.classList.add("meal-entry--dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", entry.dataset.entryId);
+    });
+    entry.addEventListener("dragend", function () {
+      entry.classList.remove("meal-entry--dragging");
+      dragged = null;
+      document.querySelectorAll(".meal-slot--drop").forEach(function (cell) { cell.classList.remove("meal-slot--drop"); });
+    });
+  });
+  document.querySelectorAll(".meal-slot").forEach(function (cell) {
+    cell.addEventListener("dragover", function (event) {
+      if (!dragged || dragged.closest(".meal-slot") === cell) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      cell.classList.add("meal-slot--drop");
+    });
+    cell.addEventListener("dragleave", function (event) {
+      if (!cell.contains(event.relatedTarget)) cell.classList.remove("meal-slot--drop");
+    });
+    cell.addEventListener("drop", function (event) {
+      event.preventDefault();
+      cell.classList.remove("meal-slot--drop");
+      if (!dragged || dragged.closest(".meal-slot") === cell) return;
+      var entry = dragged;
+      var title = entry.querySelector(".meal-entry__title").textContent.trim();
+      cell.insertBefore(entry, cell.querySelector(".slot-add"));
+      entry.classList.add("meal-entry--pending");
+      fetch("/api/v1/meal-slots/" + entry.dataset.entryId, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken(), "Accept": "application/json"},
+        body: JSON.stringify({version: Number(entry.dataset.version), date: cell.dataset.date, slot: cell.dataset.slot})
+      }).then(function (response) {
+        if (!response.ok) throw new Error(response.status === 409 ? "stale" : "failed");
+        // Reload for fresh versions, duplicate flags and messages; the move itself already shows.
+        window.location.reload();
+      }).catch(function (exc) {
+        announce(exc.message === "stale"
+          ? "„" + title + "“ wurde inzwischen geändert. Die Seite wird neu geladen."
+          : "„" + title + "“ konnte nicht verschoben werden.");
+        window.setTimeout(function () { window.location.reload(); }, 1600);
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}

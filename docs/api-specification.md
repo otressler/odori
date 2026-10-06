@@ -110,6 +110,13 @@ current version. HTTP `If-Match` ETags are not currently supported.
 
 A meal slot has `entryType: "recipe"`, `"leftovers"`, or `"note"`. Recipe entries require `recipeId` and `servings`; leftovers and notes require display text and do not contribute ingredients to shopping calculation. Only recipe entries can be marked cooked.
 
+One meal (date + `slot`) can hold several entries, so a guest dinner can be a full menu. Each entry
+may carry an optional `course`: `"starter"`, `"main"`, `"side"`, or `"dessert"` (empty when
+unset); the week view lists a meal's entries in that order, unset courses alongside the main
+course. Create and `PATCH` requests accept `servingsForWholeSlot: true` to copy the entry's
+serving count to every other uncooked recipe entry of the same meal; each changed sibling gets a
+new version.
+
 Marking a recipe slot cooked records history but does not assume all ingredients are depleted. The client may submit explicit inventory changes chosen during cooking:
 
 ```json
