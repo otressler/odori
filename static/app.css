@@ -159,6 +159,12 @@ a {
   text-underline-offset: 0.2em;
 }
 
+/* Summaries are toggles; a double-tap should open them, not select the icon. */
+summary {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 :focus-visible {
   outline: 3px solid var(--saffron);
   outline-offset: 2px;

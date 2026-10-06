@@ -180,7 +180,7 @@ docker compose logs --tail=200 odori-web odori-worker
 docker compose logs --tail=500 odori-web odori-worker | grep '<request-id-or-job-id>'
 ```
 
-The authenticated **Betrieb** page at `/admin/operations` is available only to household owners. It
+The authenticated **Betrieb** page at `/admin/operations` is available only to household owners and admins. It
 shows database/worker freshness, queue counts and recent job attempts, sanitized provider outcomes,
 and ingredient/category embedding coverage. Failed category and image jobs can be explicitly
 requeued there; retries retain their attempt count and receive a new correlation ID.

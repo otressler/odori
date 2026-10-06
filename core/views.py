@@ -82,7 +82,7 @@ def percent_of(part, whole):
 
 @login_required
 def operations_page(request):
-    household = owner_household_for(request.user)
+    household = household_admin_for(request.user)
     heartbeat = WorkerHeartbeat.objects.filter(name="default").first()
     worker_max_age = timezone.timedelta(seconds=settings.WORKER_HEARTBEAT_MAX_AGE_SECONDS)
     worker_is_fresh = bool(
@@ -154,7 +154,7 @@ def operations_page(request):
 @login_required
 @require_POST
 def retry_category_job(request, job_id):
-    household = owner_household_for(request.user)
+    household = household_admin_for(request.user)
     job = PantryCategorizationJob.objects.filter(id=job_id, household=household).first()
     if not job:
         raise Http404
@@ -188,7 +188,7 @@ def retry_category_job(request, job_id):
 @login_required
 @require_POST
 def retry_image_job(request, job_id):
-    household = owner_household_for(request.user)
+    household = household_admin_for(request.user)
     job = (
         RecipeImageJob.objects.select_related("recipe")
         .filter(id=job_id, recipe__household=household)
@@ -228,7 +228,7 @@ def retry_image_job(request, job_id):
 @login_required
 @require_POST
 def retry_import_job(request, job_id):
-    household = owner_household_for(request.user)
+    household = household_admin_for(request.user)
     job = RecipeImportJob.objects.filter(id=job_id, household=household).first()
     if not job:
         raise Http404

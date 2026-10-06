@@ -73,6 +73,22 @@ class OperationsPageTests(TestCase):
         self.assertEqual(context["category_queue_counts"]["failed"], 1)
         self.assertEqual(context["provider_diagnostics"][0].error_code, "timeout")
 
+    def test_operations_page_allows_household_admin(self):
+        admin = User.objects.create_user(username="admin", password="test-password")
+        HouseholdMembership.objects.create(
+            household=self.household,
+            user=admin,
+            role=HouseholdMembership.Role.ADMIN,
+        )
+        request = self.factory.get("/admin/operations")
+        request.user = admin
+
+        with patch("core.views.render", return_value=HttpResponse()) as render_mock:
+            response = operations_page(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(render_mock.call_args.args[2]["household"], self.household)
+
     def test_operations_page_rejects_household_member(self):
         request = self.factory.get("/admin/operations")
         request.user = self.member

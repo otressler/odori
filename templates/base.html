@@ -28,7 +28,7 @@
         <a href="/plan/"{% if "/plan/" in request.path %} aria-current="page"{% endif %}>Wochenplan</a>
         <a href="/shopping/"{% if "/shopping/" in request.path %} aria-current="page"{% endif %}>Einkauf</a>
         <a href="/pantry/"{% if "/pantry/" in request.path %} aria-current="page"{% endif %}>Vorrat</a>
-        {% if is_household_owner %}<a href="{% url 'operations' %}"{% if "/admin/operations" in request.path %} aria-current="page"{% endif %}>Betrieb</a>{% endif %}
+        {% if is_household_admin %}<a href="{% url 'operations' %}"{% if "/admin/operations" in request.path %} aria-current="page"{% endif %}>Betrieb</a>{% endif %}
       </nav>
       <div class="header-actions">
         {% if current_household %}
@@ -55,7 +55,7 @@
           </summary>
           <div class="header-menu__flyout">
             {% if current_household and is_household_admin %}<a href="{% url 'household-settings' %}"><svg aria-hidden="true"><use href="#i-settings"></use></svg>Haushalt verwalten</a>{% endif %}
-            {% if is_household_owner %}<a href="{% url 'operations' %}"><svg aria-hidden="true"><use href="#i-flame"></use></svg>Betrieb</a>{% endif %}
+            {% if is_household_admin %}<a href="{% url 'operations' %}"><svg aria-hidden="true"><use href="#i-flame"></use></svg>Betrieb</a>{% endif %}
             <form method="post" action="/accounts/logout/">{% csrf_token %}
               <button type="submit">Abmelden</button>
             </form>

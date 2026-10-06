@@ -37,16 +37,8 @@ def owner_navigation(request):
             or is_global_admin(request.user)
         )
     )
-    is_household_owner = (
-        current_household is not None
-        and (
-            current_household.role == HouseholdMembership.Role.OWNER
-            or is_global_admin(request.user)
-        )
-    )
     return {
         "current_household": current_household.household if current_household else None,
         "household_memberships": memberships,
-        "is_household_owner": is_household_owner,
         "is_household_admin": is_household_admin,
     }

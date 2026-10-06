@@ -22,7 +22,7 @@ secrets, start the stack (the one-shot `odori-migrate` service applies migration
 worker start), bootstrap the initial owner exactly once, and use `python scripts/smoke.py` with
 `ODORI_SMOKE_URL` after deployment.
 
-Household owners can inspect worker, queue, provider, and embedding diagnostics at
+Household owners and admins can inspect worker, queue, provider, and embedding diagnostics at
 `/admin/operations`. See [deployment operations](docs/deployment-operations.md#observability-and-troubleshooting)
 for correlation IDs, health endpoints, and Docker log commands.
 
