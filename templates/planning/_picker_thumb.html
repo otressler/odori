@@ -1,0 +1,5 @@
+{% load static %}{% if recipe.has_thumbnail %}
+  <img class="picker-option__thumb" src="{% url 'recipe-thumbnail' recipe.id %}" alt="" loading="lazy" decoding="async">
+{% else %}
+  <span class="picker-option__thumb picker-option__thumb--placeholder" aria-hidden="true"><img src="{% static 'images/recipe-placeholder.svg' %}" alt=""></span>
+{% endif %}

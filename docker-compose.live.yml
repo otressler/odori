@@ -1,0 +1,33 @@
+# Live-reload development stack, layered on top of the regular development override:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.live.yml up --build
+#   (or: make dev)
+#
+# The working tree is mounted into the containers, the web service runs Django's
+# runserver (restarts on Python changes, browser refreshes on template/CSS changes)
+# and the worker restarts on Python changes. Django's reloader polls, so this also
+# works on Windows bind mounts where file events do not reach the container. Data lives in the same odori_dev_*
+# volumes as the regular development stack. Run one of the two stacks at a time.
+x-live: &live
+  image: odori:live
+  build:
+    context: .
+    target: dev
+  volumes:
+    - .:/app
+    # Collected files on the host would shadow static/ edits; serve straight from the finders.
+    - type: tmpfs
+      target: /app/staticfiles
+  environment:
+    DEBUG: "true"
+    LIVE_RELOAD: "true"
+
+services:
+  odori-web:
+    <<: *live
+    command: python manage.py runserver 0.0.0.0:8000
+  odori-worker:
+    <<: *live
+    command: python manage.py worker --reload
+  odori-migrate:
+    <<: *live

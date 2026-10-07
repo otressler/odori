@@ -56,6 +56,11 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+# Opt-in browser auto-refresh for the live development stack (docker-compose.live.yml).
+LIVE_RELOAD = DEBUG and os.environ.get("LIVE_RELOAD", "false").lower() == "true"
+if LIVE_RELOAD:
+    INSTALLED_APPS.append("django_browser_reload")
+    MIDDLEWARE.append("django_browser_reload.middleware.BrowserReloadMiddleware")
 ROOT_URLCONF = "odori.urls"
 TEMPLATES = [
     {

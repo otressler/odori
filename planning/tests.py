@@ -16,6 +16,7 @@ from recipes.models import (
     RecipeStep,
     RecipeTag,
     RecipeTagAssignment,
+    RecommendationOutcome,
 )
 
 from .models import CookEvent, MealPlan, MealSlot
@@ -634,6 +635,192 @@ class PlanDialogTests(PlanningTestCase):
 
         self.assertEqual(response.context["recipe_tags"], [{"name": "Schnell", "key": "schnell"}])
         self.assertContains(response, 'data-tags="schnell"', count=3)
+
+
+class SuggestionTestCase(PlanningTestCase):
+    def setUp(self):
+        super().setUp()
+        InventoryItem.objects.create(
+            household=self.household, ingredient=self.tomato, status=InventoryItem.Status.AVAILABLE
+        )
+        self.others = []
+        for title in ("Bruschetta", "Caprese", "Gazpacho", "Panzanella", "Shakshuka"):
+            recipe = Recipe.objects.create(
+                household=self.household,
+                created_by=self.user,
+                source=self.source,
+                title=title,
+                status=Recipe.Status.APPROVED,
+            )
+            RecipeIngredient.objects.create(
+                recipe=recipe, sort_order=0, source_text="Tomaten", canonical_ingredient=self.tomato
+            )
+            self.others.append(recipe)
+
+    def week_page(self):
+        return self.client.get(f"/plan/{self.week_start.isoformat()}/")
+
+
+class PlanSuggestionTests(SuggestionTestCase):
+    def test_dialog_suggests_recipes_not_yet_in_the_week(self):
+        self.make_slot()
+
+        response = self.week_page()
+
+        suggested = [item["recipe"].id for item in response.context["suggestions"]]
+        self.assertEqual(len(suggested), 4)
+        self.assertNotIn(self.recipe.id, suggested)
+        self.assertContains(response, "Vorschläge für diese Woche")
+        self.assertEqual(
+            [(item["in_stock"], item["total"]) for item in response.context["suggestions"]],
+            [(1, 1)] * 4,
+        )
+
+    def test_recently_cooked_recipes_are_not_suggested(self):
+        CookEvent.objects.create(household=self.household, recipe=self.others[0], actor=self.user)
+
+        response = self.week_page()
+
+        suggested = [item["recipe"].id for item in response.context["suggestions"]]
+        self.assertNotIn(self.others[0].id, suggested)
+
+    def test_a_small_recipe_book_gets_no_suggestions(self):
+        Recipe.objects.filter(id__in=[recipe.id for recipe in self.others[1:]]).delete()
+
+        response = self.week_page()
+
+        self.assertEqual(response.context["suggestions"], [])
+        self.assertNotContains(response, "Vorschläge für diese Woche")
+
+    def plan_dish(self, recipe, suggested):
+        page = self.week_page()
+        return self.client.post(
+            f"/plan/{self.week_start.isoformat()}/slots/",
+            {
+                "entry_type": "recipe",
+                "recipe_id": str(recipe.id),
+                "date": self.week_start.isoformat(),
+                "slot": "dinner",
+                "recommendation_run": str(page.context["recommendation_run"].id),
+                "suggested": " ".join(str(item.id) for item in suggested),
+            },
+        )
+
+    def test_planning_a_suggestion_records_the_outcome(self):
+        response = self.plan_dish(self.others[1], suggested=self.others[:4])
+
+        self.assertEqual(response.status_code, 302)
+        outcome = RecommendationOutcome.objects.get()
+        self.assertEqual(outcome.outcome, RecommendationOutcome.Type.PLANNED)
+        self.assertEqual(outcome.recipe, self.others[1])
+        self.assertIsNotNone(outcome.run)
+
+    def test_planning_from_the_full_list_records_nothing(self):
+        self.plan_dish(self.others[4], suggested=self.others[:4])
+
+        self.assertFalse(RecommendationOutcome.objects.exists())
+
+
+class WeekIdeaTests(SuggestionTestCase):
+    def days_ahead(self):
+        today = timezone.localdate()
+        return [offset for offset in range(7) if self.week_start + timedelta(days=offset) >= today]
+
+    def test_strip_offers_the_next_free_dinner_and_the_other_free_meals(self):
+        first, *later = self.days_ahead()
+        if not later:
+            self.skipTest("Sunday: no dinner left after today's.")
+        self.make_slot(day_offset=first)
+
+        response = self.week_page()
+
+        self.assertContains(response, "Ideen für diese Woche")
+        next_dinner = response.context["next_dinner"]
+        self.assertGreater(next_dinner["date"], self.week_start + timedelta(days=first))
+        self.assertEqual(next_dinner["key"], "dinner")
+        cells = {(cell["date"], cell["key"]) for cell in response.context["idea_cells"]}
+        self.assertNotIn((self.week_start + timedelta(days=first), "dinner"), cells)
+        self.assertIn((self.week_start + timedelta(days=first), "lunch"), cells)
+        self.assertNotIn("breakfast", {key for _, key in cells})
+        # Visible cards plus the ones waiting to replace dismissed cards.
+        self.assertEqual(len(response.context["ideas"]), 5)
+        self.assertContains(response, "data-idea ", count=5)
+
+    def test_strip_folds_away_once_every_dinner_ahead_is_planned(self):
+        for offset in self.days_ahead():
+            self.make_slot(day_offset=offset)
+
+        response = self.week_page()
+
+        self.assertEqual(response.context["ideas"], [])
+        self.assertNotContains(response, "Ideen für diese Woche")
+
+    def test_a_small_recipe_book_still_gets_idea_cards(self):
+        Recipe.objects.filter(id__in=[recipe.id for recipe in self.others[2:]]).delete()
+
+        response = self.week_page()
+
+        self.assertEqual(response.context["suggestions"], [])
+        self.assertEqual(len(response.context["ideas"]), 3)
+
+    def test_an_idea_card_plans_into_the_chosen_meal_in_one_post(self):
+        day = self.week_start + timedelta(days=self.days_ahead()[-1])
+        run = self.week_page().context["recommendation_run"]
+
+        response = self.client.post(
+            f"/plan/{self.week_start.isoformat()}/slots/",
+            {
+                "entry_type": "recipe",
+                "recipe_id": str(self.others[0].id),
+                "recommendation_run": str(run.id),
+                "suggested": str(self.others[0].id),
+                "cell": f"{day.isoformat()} lunch",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        entry = MealSlot.objects.get(recipe=self.others[0])
+        self.assertEqual((entry.date, entry.slot), (day, "lunch"))
+        self.assertEqual(
+            RecommendationOutcome.objects.get().outcome, RecommendationOutcome.Type.PLANNED
+        )
+
+    def dismiss(self, recipe, **headers):
+        run = self.week_page().context["recommendation_run"]
+        return self.client.post(
+            f"/plan/{self.week_start.isoformat()}/suggestions/dismiss/",
+            {"recipe_id": str(recipe.id), "recommendation_run": str(run.id)},
+            **headers,
+        )
+
+    def test_dismissing_hides_the_dish_for_this_week_only(self):
+        response = self.dismiss(self.others[0])
+
+        self.assertRedirects(
+            response, f"/plan/{self.week_start.isoformat()}/", fetch_redirect_response=False
+        )
+        outcome = RecommendationOutcome.objects.get()
+        self.assertEqual(outcome.outcome, RecommendationOutcome.Type.DISMISSED)
+        ideas = [idea["recipe"].id for idea in self.week_page().context["ideas"]]
+        self.assertNotIn(self.others[0].id, ideas)
+        next_week = self.week_start + timedelta(days=7)
+        later = self.client.get(f"/plan/{next_week.isoformat()}/")
+        self.assertIn(self.others[0].id, [idea["recipe"].id for idea in later.context["ideas"]])
+
+    def test_the_script_dismisses_with_json(self):
+        response = self.dismiss(self.others[0], HTTP_ACCEPT="application/json")
+
+        self.assertEqual(response.json(), {"dismissed": True})
+
+    def test_dismissing_needs_the_run_it_was_offered_in(self):
+        response = self.client.post(
+            f"/plan/{self.week_start.isoformat()}/suggestions/dismiss/",
+            {"recipe_id": str(self.others[0].id)},
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(RecommendationOutcome.objects.exists())
 
 
 class PlanRecipeSearchTests(PlanningTestCase):

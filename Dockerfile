@@ -17,6 +17,19 @@ RUN mkdir -p /app/data/uploads /app/staticfiles \
 USER odori
 CMD ["python", "-m", "pytest", "-q"]
 
+# Live-reload development (docker-compose.live.yml mounts the working tree over /app).
+# Must stay before `production`: the publish workflow builds the last stage.
+FROM dependencies AS dev
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY --chown=odori:odori . .
+RUN mkdir -p /app/data/uploads /app/staticfiles \
+	&& chown odori:odori /app /app/data /app/data/uploads /app/staticfiles
+USER odori
+EXPOSE 8000
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
 FROM dependencies AS production
 
 COPY --chown=odori:odori . .

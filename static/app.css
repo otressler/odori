@@ -3691,6 +3691,197 @@ a.meal-entry__title:hover {
   white-space: nowrap;
 }
 
+/* Suggestions lead the list while browsing; they share the option layout. */
+.picker-option--suggested {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.picker-option__reason,
+.idea-card__reason {
+  color: var(--olive-deep);
+  font-weight: 600;
+}
+
+/* "Ideen für diese Woche": suggestion cards above the week grid. */
+.week-ideas {
+  margin-bottom: 1.25rem;
+}
+
+.week-ideas[hidden] {
+  display: none;
+}
+
+.week-ideas__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.week-ideas__head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.week-ideas__more {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+/* Only where a mouse can drag; touch and keyboard plan through the card's buttons. */
+.week-ideas__hint {
+  display: none;
+  margin: 0 auto 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .week-ideas__hint {
+    display: block;
+  }
+}
+
+.week-ideas__list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.idea-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  /* The plan row sits at the bottom, so buttons line up across cards of different heights. */
+  grid-template-rows: 1fr auto;
+  align-items: start;
+  gap: 0.6rem 0.75rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.idea-card[hidden] {
+  display: none;
+}
+
+.idea-card[draggable="true"] {
+  cursor: grab;
+}
+
+.idea-card--dragging,
+.idea-card--leaving {
+  opacity: 0.45;
+}
+
+.idea-card--leaving {
+  transform: scale(0.97);
+}
+
+.idea-card .picker-option__thumb {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.idea-card__text {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  padding-right: 1.75rem;
+}
+
+.idea-card__title {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idea-card__title:hover {
+  text-decoration: underline;
+}
+
+.idea-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.idea-card__plan {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.idea-card__next,
+.idea-card__more summary {
+  min-height: 2.4rem;
+  padding-block: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.idea-card__next {
+  flex: 1;
+}
+
+.idea-card__next:hover {
+  border-color: var(--terracotta);
+  background: var(--terracotta-soft);
+}
+
+.idea-card__more summary {
+  min-width: 2.4rem;
+}
+
+.idea-card__dismiss {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  margin: 0;
+}
+
+.idea-card__dismiss .icon-button {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.stock-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--olive-soft);
+  color: var(--olive-deep);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Phones show "3/4"; screen readers still hear "vorrätig". */
+@media (max-width: 30rem) {
+  .stock-badge__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
 .plan-dialog__fields {
   display: grid;
   gap: 0.75rem 1rem;
