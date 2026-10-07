@@ -509,6 +509,14 @@ Priority reflects household value and risk reduction, not implementation novelty
 
 **Pi/cost impact:** Local queries/scoring only for the baseline. Bound candidate set and eliminate N+1 queries. Generated recipes retain the strict Azure budget.
 
+**Scoring tweak candidates:** The week planner now shows suggestions in the planning dialog and the "Ideen für diese Woche" strip (scoring version `2026-10-1`). Using it with the demo seed surfaced these refinements. Each one needs a scoring-version bump and a replay fixture (step 5):
+
+1. **Count only unavailable ingredients as shared.** The "Auch am Do gebraucht: …" reason and its bonus (+0.05 per ingredient, at most +0.15) currently count every ingredient that is not `available`, including `unknown` ones. Staples in `unknown` state, such as onions, then appear on almost every card ("Auch am Do gebraucht: Zwiebel"). Counting only `unavailable` ingredients keeps the reason's meaning, "buy once, use twice", and drops the noise. This is a small change in `_score_recipe` plus a test.
+2. **Keep "Nicht diese Woche" neutral in later weeks.** Dismissing an idea card hides the dish for that week only. The same `dismissed` outcome also counts as "not useful" and costs −0.15 in later weeks, until the dish is planned or cooked. A separate reason, such as `not_this_week`, could be left out of that penalty. It needs a choices migration on `RecommendationOutcome.reason`.
+3. **Leave staples out of coverage and missing lists.** Salt, pepper and oil lower pantry coverage and lengthen "Noch prüfen oder besorgen". Ingredients from BL-004 recurring staples could count as available, or be left out of the coverage count.
+4. **Don't let unmapped lines cap coverage.** Recipe lines without a canonical ingredient count as missing. A freshly imported recipe can therefore show "0 von 18 Zutaten vorrätig" until mapping catches up. They could be left out of the coverage count and given their own reason, "N Zutaten noch nicht zugeordnet".
+5. **Make suggestions slot-aware.** Suggestions are ranked once per week, so lunch and dinner get the same list. Course, tags or preparation time could favour quick dishes on weekdays or lighter ones at lunch. Hold this until recipes reliably carry that data.
+
 **Open questions:**
 
 - What is the primary success signal: planned, cooked, or positively rated?
