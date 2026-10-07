@@ -56,7 +56,9 @@ python manage.py runserver
 The application is available at <http://127.0.0.1:8000/>. The seed command is
 optional and creates a broad, repeatable starting point with pantry categories
 and states, recipe drafts and approvals, favorites, meal history, a meal plan,
-and a shopping list. To remove that data before starting over, run
+and a shopping list. It approves ten recipes, enough for the week planner's
+suggestions to appear in the planning dialog and the "Ideen für diese Woche"
+strip. To remove that data before starting over, run
 `python manage.py purge_data`; user accounts are preserved. Run the worker in a
 second terminal when using queued features:
 

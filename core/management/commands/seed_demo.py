@@ -79,6 +79,35 @@ class Command(BaseCommand):
         yogurt, _ = CanonicalIngredient.objects.get_or_create(
             household=household, name="Joghurt", category=dairy
         )
+        # Ingredients of the planner-suggestion recipes below, with the pantry state each starts in.
+        ingredients = {
+            "Tomate": tomato,
+            "Pasta": pasta,
+            "Olivenöl": oil,
+            "Zwiebel": onion,
+        }
+        extra_states = []
+        for name, category, status in (
+            ("Knoblauch", produce, "available"),
+            ("Feta", dairy, "unavailable"),
+            ("Zitrone", produce, "unknown"),
+            ("Kichererbsen", pantry, "available"),
+            ("Spinat", produce, "unavailable"),
+            ("Reis", pantry, "available"),
+            ("Linsen", pantry, "available"),
+            ("Kokosmilch", pantry, "unavailable"),
+            ("Ei", dairy, "available"),
+            ("Paprika", produce, "unknown"),
+            ("Parmesan", dairy, "unavailable"),
+            ("Kartoffel", produce, "available"),
+            ("Lauch", produce, "unavailable"),
+            ("Hackfleisch", dairy, "unavailable"),
+            ("Kritharaki", pantry, "unavailable"),
+        ):
+            ingredients[name], _ = CanonicalIngredient.objects.get_or_create(
+                household=household, name=name, defaults={"category": category}
+            )
+            extra_states.append((ingredients[name], status))
 
         # A mix of states so the pantry screen shows all three at once.
         for ingredient, status in (
@@ -89,6 +118,7 @@ class Command(BaseCommand):
             (kale, "available"),
             (onion, "unknown"),
             (yogurt, "unavailable"),
+            *extra_states,
         ):
             item, created = InventoryItem.objects.get_or_create(
                 household=household,
@@ -175,10 +205,139 @@ class Command(BaseCommand):
                 "tags": ["toskanisch", "eintopf"],
             },
         )
-        for recipe in (sugo, ribollita):
+        # Enough approved recipes for the week planner's suggestions: the dialog lists them only
+        # when the book has more than four, and the pantry states above spread their coverage.
+        suggestion_recipes = {}
+        for title, servings, tags, lines, steps in (
+            (
+                "Kritharaki-Auflauf mit Feta",
+                4,
+                ["griechisch", "ofen"],
+                [
+                    ("Kritharaki", "250", "g"),
+                    ("Hackfleisch", "400", "g"),
+                    ("Feta", "200", "g"),
+                    ("Tomate", "400", "g"),
+                    ("Zwiebel", "1", ""),
+                    ("Knoblauch", "2", "Zehen"),
+                ],
+                ["Hack mit Zwiebel und Knoblauch anbraten.", "Mit Kritharaki und Tomaten backen."],
+            ),
+            (
+                "Shakshuka",
+                2,
+                ["schnell", "vegetarisch"],
+                [
+                    ("Ei", "4", ""),
+                    ("Tomate", "400", "g"),
+                    ("Paprika", "1", ""),
+                    ("Zwiebel", "1", ""),
+                    ("Knoblauch", "1", "Zehe"),
+                    ("Feta", "50", "g"),
+                ],
+                ["Gemüse weich schmoren.", "Eier hineinsetzen und stocken lassen."],
+            ),
+            (
+                "Linsen-Dal",
+                4,
+                ["vegetarisch", "eintopf"],
+                [
+                    ("Linsen", "250", "g"),
+                    ("Kokosmilch", "400", "ml"),
+                    ("Zwiebel", "1", ""),
+                    ("Knoblauch", "2", "Zehen"),
+                    ("Tomate", "200", "g"),
+                    ("Reis", "200", "g"),
+                ],
+                ["Linsen mit Zwiebel und Tomaten köcheln.", "Mit Kokosmilch und Reis servieren."],
+            ),
+            (
+                "Spinat-Feta-Pfanne",
+                2,
+                ["schnell", "vegetarisch"],
+                [
+                    ("Spinat", "300", "g"),
+                    ("Feta", "150", "g"),
+                    ("Zitrone", "1", ""),
+                    ("Knoblauch", "1", "Zehe"),
+                    ("Reis", "150", "g"),
+                ],
+                ["Spinat mit Knoblauch zusammenfallen lassen.", "Feta und Zitrone unterheben."],
+            ),
+            (
+                "Kichererbsen-Curry",
+                4,
+                ["vegetarisch"],
+                [
+                    ("Kichererbsen", "400", "g"),
+                    ("Kokosmilch", "400", "ml"),
+                    ("Spinat", "200", "g"),
+                    ("Zwiebel", "1", ""),
+                    ("Reis", "250", "g"),
+                ],
+                ["Zwiebel anschwitzen, Kichererbsen zugeben.", "Mit Kokosmilch und Spinat garen."],
+            ),
+            (
+                "Kartoffel-Lauch-Suppe",
+                4,
+                ["eintopf"],
+                [("Kartoffel", "800", "g"), ("Lauch", "2", "Stangen"), ("Zwiebel", "1", "")],
+                ["Gemüse würfeln und weich kochen.", "Fein pürieren."],
+            ),
+            (
+                "Risotto al Parmigiano",
+                2,
+                ["italienisch"],
+                [
+                    ("Reis", "200", "g"),
+                    ("Parmesan", "60", "g"),
+                    ("Zwiebel", "1", ""),
+                    ("Olivenöl", "1", "EL"),
+                ],
+                ["Reis glasig dünsten und nach und nach angießen.", "Parmesan unterrühren."],
+            ),
+            (
+                "Griechischer Salat",
+                2,
+                ["schnell", "griechisch"],
+                [
+                    ("Tomate", "300", "g"),
+                    ("Feta", "150", "g"),
+                    ("Zwiebel", "1", ""),
+                    ("Olivenöl", "3", "EL"),
+                    ("Paprika", "1", ""),
+                ],
+                ["Gemüse grob schneiden.", "Mit Feta und Olivenöl anrichten."],
+            ),
+        ):
+            recipe = create_or_update_recipe(
+                user=user,
+                recipe=existing_recipe(household, title),
+                data={
+                    "title": title,
+                    "servings": servings,
+                    "ingredients": [
+                        {
+                            "sourceText": name,
+                            "amount": amount,
+                            "unit": unit,
+                            "canonicalIngredientId": str(ingredients[name].id),
+                        }
+                        for name, amount, unit in lines
+                    ],
+                    "steps": [{"body": body} for body in steps],
+                    "tags": tags,
+                },
+            )
+            suggestion_recipes[title] = recipe
+
+        for recipe in (sugo, ribollita, *suggestion_recipes.values()):
             if recipe.status != Recipe.Status.APPROVED:
                 approve_recipe(recipe)
         RecipeFavorite.objects.get_or_create(recipe=ribollita, user=user)
+        RecipeFavorite.objects.get_or_create(
+            recipe=suggestion_recipes["Risotto al Parmigiano"], user=user
+        )
 
         draft = create_or_update_recipe(
             user=user,
@@ -198,9 +357,11 @@ class Command(BaseCommand):
 
         week_start = current_week_start()
         plan = get_or_create_plan(user=user, week_start=week_start)
+        # Thursday's Feta is what other suggestions point at ("Auch am Do gebraucht: Feta").
         for day_offset, slot, recipe, servings in (
             (0, "dinner", sugo, 2),
             (2, "dinner", ribollita, 4),
+            (3, "dinner", suggestion_recipes["Kritharaki-Auflauf mit Feta"], 4),
             (4, "lunch", sugo, 4),
         ):
             date = week_start + timedelta(days=day_offset)
