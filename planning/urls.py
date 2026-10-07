@@ -24,6 +24,11 @@ urlpatterns = [
         name="slot-create",
     ),
     path(
+        "<str:week_start>/suggestions/dismiss/",
+        login_required(require_POST(views.suggestion_dismiss_page)),
+        name="suggestion-dismiss",
+    ),
+    path(
         "slots/<uuid:slot_id>/update/",
         login_required(require_POST(views.slot_update_page)),
         name="slot-update",

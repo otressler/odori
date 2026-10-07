@@ -30,6 +30,7 @@ class Recommendation:
     score_components: dict[str, float]
     recently_cooked: bool = False
     planned_this_week: bool = False
+    dismissed_this_week: bool = False
     # Missing ingredients another dish of the planned week needs too: bought once, used twice.
     shared_ingredients: list[str] = field(default_factory=list)
     shared_reason: str = ""
@@ -47,6 +48,8 @@ class WeekContext:
     recipe_ids: set
     # Canonical ingredient id -> earliest day an uncooked dish of the week needs it.
     needs: dict
+    # "Nicht diese Woche" in the planner: hidden for this week only.
+    dismissed: set
 
 
 def _candidate_limit():
@@ -54,6 +57,7 @@ def _candidate_limit():
 
 
 def _week_context(plan):
+    start = plan.week_start_date
     slots = list(
         MealSlot.objects.filter(
             plan=plan, entry_type=MealSlot.EntryType.RECIPE, recipe__isnull=False
@@ -70,10 +74,18 @@ def _week_context(plan):
     for recipe_id, ingredient_id in lines:
         day = upcoming[recipe_id]
         needs[ingredient_id] = min(day, needs.get(ingredient_id, day))
+    dismissed = set(
+        RecommendationOutcome.objects.filter(
+            household_id=plan.household_id,
+            outcome=RecommendationOutcome.Type.DISMISSED,
+            run__input_snapshot__weekStart=start.isoformat(),
+        ).values_list("recipe_id", flat=True)
+    )
     return WeekContext(
-        start=plan.week_start_date,
+        start=start,
         recipe_ids={recipe_id for recipe_id, _, _ in slots},
         needs=needs,
+        dismissed=dismissed,
     )
 
 
@@ -97,6 +109,9 @@ def _snapshot(*, recipes, inventory, duplicate_counts, recently_cooked, feedback
         "weekStart": week.start.isoformat() if week else None,
         "weekRecipeIds": sorted(str(recipe_id) for recipe_id in week.recipe_ids) if week else [],
         "weekIngredientIds": sorted(str(ingredient_id) for ingredient_id in week.needs)
+        if week
+        else [],
+        "weekDismissedRecipeIds": sorted(str(recipe_id) for recipe_id in week.dismissed)
         if week
         else [],
     }
@@ -214,6 +229,7 @@ def _score_recipe(
         },
         recently_cooked=recent,
         planned_this_week=in_week,
+        dismissed_this_week=week is not None and recipe.id in week.dismissed,
         shared_ingredients=[name for name, _ in shared],
         shared_reason=shared_reason,
     )
@@ -318,13 +334,14 @@ def recommend_for_user(*, user, plan=None):
 
 
 def week_suggestions(result, *, limit):
-    """What the week planner offers: nothing already planned, cooked lately, or without signal."""
+    """What the week planner offers: nothing planned, recent, dismissed, or without signal."""
 
     return [
         suggestion
         for suggestion in result.suggestions
         if suggestion.score > 0
         and not suggestion.planned_this_week
+        and not suggestion.dismissed_this_week
         and not suggestion.recently_cooked
     ][:limit]
 

@@ -27,6 +27,68 @@
 
 <p class="week-status" role="status" aria-live="polite" data-week-status hidden></p>
 
+{% if ideas %}
+  <section class="week-ideas" aria-labelledby="week-ideas-title" data-week-ideas>
+    <header class="week-ideas__head">
+      <h2 id="week-ideas-title">Ideen für {% if is_this_week %}diese{% else %}die{% endif %} Woche</h2>
+      <p class="week-ideas__hint">Oder eine Karte auf eine Mahlzeit ziehen.</p>
+      <a class="week-ideas__more" href="{% url 'recipe-recommendations' %}">Alle Vorschläge →</a>
+    </header>
+    <ul class="week-ideas__list" role="list">
+      {% for idea in ideas %}
+        {% with recipe=idea.recipe %}
+          {# Cards past the visible few wait hidden and step in when one is dismissed. #}
+          <li class="idea-card" data-idea data-id="{{ recipe.id }}"{% if forloop.counter > ideas_visible %} hidden{% endif %}>
+            {% include "planning/_picker_thumb.html" %}
+            <div class="idea-card__text">
+              <a class="idea-card__title" href="{% url 'recipe-detail' recipe.id %}" title="{{ recipe.title }}">{% if recipe.is_favorite %}<span class="picker-option__star" aria-label="Favorit">★</span> {% endif %}{{ recipe.title|default:"Unbenanntes Rezept" }}</a>
+              <span class="idea-card__meta">
+                {% if idea.total %}<span class="stock-badge" title="{{ idea.in_stock }} von {{ idea.total }} Zutaten vorrätig">{{ idea.in_stock }}/{{ idea.total }}<span class="stock-badge__label"> vorrätig</span></span>{% endif %}
+                {% if idea.reason %}<span class="idea-card__reason">{{ idea.reason }}</span>{% elif recipe.servings %}<span>{{ recipe.servings }} Portionen</span>{% endif %}
+              </span>
+            </div>
+
+            <form class="idea-card__plan" method="post" action="{% url 'slot-create' plan.week_start_date|date:'Y-m-d' %}" data-idea-plan>
+              {% csrf_token %}
+              <input type="hidden" name="entry_type" value="recipe">
+              <input type="hidden" name="recipe_id" value="{{ recipe.id }}">
+              <input type="hidden" name="recommendation_run" value="{{ recommendation_run.id }}">
+              <input type="hidden" name="suggested" value="{{ recipe.id }}">
+              <button class="idea-card__next" type="submit" name="cell" value="{{ next_dinner.date|date:'Y-m-d' }} {{ next_dinner.key }}">
+                + {{ next_dinner.date|date:"D" }} {{ next_dinner.label }}<span class="sr-only">: {{ recipe.title }} am {{ next_dinner.date|date:"l" }} einplanen</span>
+              </button>
+              {% if idea_cells|length > 1 %}
+                <details class="entry-menu idea-card__more" data-entry-menu>
+                  <summary class="button" title="Andere Mahlzeit wählen">
+                    <span aria-hidden="true">▾</span><span class="sr-only">Andere Mahlzeit für {{ recipe.title }} wählen</span>
+                  </summary>
+                  <div class="entry-menu__flyout">
+                    <span class="entry-menu__heading">Einplanen am</span>
+                    {% for cell in idea_cells %}
+                      {% if cell != next_dinner %}
+                        <button type="submit" name="cell" value="{{ cell.date|date:'Y-m-d' }} {{ cell.key }}">{{ cell.date|date:"l" }} · {{ cell.label }}</button>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                </details>
+              {% endif %}
+            </form>
+
+            <form class="idea-card__dismiss" method="post" action="{% url 'suggestion-dismiss' plan.week_start_date|date:'Y-m-d' %}" data-idea-dismiss>
+              {% csrf_token %}
+              <input type="hidden" name="recipe_id" value="{{ recipe.id }}">
+              <input type="hidden" name="recommendation_run" value="{{ recommendation_run.id }}">
+              <button class="ghost icon-button" type="submit" title="Nicht diese Woche">
+                <span aria-hidden="true">✕</span><span class="sr-only">{{ recipe.title }} diese Woche nicht mehr vorschlagen</span>
+              </button>
+            </form>
+          </li>
+        {% endwith %}
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
 <div class="week-grid" data-week-grid>
   {# Row labels for the aligned desktop grid; every cell repeats its own label for phones and screen readers. #}
   <div class="week-grid__labels" aria-hidden="true">
@@ -514,9 +576,61 @@
     });
   });
 
+  /* ---------- Idea cards ---------- */
+  var ideasStrip = document.querySelector("[data-week-ideas]");
+  document.querySelectorAll("[data-idea-dismiss]").forEach(function (dismissForm) {
+    dismissForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var card = dismissForm.closest("[data-idea]");
+      var title = card.querySelector(".idea-card__title").textContent.replace("★", "").trim();
+      card.classList.add("idea-card--leaving");
+      fetch(dismissForm.action, {method: "POST", body: new FormData(dismissForm), headers: {"Accept": "application/json"}})
+        .then(function (response) {
+          if (!response.ok) throw new Error("failed");
+          card.remove();
+          var waiting = ideasStrip.querySelector("[data-idea][hidden]");
+          if (waiting) waiting.hidden = false;
+          if (!ideasStrip.querySelector("[data-idea]")) ideasStrip.hidden = true;
+          // The dialog offered the same dish; keep the two in step until the next reload.
+          var twin = list.querySelector('[data-picker-suggestion][data-id="' + card.dataset.id + '"]');
+          if (twin) twin.remove();
+          announce("„" + title + "“ wird diese Woche nicht mehr vorgeschlagen.");
+        })
+        .catch(function () {
+          card.classList.remove("idea-card--leaving");
+          announce("„" + title + "“ konnte nicht ausgeblendet werden.");
+        });
+    });
+  });
+
   /* ---------- Drag and drop (mouse only; the menu covers keyboard and touch) ---------- */
   if (!window.matchMedia("(pointer: fine)").matches) return;
   var dragged = null;
+  var draggedIdea = null;
+  document.querySelectorAll("[data-idea]").forEach(function (card) {
+    card.draggable = true;
+    card.addEventListener("dragstart", function (event) {
+      draggedIdea = card;
+      card.classList.add("idea-card--dragging");
+      event.dataTransfer.effectAllowed = "copy";
+      event.dataTransfer.setData("text/plain", card.dataset.id);
+    });
+    card.addEventListener("dragend", function () {
+      card.classList.remove("idea-card--dragging");
+      draggedIdea = null;
+      document.querySelectorAll(".meal-slot--drop").forEach(function (cell) { cell.classList.remove("meal-slot--drop"); });
+    });
+  });
+  function planIdea(card, cell) {
+    // Same form as the card's buttons, aimed at the cell it was dropped on.
+    var planForm = card.querySelector("[data-idea-plan]");
+    var target = document.createElement("input");
+    target.type = "hidden";
+    target.name = "cell";
+    target.value = cell.dataset.date + " " + cell.dataset.slot;
+    planForm.appendChild(target);
+    planForm.submit();
+  }
   document.querySelectorAll(".meal-entry[data-entry-id]").forEach(function (entry) {
     entry.draggable = true;
     entry.addEventListener("dragstart", function (event) {
@@ -533,6 +647,12 @@
   });
   document.querySelectorAll(".meal-slot").forEach(function (cell) {
     cell.addEventListener("dragover", function (event) {
+      if (draggedIdea) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        cell.classList.add("meal-slot--drop");
+        return;
+      }
       if (!dragged || dragged.closest(".meal-slot") === cell) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
@@ -544,6 +664,10 @@
     cell.addEventListener("drop", function (event) {
       event.preventDefault();
       cell.classList.remove("meal-slot--drop");
+      if (draggedIdea) {
+        planIdea(draggedIdea, cell);
+        return;
+      }
       if (!dragged || dragged.closest(".meal-slot") === cell) return;
       var entry = dragged;
       var title = entry.querySelector(".meal-entry__title").textContent.trim();

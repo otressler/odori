@@ -39,6 +39,10 @@ from .services import (
 PICKER_TAG_LIMIT = 12
 PICKER_SEARCH_LIMIT = 20
 PICKER_SUGGESTION_LIMIT = 4
+# Idea cards shown above the week; the rest wait in line to replace dismissed ones.
+WEEK_IDEA_VISIBLE = 4
+WEEK_IDEA_LIMIT = 8
+IDEA_SLOTS = (MealSlot.Slot.LUNCH, MealSlot.Slot.DINNER)
 
 
 def week_url(week_start, *, day=None, open_slot=None):
@@ -92,16 +96,13 @@ def picker_recipes(request, household):
     return recipes, tags
 
 
-def picker_suggestions(request, plan, recipes):
-    """Top recommendations for the planned week, as picker cards with one reason each."""
+def week_ideas(request, plan, recipes):
+    """Recommendations for the planned week as cards with one reason each, best first."""
 
-    if len(recipes) <= PICKER_SUGGESTION_LIMIT:
-        # The whole book fits on screen; repeating it as suggestions only adds noise.
-        return [], None
     result = recommend_for_user(user=request.user, plan=plan)
     by_id = {recipe.id: recipe for recipe in recipes}
     suggestions = []
-    for suggestion in week_suggestions(result, limit=PICKER_SUGGESTION_LIMIT):
+    for suggestion in week_suggestions(result, limit=WEEK_IDEA_LIMIT):
         recipe = by_id.get(suggestion.recipe.id)
         if recipe is None:
             continue
@@ -116,8 +117,20 @@ def picker_suggestions(request, plan, recipes):
     return suggestions, result.run
 
 
+def free_idea_cells(days):
+    """Unplanned lunches and dinners still ahead: where an idea card plans a dish in one tap."""
+
+    return [
+        {"date": day["date"], "key": cell["key"], "label": cell["label"]}
+        for day in days
+        if not day["is_past"]
+        for cell in day["slots"]
+        if cell["key"] in IDEA_SLOTS and not cell["entries"]
+    ]
+
+
 def record_planned_suggestion(request, recipe_id):
-    """Tell the recommender a dish offered in the dialog's suggestions was planned."""
+    """Tell the recommender a dish offered as a suggestion (dialog or idea card) was planned."""
 
     run_id = request.POST.get("recommendation_run")
     if not (run_id and recipe_id and recipe_id in request.POST.get("suggested", "").split()):
@@ -167,7 +180,11 @@ def plan_page(request, week_start=None):
             if day["date"] == dialog_day and cell["key"] == dialog_slot:
                 dialog_cell = {"date": day["date"], **cell}
     recipes, tags = picker_recipes(request, household)
-    suggestions, recommendation_run = picker_suggestions(request, plan, recipes)
+    ideas, recommendation_run = week_ideas(request, plan, recipes)
+    # A book that fits in the picker gains nothing from repeating its top as dialog suggestions.
+    suggestions = ideas[:PICKER_SUGGESTION_LIMIT] if len(recipes) > PICKER_SUGGESTION_LIMIT else []
+    idea_cells = free_idea_cells(days)
+    next_dinner = next((cell for cell in idea_cells if cell["key"] == MealSlot.Slot.DINNER), None)
     return render(
         request,
         "planning/week.html",
@@ -180,6 +197,12 @@ def plan_page(request, week_start=None):
             "recipes": recipes,
             "recipe_tags": tags,
             "suggestions": suggestions,
+            # The strip folds away once every dinner ahead is planned.
+            "ideas": ideas if next_dinner else [],
+            "ideas_visible": WEEK_IDEA_VISIBLE,
+            "idea_cells": idea_cells,
+            "next_dinner": next_dinner,
+            "is_this_week": start == current_week_start(),
             "recommendation_run": recommendation_run,
             "dialog_cell": dialog_cell,
             "previous_week": start - timedelta(days=7),
@@ -234,9 +257,11 @@ def read_version(request, field="version"):
 
 def slot_create_page(request, week_start):
     start = parse_week_start(week_start)
-    slot = request.POST.get("slot", "")
+    # Idea cards offer one button per free meal, each posting "<date> <slot>" as `cell`.
+    cell_date, _, cell_slot = request.POST.get("cell", "").partition(" ")
+    slot = cell_slot or request.POST.get("slot", "")
     try:
-        day = read_date(request.POST.get("date"))
+        day = read_date(cell_date or request.POST.get("date"))
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect(week_url(start))
@@ -263,6 +288,31 @@ def slot_create_page(request, week_start):
     if request.POST.get("then") == "another":
         return redirect(week_url(start, day=day, open_slot=slot))
     return redirect(week_url(start, day=day))
+
+
+def suggestion_dismiss_page(request, week_start):
+    """Hide an idea card for this week; the script posts here too and asks for JSON."""
+
+    start = parse_week_start(week_start)
+    wants_json = "application/json" in request.headers.get("Accept", "")
+    run_id = request.POST.get("recommendation_run")
+    try:
+        if not run_id:
+            raise ValueError("recommendation_run_not_found")
+        record_outcome(
+            user=request.user,
+            recipe_id=request.POST.get("recipe_id"),
+            outcome=RecommendationOutcome.Type.DISMISSED,
+            run_id=run_id,
+        )
+    except ValueError:
+        if wants_json:
+            return JsonResponse({"error": "suggestion_not_found"}, status=404)
+        messages.error(request, "Dieser Vorschlag ist nicht mehr verfügbar.")
+        return redirect(week_url(start))
+    if wants_json:
+        return JsonResponse({"dismissed": True})
+    return redirect(week_url(start))
 
 
 def cook_now_page(request, recipe_id):
